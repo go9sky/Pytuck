@@ -30,6 +30,7 @@ class ExcelBackend(StorageBackend):
         except ImportError:
             raise SerializationError("openpyxl is required for Excel backend. Install with: pip install pytuck[excel]")
 
+        temp_path = self.file_path + '.tmp'
         try:
             wb = Workbook()
             # 删除默认工作表
@@ -39,16 +40,31 @@ class ExcelBackend(StorageBackend):
             # 创建元数据工作表
             metadata_sheet = wb.create_sheet('_metadata', 0)
             metadata_sheet.append(['Key', 'Value'])
-            metadata_sheet.append(['version', '0.1.0'])
+            metadata_sheet.append(['version', '0.2.0'])
             metadata_sheet.append(['timestamp', datetime.now().isoformat()])
             metadata_sheet.append(['table_count', len(tables)])
 
-            # 为每个表创建两个工作表：schema + data
+            # 创建统一的表结构工作表 _pytuck_tables
+            tables_sheet = wb.create_sheet('_pytuck_tables', 1)
+            tables_sheet.append(['table_name', 'primary_key', 'next_id', 'columns'])
+            for table_name, table in tables.items():
+                columns_json = json.dumps([
+                    {
+                        'name': col.name,
+                        'type': col.col_type.__name__,
+                        'nullable': col.nullable,
+                        'primary_key': col.primary_key,
+                        'index': col.index
+                    }
+                    for col in table.columns.values()
+                ])
+                tables_sheet.append([table_name, table.primary_key, table.next_id, columns_json])
+
+            # 为每个表创建数据工作表
             for table_name, table in tables.items():
                 self._save_table_to_workbook(wb, table_name, table)
 
             # 原子性保存
-            temp_path = self.file_path + '.tmp'
             wb.save(temp_path)
 
             if os.path.exists(self.file_path):
@@ -73,15 +89,30 @@ class ExcelBackend(StorageBackend):
         try:
             wb = load_workbook(self.file_path)
 
-            # 获取所有数据表名（排除元数据和schema表）
+            # 从 _pytuck_tables 工作表读取所有表的 schema
+            tables_schema: Dict[str, Dict[str, Any]] = {}
+            if '_pytuck_tables' in wb.sheetnames:
+                tables_sheet = wb['_pytuck_tables']
+                rows = list(tables_sheet.iter_rows(min_row=2, values_only=True))
+                for row in rows:
+                    if row[0]:  # table_name 不为空
+                        table_name = row[0]
+                        tables_schema[table_name] = {
+                            'primary_key': row[1],
+                            'next_id': int(row[2]) if row[2] else 1,
+                            'columns': json.loads(row[3]) if row[3] else []
+                        }
+
+            # 获取所有数据表名（排除元数据表）
             table_names = [
                 name for name in wb.sheetnames
-                if not name.startswith('_') and not name.endswith('_schema')
+                if not name.startswith('_')
             ]
 
             tables = {}
             for table_name in table_names:
-                table = self._load_table_from_workbook(wb, table_name)
+                schema = tables_schema.get(table_name, {})
+                table = self._load_table_from_workbook(wb, table_name, schema)
                 tables[table_name] = table
 
             return tables
@@ -99,23 +130,7 @@ class ExcelBackend(StorageBackend):
             os.remove(self.file_path)
 
     def _save_table_to_workbook(self, wb: 'Workbook', table_name: str, table: 'Table') -> None:
-        """保存单个表到工作簿"""
-        # Schema 工作表
-        schema_sheet = wb.create_sheet(f'{table_name}_schema')
-        schema_sheet.append(['Key', 'Value'])
-        schema_sheet.append(['primary_key', table.primary_key])
-        schema_sheet.append(['next_id', table.next_id])
-        schema_sheet.append(['columns', json.dumps([
-            {
-                'name': col.name,
-                'type': col.col_type.__name__,
-                'nullable': col.nullable,
-                'primary_key': col.primary_key,
-                'index': col.index
-            }
-            for col in table.columns.values()
-        ])])
-
+        """保存单个表的数据到工作簿"""
         # 数据工作表
         data_sheet = wb.create_sheet(table_name)
 
@@ -139,34 +154,29 @@ class ExcelBackend(StorageBackend):
                 row.append(value)
             data_sheet.append(row)
 
-    def _load_table_from_workbook(self, wb: 'Workbook', table_name: str) -> 'Table':
+    def _load_table_from_workbook(
+        self, wb: 'Workbook', table_name: str, schema: Dict[str, Any]
+    ) -> 'Table':
         """从工作簿加载单个表"""
         from ..storage import Table
         from ..orm import Column
 
-        # 读取 schema
-        schema_sheet = wb[f'{table_name}_schema']
-        schema_dict = {}
-        for row in schema_sheet.iter_rows(min_row=2, values_only=True):
-            if row[0] and row[1]:  # 跳过空行
-                schema_dict[row[0]] = row[1]
-
-        primary_key = schema_dict['primary_key']
-        next_id = int(schema_dict['next_id'])
-        columns_data = json.loads(schema_dict['columns'])
+        primary_key = schema.get('primary_key', 'id')
+        next_id = schema.get('next_id', 1)
+        columns_data = schema.get('columns', [])
 
         # 重建列
         columns = []
-        for col_data in columns_data:
-            type_map = {
-                'int': int,
-                'str': str,
-                'float': float,
-                'bool': bool,
-                'bytes': bytes
-            }
-            col_type = type_map.get(col_data['type'], str)
+        type_map = {
+            'int': int,
+            'str': str,
+            'float': float,
+            'bool': bool,
+            'bytes': bytes
+        }
 
+        for col_data in columns_data:
+            col_type = type_map.get(col_data['type'], str)
             column = Column(
                 col_data['name'],
                 col_type,

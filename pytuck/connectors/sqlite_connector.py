@@ -136,6 +136,7 @@ class SQLiteConnector(DatabaseConnector):
         cursor = self.conn.execute(f"PRAGMA table_info('{table_name}')")
         columns: List[Dict[str, Any]] = []
         primary_key: Optional[str] = None
+        pk_columns: List[str] = []  # 收集所有主键列
 
         for row in cursor.fetchall():
             # PRAGMA table_info 返回: cid, name, type, notnull, dflt_value, pk
@@ -151,16 +152,25 @@ class SQLiteConnector(DatabaseConnector):
                     py_type = mapped_type
                     break
 
+            # 先收集主键列，稍后只标记第一个
+            if is_pk:
+                pk_columns.append(col_name)
+
             columns.append({
                 'name': col_name,
                 'type': py_type,
                 'nullable': not not_null,
-                'primary_key': is_pk
+                'primary_key': False  # 先都设为 False，后面再修正
             })
 
-            # 记录第一个主键（Pytuck 不支持复合主键）
-            if is_pk and primary_key is None:
-                primary_key = col_name
+        # Pytuck 只支持单主键，取第一个主键列
+        if pk_columns:
+            primary_key = pk_columns[0]
+            # 只标记第一个主键列为 primary_key=True
+            for col in columns:
+                if col['name'] == primary_key:
+                    col['primary_key'] = True
+                    break
 
         return columns, primary_key
 

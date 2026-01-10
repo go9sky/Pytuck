@@ -26,7 +26,7 @@ class BinaryBackend(StorageBackend):
 
     # 文件格式常量
     MAGIC_NUMBER = b'LTDB'
-    VERSION = 1
+    VERSION = 2  # 版本升级：分离 schema 区和数据区
     FILE_HEADER_SIZE = 64
 
     def save(self, tables: Dict[str, 'Table']) -> None:
@@ -39,9 +39,13 @@ class BinaryBackend(StorageBackend):
                 # 写入文件头
                 self._write_file_header(f, len(tables))
 
-                # 写入所有表
+                # 写入统一的 Schema 区（所有表的元数据）
                 for table_name, table in tables.items():
-                    self._write_table(f, table)
+                    self._write_table_schema(f, table)
+
+                # 写入数据区（所有表的数据）
+                for table_name, table in tables.items():
+                    self._write_table_data(f, table)
 
             # 原子性重命名
             if os.path.exists(self.file_path):
@@ -64,10 +68,16 @@ class BinaryBackend(StorageBackend):
                 # 读取文件头
                 table_count = self._read_file_header(f)
 
-                # 读取所有表
-                tables = {}
+                # 读取统一的 Schema 区（所有表的元数据）
+                tables_schema = []
                 for _ in range(table_count):
-                    table = self._read_table(f)
+                    schema = self._read_table_schema(f)
+                    tables_schema.append(schema)
+
+                # 读取数据区并构建表对象
+                tables = {}
+                for schema in tables_schema:
+                    table = self._read_table_data(f, schema)
                     tables[table.name] = table
 
                 return tables
@@ -135,9 +145,9 @@ class BinaryBackend(StorageBackend):
 
         return table_count
 
-    def _write_table(self, f: BinaryIO, table: 'Table') -> None:
+    def _write_table_schema(self, f: BinaryIO, table: 'Table') -> None:
         """
-        写入单个表
+        写入单个表的 Schema（元数据）
 
         格式：
         - Table Name Length (2 bytes)
@@ -147,8 +157,6 @@ class BinaryBackend(StorageBackend):
         - Column Count (2 bytes)
         - Next ID (8 bytes)
         - Columns Data
-        - Record Count (4 bytes)
-        - Records Data
         """
         # Table Name
         table_name_bytes = table.name.encode('utf-8')
@@ -170,18 +178,8 @@ class BinaryBackend(StorageBackend):
         for col_name, column in table.columns.items():
             self._write_column(f, column)
 
-        # Record Count
-        f.write(struct.pack('<I', len(table.data)))
-
-        # Records
-        for pk, record in table.data.items():
-            self._write_record(f, pk, record, table.columns)
-
-    def _read_table(self, f: BinaryIO) -> 'Table':
-        """读取单个表"""
-        from ..storage import Table
-        from ..orm import Column
-
+    def _read_table_schema(self, f: BinaryIO) -> Dict[str, Any]:
+        """读取单个表的 Schema，返回 schema 字典"""
         # Table Name
         name_len = struct.unpack('<H', f.read(2))[0]
         table_name = f.read(name_len).decode('utf-8')
@@ -202,22 +200,50 @@ class BinaryBackend(StorageBackend):
             column = self._read_column(f)
             columns.append(column)
 
+        return {
+            'table_name': table_name,
+            'primary_key': primary_key,
+            'next_id': next_id,
+            'columns': columns
+        }
+
+    def _write_table_data(self, f: BinaryIO, table: 'Table') -> None:
+        """
+        写入单个表的数据
+
+        格式：
+        - Record Count (4 bytes)
+        - Records Data
+        """
+        # Record Count
+        f.write(struct.pack('<I', len(table.data)))
+
+        # Records
+        for pk, record in table.data.items():
+            self._write_record(f, pk, record, table.columns)
+
+    def _read_table_data(self, f: BinaryIO, schema: Dict[str, Any]) -> 'Table':
+        """根据 schema 读取表数据，返回 Table 对象"""
+        from ..storage import Table
+
         # 创建 Table 对象
-        table = Table(table_name, columns, primary_key)
-        table.next_id = next_id
+        table = Table(schema['table_name'], schema['columns'], schema['primary_key'])
+        table.next_id = schema['next_id']
+
+        # 构建 columns 字典用于记录读取
+        columns_dict = {col.name: col for col in schema['columns']}
 
         # Record Count
         record_count = struct.unpack('<I', f.read(4))[0]
 
         # Records
         for _ in range(record_count):
-            pk, record = self._read_record(f, table.columns)
+            pk, record = self._read_record(f, columns_dict)
             table.data[pk] = record
 
         # 重建索引（清除构造函数创建的空索引）
         for col_name, column in table.columns.items():
             if column.index:
-                # 删除空索引，重新构建
                 if col_name in table.indexes:
                     del table.indexes[col_name]
                 table.build_index(col_name)

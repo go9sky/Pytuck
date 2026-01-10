@@ -33,15 +33,34 @@ class CSVBackend(StorageBackend):
 
         try:
             with zipfile.ZipFile(temp_path, 'w', zipfile.ZIP_DEFLATED) as zf:
-                # 保存全局元数据
+                # 收集所有表的 schema
+                tables_schema: Dict[str, Dict[str, Any]] = {}
+                for table_name, table in tables.items():
+                    tables_schema[table_name] = {
+                        'primary_key': table.primary_key,
+                        'next_id': table.next_id,
+                        'columns': [
+                            {
+                                'name': col.name,
+                                'type': col.col_type.__name__,
+                                'nullable': col.nullable,
+                                'primary_key': col.primary_key,
+                                'index': col.index
+                            }
+                            for col in table.columns.values()
+                        ]
+                    }
+
+                # 保存全局元数据（包含所有表的 schema）
                 metadata = {
-                    'version': '0.1.0',
+                    'version': '0.2.0',
                     'timestamp': datetime.now().isoformat(),
-                    'table_count': len(tables)
+                    'table_count': len(tables),
+                    'tables': tables_schema
                 }
                 zf.writestr('_metadata.json', json.dumps(metadata, indent=2))
 
-                # 为每个表保存 CSV + schema
+                # 为每个表保存 CSV 数据
                 for table_name, table in tables.items():
                     self._save_table_to_zip(zf, table_name, table)
 
@@ -64,9 +83,13 @@ class CSVBackend(StorageBackend):
         try:
             with zipfile.ZipFile(self.file_path, 'r') as zf:
                 # 读取元数据
+                metadata: Dict[str, Any] = {}
                 if '_metadata.json' in zf.namelist():
                     with zf.open('_metadata.json') as f:
                         metadata = json.load(f)
+
+                # 从 metadata 中获取所有表的 schema
+                tables_schema: Dict[str, Dict[str, Any]] = metadata.get('tables', {})
 
                 # 找到所有CSV文件
                 tables = {}
@@ -74,7 +97,8 @@ class CSVBackend(StorageBackend):
 
                 for csv_file in csv_files:
                     table_name = csv_file[:-4]  # 移除 .csv
-                    table = self._load_table_from_zip(zf, table_name)
+                    schema = tables_schema.get(table_name, {})
+                    table = self._load_table_from_zip(zf, table_name, schema)
                     tables[table_name] = table
 
             return tables
@@ -92,27 +116,9 @@ class CSVBackend(StorageBackend):
             os.remove(self.file_path)
 
     def _save_table_to_zip(self, zf: zipfile.ZipFile, table_name: str, table: 'Table') -> None:
-        """保存单个表到ZIP"""
-        # 保存 schema
-        schema = {
-            'primary_key': table.primary_key,
-            'next_id': table.next_id,
-            'columns': [
-                {
-                    'name': col.name,
-                    'type': col.col_type.__name__,
-                    'nullable': col.nullable,
-                    'primary_key': col.primary_key,
-                    'index': col.index
-                }
-                for col in table.columns.values()
-            ]
-        }
-        zf.writestr(f'{table_name}_schema.json', json.dumps(schema, indent=2))
-
+        """保存单个表的 CSV 数据到ZIP"""
         # 保存 CSV 数据到内存
         csv_buffer = io.StringIO()
-        encoding = self.options.get('encoding', 'utf-8')
 
         if len(table.data) > 0:
             fieldnames = list(table.columns.keys())
@@ -127,31 +133,27 @@ class CSVBackend(StorageBackend):
         # 写入ZIP
         zf.writestr(f'{table_name}.csv', csv_buffer.getvalue())
 
-    def _load_table_from_zip(self, zf: zipfile.ZipFile, table_name: str) -> 'Table':
+    def _load_table_from_zip(
+        self, zf: zipfile.ZipFile, table_name: str, schema: Dict[str, Any]
+    ) -> 'Table':
         """从ZIP加载单个表"""
         from ..storage import Table
         from ..orm import Column
 
-        schema_file = f'{table_name}_schema.json'
         csv_file = f'{table_name}.csv'
-
-        # 加载 schema
-        with zf.open(schema_file) as f:
-            schema = json.load(f)
 
         # 重建列定义
         columns = []
-        for col_data in schema['columns']:
-            # 类型名转类型
-            type_map = {
-                'int': int,
-                'str': str,
-                'float': float,
-                'bool': bool,
-                'bytes': bytes,
-            }
-            col_type = type_map.get(col_data['type'], str)
+        type_map = {
+            'int': int,
+            'str': str,
+            'float': float,
+            'bool': bool,
+            'bytes': bytes,
+        }
 
+        for col_data in schema.get('columns', []):
+            col_type = type_map.get(col_data['type'], str)
             column = Column(
                 col_data['name'],
                 col_type,
@@ -162,8 +164,8 @@ class CSVBackend(StorageBackend):
             columns.append(column)
 
         # 创建表
-        table = Table(table_name, columns, schema['primary_key'])
-        table.next_id = schema['next_id']
+        table = Table(table_name, columns, schema.get('primary_key', 'id'))
+        table.next_id = schema.get('next_id', 1)
 
         # 加载 CSV 数据
         with zf.open(csv_file) as f:

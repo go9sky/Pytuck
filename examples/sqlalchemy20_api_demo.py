@@ -40,8 +40,21 @@ print("\n2. 插入数据（execute + insert）")
 # 单条插入
 stmt = insert(User).values(name='Alice', age=20)
 result = session.execute(stmt)
+u1 = User(name='Eve', age=22)
+print('user1构造：', u1.to_dict())
+session.add(u1)
+print('user1添加到session：', u1.to_dict())
+session.flush()
+print("   ✓ user1 flush后：", u1.to_dict())
 session.commit()
+print("   ✓ user1插入后：", u1.to_dict())
 print(f"   ✓ 插入成功，主键: {result.inserted_primary_key}")
+
+u2 = User(name='Frank', age='28')
+session.add(u2)
+session.flush()
+session.close()
+print("   ✓ user2 session关闭后：", u2.to_dict())
 
 # 批量插入
 for name, age in [('Bob', 25), ('Charlie', 19), ('David', 30)]:
@@ -96,6 +109,14 @@ stmt = select(User).order_by('age', desc=True).limit(2)
 result = session.execute(stmt)
 top2 = result.scalars().all()
 print(f"   ✓ order_by + limit: 年龄最大的2人: {[f'{u.name}({u.age})' for u in top2]}")
+
+# 获取后访问
+stmt = select(User).where(User.id == 2)
+result = session.execute(stmt)
+user2 = result.scalars().first()
+print(f"   ✓ 获取后访问: ID=2 的用户是 {user2.name}, {user2.age}岁")
+session.close()
+print(f'   ✓ session 关闭后，user2 仍然可访问: {user2.name}, {user2.age}岁')
 
 # ============================================================
 # 4. 更新数据（execute + update）

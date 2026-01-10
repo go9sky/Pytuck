@@ -14,7 +14,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 
 from pytuck import Storage, declarative_base, Session, Column
 from pytuck import PureBaseModel
-from pytuck.core.exceptions import ValidationError
+from pytuck.common.exceptions import ValidationError
 from typing import Type
 
 print("=" * 60)

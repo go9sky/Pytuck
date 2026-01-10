@@ -11,7 +11,7 @@ from datetime import datetime
 
 from .base import StorageBackend
 from ..connectors.sqlite_connector import SQLiteConnector
-from ..core.exceptions import SerializationError
+from ..common.exceptions import SerializationError
 from .versions import get_format_version
 
 from ..common.options import SqliteBackendOptions, SqliteConnectorOptions

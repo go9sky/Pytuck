@@ -7,7 +7,7 @@ Pytuck 索引实现
 from typing import Any, List, Set, Tuple
 from collections import defaultdict
 
-from .utils import compute_hash
+from ..common.utils import compute_hash
 
 
 class HashIndex:

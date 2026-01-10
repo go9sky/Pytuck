@@ -11,7 +11,7 @@ from typing import (
     overload, Literal, Tuple
 )
 
-from .exceptions import ValidationError
+from ..common.exceptions import ValidationError
 from .types import TypeCode, TypeRegistry
 
 if TYPE_CHECKING:

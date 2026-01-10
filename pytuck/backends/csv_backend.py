@@ -13,7 +13,7 @@ import zipfile
 from typing import Any, Dict, TYPE_CHECKING
 from datetime import datetime
 from .base import StorageBackend
-from ..core.exceptions import SerializationError
+from ..common.exceptions import SerializationError
 from .versions import get_format_version
 
 from ..common.options import CsvBackendOptions

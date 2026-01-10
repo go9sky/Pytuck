@@ -12,7 +12,7 @@ from ..common.options import BackendOptions
 from .orm import Column
 from .index import HashIndex
 from ..query import Condition
-from .exceptions import (
+from ..common.exceptions import (
     TableNotFoundError,
     RecordNotFoundError,
     DuplicateKeyError,

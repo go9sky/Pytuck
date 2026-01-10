@@ -9,7 +9,7 @@ from enum import IntEnum
 from typing import Any, Type
 import struct
 
-from .exceptions import SerializationError
+from ..common.exceptions import SerializationError
 
 
 class TypeCode(IntEnum):

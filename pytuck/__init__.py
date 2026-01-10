@@ -69,7 +69,7 @@ from .core import Session
 from .query import Query, BinaryExpression
 from .query import select, insert, update, delete
 from .query import Result, ScalarResult, Row, CursorResult
-from .core.exceptions import (
+from .common.exceptions import (
     PytuckException,
     TableNotFoundError,
     RecordNotFoundError,

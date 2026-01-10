@@ -8,11 +8,11 @@ from typing import Any, Dict, List, Optional, Type, Tuple, TYPE_CHECKING, Union,
 from contextlib import contextmanager
 
 
-if TYPE_CHECKING:
-    from ..query.result import Result, CursorResult
-    from ..query.statements import Statement, Insert, Select, Update, Delete
-    from .storage import Storage
-    from .orm import PureBaseModel
+# if TYPE_CHECKING:
+from ..query.result import Result, CursorResult
+from ..query.statements import Statement, Insert, Select, Update, Delete
+from .storage import Storage
+from .orm import PureBaseModel
 
 from ..query.builder import Query
 

@@ -18,7 +18,7 @@ from typing import Type
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from pytuck import Storage, declarative_base, Session, Column, PureBaseModel, select, insert
-from pytuck.core.exceptions import ValidationError
+from pytuck.common.exceptions import ValidationError
 
 
 class TestTypeConversionLooseMode(unittest.TestCase):

@@ -13,7 +13,7 @@ if TYPE_CHECKING:
     from ..core.storage import Table
 
 from .base import StorageBackend
-from ..core.exceptions import SerializationError
+from ..common.exceptions import SerializationError
 from ..core.types import TypeRegistry, TypeCode
 from ..core.orm import Column
 from .versions import get_format_version

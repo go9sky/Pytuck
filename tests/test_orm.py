@@ -22,7 +22,7 @@ from pytuck import (
     declarative_base, PureBaseModel, CRUDBaseModel,
     select, insert, update, delete,
 )
-from pytuck.core.exceptions import ValidationError
+from pytuck.common.exceptions import ValidationError
 
 
 class TestColumn(unittest.TestCase):

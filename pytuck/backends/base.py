@@ -42,7 +42,7 @@ class StorageBackend(ABC):
         self.options = kwargs
 
     @abstractmethod
-    def save(self, tables: Dict[str, 'Table']):
+    def save(self, tables: Dict[str, 'Table']) -> None:
         """
         保存所有表数据到持久化存储
 
@@ -99,7 +99,7 @@ class StorageBackend(ABC):
         pass
 
     @abstractmethod
-    def delete(self):
+    def delete(self) -> None:
         """
         删除数据文件（用于清理）
 

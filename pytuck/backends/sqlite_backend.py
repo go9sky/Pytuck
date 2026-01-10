@@ -31,7 +31,7 @@ class SQLiteBackend(StorageBackend):
         bytes: 'BLOB'
     }
 
-    def save(self, tables: Dict[str, 'Table']):
+    def save(self, tables: Dict[str, 'Table']) -> None:
         """保存所有表数据到SQLite数据库"""
         try:
             conn = sqlite3.connect(self.file_path)
@@ -98,12 +98,12 @@ class SQLiteBackend(StorageBackend):
         """检查数据库文件是否存在"""
         return os.path.exists(self.file_path)
 
-    def delete(self):
+    def delete(self) -> None:
         """删除数据库文件"""
         if self.exists():
             os.remove(self.file_path)
 
-    def _save_table(self, cursor: sqlite3.Cursor, table_name: str, table: 'Table'):
+    def _save_table(self, cursor: sqlite3.Cursor, table_name: str, table: 'Table') -> None:
         """保存单个表"""
         # 保存表元数据
         columns_json = json.dumps([

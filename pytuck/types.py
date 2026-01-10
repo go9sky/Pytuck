@@ -163,7 +163,7 @@ class TypeRegistry:
         return cls._type_code_to_type[type_code]
 
     @classmethod
-    def register(cls, py_type: Type, type_code: TypeCode, codec: TypeCodec):
+    def register(cls, py_type: Type, type_code: TypeCode, codec: TypeCodec) -> None:
         """注册自定义类型"""
         cls._codecs[py_type] = (type_code, codec)
         cls._type_code_to_type[type_code] = py_type

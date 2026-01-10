@@ -29,7 +29,7 @@ class BinaryBackend(StorageBackend):
     VERSION = 1
     FILE_HEADER_SIZE = 64
 
-    def save(self, tables: Dict[str, 'Table']):
+    def save(self, tables: Dict[str, 'Table']) -> None:
         """保存所有表数据到二进制文件"""
         # 原子性写入：先写临时文件，再重命名
         temp_path = self.file_path + '.tmp'
@@ -79,12 +79,12 @@ class BinaryBackend(StorageBackend):
         """检查文件是否存在"""
         return os.path.exists(self.file_path)
 
-    def delete(self):
+    def delete(self) -> None:
         """删除文件"""
         if self.exists():
             os.remove(self.file_path)
 
-    def _write_file_header(self, f: BinaryIO, table_count: int):
+    def _write_file_header(self, f: BinaryIO, table_count: int) -> None:
         """
         写入文件头（64字节）
 
@@ -135,7 +135,7 @@ class BinaryBackend(StorageBackend):
 
         return table_count
 
-    def _write_table(self, f: BinaryIO, table: 'Table'):
+    def _write_table(self, f: BinaryIO, table: 'Table') -> None:
         """
         写入单个表
 
@@ -224,7 +224,7 @@ class BinaryBackend(StorageBackend):
 
         return table
 
-    def _write_column(self, f: BinaryIO, column: 'Column'):
+    def _write_column(self, f: BinaryIO, column: 'Column') -> None:
         """
         写入列定义
 
@@ -279,7 +279,7 @@ class BinaryBackend(StorageBackend):
             index=index
         )
 
-    def _write_record(self, f: BinaryIO, pk: Any, record: Dict[str, Any], columns: Dict[str, Column]):
+    def _write_record(self, f: BinaryIO, pk: Any, record: Dict[str, Any], columns: Dict[str, Column]) -> None:
         """
         写入单条记录
 

@@ -23,7 +23,7 @@ class XMLBackend(StorageBackend):
     ENGINE_NAME = 'xml'
     REQUIRED_DEPENDENCIES = ['lxml']
 
-    def save(self, tables: Dict[str, 'Table']):
+    def save(self, tables: Dict[str, 'Table']) -> None:
         """保存所有表数据到XML文件"""
         try:
             from lxml import etree
@@ -86,12 +86,12 @@ class XMLBackend(StorageBackend):
         """检查文件是否存在"""
         return os.path.exists(self.file_path)
 
-    def delete(self):
+    def delete(self) -> None:
         """删除文件"""
         if self.exists():
             os.remove(self.file_path)
 
-    def _save_table_to_xml(self, root: Any, table_name: str, table: 'Table'):
+    def _save_table_to_xml(self, root: Any, table_name: str, table: 'Table') -> None:
         """保存单个表到XML"""
         from lxml import etree
 

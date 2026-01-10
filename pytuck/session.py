@@ -71,7 +71,7 @@ class Session:
         # 事务状态
         self._in_transaction = False
 
-    def add(self, instance: 'PureBaseModel'):
+    def add(self, instance: 'PureBaseModel') -> None:
         """
         添加对象到会话（标记为待插入）
 
@@ -84,7 +84,7 @@ class Session:
         if self.autocommit:
             self.commit()
 
-    def add_all(self, instances: List['PureBaseModel']):
+    def add_all(self, instances: List['PureBaseModel']) -> None:
         """
         批量添加对象到会话
 
@@ -94,7 +94,7 @@ class Session:
         for instance in instances:
             self.add(instance)
 
-    def delete(self, instance: 'PureBaseModel'):
+    def delete(self, instance: 'PureBaseModel') -> None:
         """
         标记对象为待删除
 
@@ -112,7 +112,7 @@ class Session:
         if self.autocommit:
             self.commit()
 
-    def flush(self):
+    def flush(self) -> None:
         """
         将待处理的修改刷新到数据库（不提交事务）
         """
@@ -172,7 +172,7 @@ class Session:
         self._dirty_objects.clear()
         self._deleted_objects.clear()
 
-    def commit(self):
+    def commit(self) -> None:
         """
         提交事务（刷新修改并持久化）
         """
@@ -182,7 +182,7 @@ class Session:
         if self.storage.auto_flush:
             self.storage.flush()
 
-    def rollback(self):
+    def rollback(self) -> None:
         """
         回滚事务（清空所有待处理修改）
         """
@@ -325,7 +325,7 @@ class Session:
         finally:
             self._in_transaction = False
 
-    def close(self):
+    def close(self) -> None:
         """
         关闭会话，清理所有状态
         """

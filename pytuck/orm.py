@@ -113,7 +113,7 @@ class Column:
 
     # ==================== 描述符协议 ====================
 
-    def __set_name__(self, owner: Type['PureBaseModel'], name: str):
+    def __set_name__(self, owner: Type['PureBaseModel'], name: str) -> None:
         """
         在类定义时被调用，存储属性名和拥有者类
 
@@ -135,7 +135,7 @@ class Column:
         # 实例级别访问：student.age -> 实际值
         return instance.__dict__.get(self._attr_name, None)
 
-    def __set__(self, instance: 'PureBaseModel', value: Any):
+    def __set__(self, instance: 'PureBaseModel', value: Any) -> None:
         """设置实例属性值"""
         validated_value = self.validate(value)
         instance.__dict__[self._attr_name] = validated_value
@@ -266,7 +266,7 @@ class CRUDBaseModel(PureBaseModel):
 
     # ==================== 实例方法 ====================
 
-    def save(self):
+    def save(self) -> None:
         """
         保存记录（自动判断 insert 或 update）
 
@@ -278,7 +278,7 @@ class CRUDBaseModel(PureBaseModel):
         """
         raise NotImplementedError("This method should be overridden by declarative_base")
 
-    def delete(self):
+    def delete(self) -> None:
         """
         删除当前记录
 
@@ -288,7 +288,7 @@ class CRUDBaseModel(PureBaseModel):
         """
         raise NotImplementedError("This method should be overridden by declarative_base")
 
-    def refresh(self):
+    def refresh(self) -> None:
         """
         从数据库刷新当前实例
 
@@ -377,7 +377,7 @@ class Relationship:
         self.name = None
         self.owner = None
 
-    def __set_name__(self, owner: Type[PureBaseModel], name: str):
+    def __set_name__(self, owner: Type[PureBaseModel], name: str) -> None:
         """在类定义时调用"""
         self.name = name
         self.owner = owner
@@ -683,7 +683,7 @@ def _create_crud_base(storage: 'Storage') -> Type[CRUDBaseModel]:
 
         # ==================== 实例方法 ====================
 
-        def save(self):
+        def save(self) -> None:
             """保存记录（insert or update）"""
             # 准备数据
             data = {}
@@ -704,7 +704,7 @@ def _create_crud_base(storage: 'Storage') -> Type[CRUDBaseModel]:
                 # Update
                 storage.update(self.__tablename__, pk_value, data)
 
-        def delete(self):
+        def delete(self) -> None:
             """删除当前记录"""
             pk_value = getattr(self, self.__primary_key__)
             if pk_value is None:
@@ -713,7 +713,7 @@ def _create_crud_base(storage: 'Storage') -> Type[CRUDBaseModel]:
             storage.delete(self.__tablename__, pk_value)
             self._loaded_from_db = False
 
-        def refresh(self):
+        def refresh(self) -> None:
             """从数据库刷新数据"""
             pk_value = getattr(self, self.__primary_key__)
             if pk_value is None:

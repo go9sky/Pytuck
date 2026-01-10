@@ -22,7 +22,7 @@ class JSONBackend(StorageBackend):
     ENGINE_NAME = 'json'
     REQUIRED_DEPENDENCIES = []  # 标准库
 
-    def save(self, tables: Dict[str, 'Table']):
+    def save(self, tables: Dict[str, 'Table']) -> None:
         """保存所有表数据到JSON文件"""
         data = {
             'version': '0.1.0',
@@ -75,7 +75,7 @@ class JSONBackend(StorageBackend):
         """检查文件是否存在"""
         return os.path.exists(self.file_path)
 
-    def delete(self):
+    def delete(self) -> None:
         """删除文件"""
         if self.exists():
             os.remove(self.file_path)

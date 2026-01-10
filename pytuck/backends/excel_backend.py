@@ -23,7 +23,7 @@ class ExcelBackend(StorageBackend):
     ENGINE_NAME = 'excel'
     REQUIRED_DEPENDENCIES = ['openpyxl']
 
-    def save(self, tables: Dict[str, 'Table']):
+    def save(self, tables: Dict[str, 'Table']) -> None:
         """保存所有表数据到Excel工作簿"""
         try:
             from openpyxl import Workbook
@@ -93,12 +93,12 @@ class ExcelBackend(StorageBackend):
         """检查文件是否存在"""
         return os.path.exists(self.file_path)
 
-    def delete(self):
+    def delete(self) -> None:
         """删除文件"""
         if self.exists():
             os.remove(self.file_path)
 
-    def _save_table_to_workbook(self, wb: 'Workbook', table_name: str, table: 'Table'):
+    def _save_table_to_workbook(self, wb: 'Workbook', table_name: str, table: 'Table') -> None:
         """保存单个表到工作簿"""
         # Schema 工作表
         schema_sheet = wb.create_sheet(f'{table_name}_schema')

@@ -27,7 +27,7 @@ class HashIndex:
         self.size = 0
         self.load_factor = 0.75
 
-    def insert(self, value: Any, pk: Any):
+    def insert(self, value: Any, pk: Any) -> None:
         """
         插入索引条目
 
@@ -52,7 +52,7 @@ class HashIndex:
         if self.size / self.bucket_count > self.load_factor:
             self._resize()
 
-    def remove(self, value: Any, pk: Any):
+    def remove(self, value: Any, pk: Any) -> None:
         """
         删除索引条目
 
@@ -91,7 +91,7 @@ class HashIndex:
 
         return set()
 
-    def clear(self):
+    def clear(self) -> None:
         """清空索引"""
         self.buckets = [[] for _ in range(self.bucket_count)]
         self.size = 0
@@ -100,7 +100,7 @@ class HashIndex:
         """计算哈希值"""
         return compute_hash(value)
 
-    def _resize(self):
+    def _resize(self) -> None:
         """扩容（2倍大小）"""
         new_bucket_count = self.bucket_count * 2
         new_buckets: List[List[Tuple[Any, Set[Any]]]] = [[] for _ in range(new_bucket_count)]

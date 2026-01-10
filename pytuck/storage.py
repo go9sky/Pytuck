@@ -48,7 +48,7 @@ class TransactionSnapshot:
                 'next_id': table.next_id
             }
 
-    def restore(self, tables: Dict[str, 'Table']):
+    def restore(self, tables: Dict[str, 'Table']) -> None:
         """
         恢复快照到表对象
 
@@ -140,7 +140,7 @@ class Table:
 
         return pk
 
-    def update(self, pk: Any, record: Dict[str, Any]):
+    def update(self, pk: Any, record: Dict[str, Any]) -> None:
         """
         更新记录
 
@@ -177,7 +177,7 @@ class Table:
         # 存储记录
         self.data[pk] = validated_record
 
-    def delete(self, pk: Any):
+    def delete(self, pk: Any) -> None:
         """
         删除记录
 
@@ -229,7 +229,7 @@ class Table:
         for pk, record in self.data.items():
             yield pk, record.copy()
 
-    def build_index(self, column_name: str):
+    def build_index(self, column_name: str) -> None:
         """
         为列创建索引
 
@@ -310,7 +310,7 @@ class Storage:
                 self.tables = self.backend.load()
                 self._dirty = False
 
-    def create_table(self, name: str, columns: List[Column]):
+    def create_table(self, name: str, columns: List[Column]) -> None:
         """
         创建表
 
@@ -339,7 +339,7 @@ class Storage:
         if self.auto_flush:
             self.flush()
 
-    def drop_table(self, name: str):
+    def drop_table(self, name: str) -> None:
         """
         删除表
 
@@ -397,7 +397,7 @@ class Storage:
 
         return pk
 
-    def update(self, table_name: str, pk: Any, data: Dict[str, Any]):
+    def update(self, table_name: str, pk: Any, data: Dict[str, Any]) -> None:
         """
         更新记录
 
@@ -413,7 +413,7 @@ class Storage:
         if self.auto_flush:
             self.flush()
 
-    def delete(self, table_name: str, pk: Any):
+    def delete(self, table_name: str, pk: Any) -> None:
         """
         删除记录
 
@@ -539,13 +539,13 @@ class Storage:
             self._transaction_snapshot = None
             self._in_transaction = False
 
-    def flush(self):
+    def flush(self) -> None:
         """强制写入磁盘"""
         if self.backend and self._dirty:
             self.backend.save(self.tables)
             self._dirty = False
 
-    def close(self):
+    def close(self) -> None:
         """关闭数据库"""
         self.flush()
 

@@ -26,7 +26,7 @@ class CSVBackend(StorageBackend):
     ENGINE_NAME = 'csv'
     REQUIRED_DEPENDENCIES = []  # 标准库
 
-    def save(self, tables: Dict[str, 'Table']):
+    def save(self, tables: Dict[str, 'Table']) -> None:
         """保存所有表数据到ZIP压缩包"""
         # 使用临时文件保证原子性
         temp_path = self.file_path + '.tmp'
@@ -86,12 +86,12 @@ class CSVBackend(StorageBackend):
         """检查文件是否存在"""
         return os.path.exists(self.file_path)
 
-    def delete(self):
+    def delete(self) -> None:
         """删除文件"""
         if self.exists():
             os.remove(self.file_path)
 
-    def _save_table_to_zip(self, zf: zipfile.ZipFile, table_name: str, table: 'Table'):
+    def _save_table_to_zip(self, zf: zipfile.ZipFile, table_name: str, table: 'Table') -> None:
         """保存单个表到ZIP"""
         # 保存 schema
         schema = {

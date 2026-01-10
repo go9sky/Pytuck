@@ -95,7 +95,7 @@ Base: Type[CRUDBaseModel] = declarative_base(db, crud=True)
 ### 类型提示规范（强制）
 - **所有函数和方法必须有完整的类型提示**
   - 入参类型：所有参数都需要类型注解
-  - 返回类型：必须声明返回类型（不包括 `-> None`）
+  - 返回类型：必须声明返回类型（除了 `def __init__(self)` 等特例方法外，任何自定义方法包括 `-> None` 的返回类型，都应该声明）
 - 使用 `typing` 模块中的类型：`Any`, `Optional`, `List`, `Dict`, `Tuple`, `Union`, `Type`, `TypeVar` 等
 - 泛型类型使用 `TypeVar` 定义
 - 对于复杂类型，优先使用 `TYPE_CHECKING` 导入避免循环引用

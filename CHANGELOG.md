@@ -7,7 +7,47 @@
 
 > [English Version](./CHANGELOG.EN.md)
 
-## [0.1.0] - 2024-01-10
+## [0.2.0] - 2026-01-10
+
+### 新增
+
+- **统一数据库连接器架构**
+  - 新增 `pytuck/connectors/` 模块，提供统一的数据库操作接口
+  - `DatabaseConnector` 抽象基类，定义通用数据库操作规范
+  - `SQLiteConnector` 实现，被 `SQLiteBackend` 和迁移工具共同使用
+  - `get_connector()` 工厂函数，获取连接器实例
+  - 文件命名采用 `_connector.py` 后缀，避免与第三方库名称冲突
+
+- **数据迁移工具**
+  - `migrate_engine()` - Pytuck 格式之间的数据迁移
+  - `import_from_database()` - 从外部关系型数据库导入到 Pytuck 格式
+  - `get_available_engines()` - 获取可用存储引擎
+
+### 变更
+
+- **重构 SQLiteBackend**
+  - 改为使用 `SQLiteConnector` 进行底层数据库操作
+  - 减少代码重复，提高可维护性
+
+- **调整导出规范**
+  - tools 模块不再从 `pytuck` 根包导出
+  - 用户需从 `pytuck.tools` 手动导入迁移工具
+  ```python
+  # 新的导入方式
+  from pytuck.tools import migrate_engine, import_from_database
+
+  # 不再支持
+  # from pytuck import migrate_engine
+  ```
+
+### 架构改进
+
+- 为未来扩展（如 DuckDB）奠定基础，添加新引擎只需：
+  1. 创建 `pytuck/connectors/<db>_connector.py`
+  2. 在 `CONNECTORS` 注册表中注册
+  3. 创建对应的 backend
+
+## [0.1.0] - 2026-01-10
 
 ### 新增
 

@@ -5,7 +5,47 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.1.0] - 2024-01-10
+## [0.2.0] - 2026-01-10
+
+### Added
+
+- **Unified Database Connector Architecture**
+  - New `pytuck/connectors/` module providing unified database operation interface
+  - `DatabaseConnector` abstract base class defining common database operation standards
+  - `SQLiteConnector` implementation, shared by `SQLiteBackend` and migration tools
+  - `get_connector()` factory function for obtaining connector instances
+  - Connector files use `_connector.py` suffix to avoid conflicts with third-party library names
+
+- **Data Migration Tools**
+  - `migrate_engine()` - Data migration between Pytuck formats
+  - `import_from_database()` - Import from external relational databases to Pytuck format
+  - `get_available_engines()` - Get available storage engines
+
+### Changed
+
+- **Refactored SQLiteBackend**
+  - Now uses `SQLiteConnector` for underlying database operations
+  - Reduced code duplication, improved maintainability
+
+- **Export Policy Adjustment**
+  - tools module is no longer exported from `pytuck` root package
+  - Users need to import migration tools from `pytuck.tools` manually
+  ```python
+  # New import method
+  from pytuck.tools import migrate_engine, import_from_database
+
+  # No longer supported
+  # from pytuck import migrate_engine
+  ```
+
+### Architecture Improvements
+
+- Foundation laid for future extensions (e.g., DuckDB), adding new engines only requires:
+  1. Create `pytuck/connectors/<db>_connector.py`
+  2. Register in `CONNECTORS` registry
+  3. Create corresponding backend
+
+## [0.1.0] - 2026-01-10
 
 ### Added
 

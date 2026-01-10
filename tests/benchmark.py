@@ -444,7 +444,7 @@ def main():
     print("\n### 中文版本 (README.md):\n")
     print(generate_markdown_table(results, args.count))
 
-    print("\n### 英文版本 (README_EN.md):\n")
+    print("\n### 英文版本 (README.EN.md):\n")
     print(generate_english_table(results, args.count))
 
     print("\n" + "=" * 60)

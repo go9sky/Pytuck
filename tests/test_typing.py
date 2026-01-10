@@ -27,7 +27,7 @@ def test_statement_generics() -> None:
         db = Storage(':memory:')
         Base = declarative_base(db)
 
-        class User(Base):  # type: ignore[misc]
+        class User(Base):  # type: ignore[valid-type,misc]
             __tablename__ = 'users'
             id = Column('id', int, primary_key=True)
             name = Column('name', str)
@@ -55,7 +55,7 @@ def test_session_execute_overloads() -> None:
         db = Storage(':memory:')
         Base = declarative_base(db)
 
-        class User(Base):  # type: ignore[misc]
+        class User(Base):  # type: ignore[valid-type,misc]
             __tablename__ = 'users'
             id = Column('id', int, primary_key=True)
             name = Column('name', str)
@@ -82,7 +82,7 @@ def test_result_scalars_typing() -> None:
         db = Storage(':memory:')
         Base = declarative_base(db)
 
-        class User(Base):  # type: ignore[misc]
+        class User(Base):  # type: ignore[valid-type,misc]
             __tablename__ = 'users'
             id = Column('id', int, primary_key=True)
             name = Column('name', str)
@@ -111,7 +111,7 @@ def test_type_safety_examples() -> None:
         db = Storage(':memory:')
         Base = declarative_base(db)
 
-        class User(Base):  # type: ignore[misc]
+        class User(Base):  # type: ignore[valid-type,misc]
             __tablename__ = 'users'
             id = Column('id', int, primary_key=True)
             name = Column('name', str)

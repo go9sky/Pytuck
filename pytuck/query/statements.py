@@ -133,7 +133,7 @@ class Select(Statement[T]):
         # 排序
         if self._order_by_field:
             records.sort(
-                key=lambda r: r.get(self._order_by_field),
+                key=lambda r: r.get(self._order_by_field) or '',
                 reverse=self._order_desc
             )
 

@@ -94,7 +94,9 @@ class ScalarResult(Generic[T]):
         """返回第一个模型实例"""
         if not self._records:
             return None
-        return self._model_class(**self._records[0])
+        # 明确类型注解，避免 mypy 推断为 Any
+        instance: T = self._model_class(**self._records[0])
+        return instance
 
     def one(self) -> T:
         """返回唯一的模型实例（必须恰好一条）"""
@@ -102,7 +104,9 @@ class ScalarResult(Generic[T]):
             raise ValueError("Expected one result, got 0")
         if len(self._records) > 1:
             raise ValueError(f"Expected one result, got {len(self._records)}")
-        return self._model_class(**self._records[0])
+        # 明确类型注解，避免 mypy 推断为 Any
+        instance: T = self._model_class(**self._records[0])
+        return instance
 
     def one_or_none(self) -> Optional[T]:
         """返回唯一的模型实例或 None（最多一条）"""
@@ -110,7 +114,9 @@ class ScalarResult(Generic[T]):
             return None
         if len(self._records) > 1:
             raise ValueError(f"Expected at most one result, got {len(self._records)}")
-        return self._model_class(**self._records[0])
+        # 明确类型注解，避免 mypy 推断为 Any
+        instance: T = self._model_class(**self._records[0])
+        return instance
 
 
 class Result(Generic[T]):

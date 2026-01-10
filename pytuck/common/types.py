@@ -5,7 +5,11 @@ Pytuck 泛型类型定义
 避免循环导入和重复定义。
 """
 
-from typing import TypeVar
+from typing import TypeVar, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    # 在类型检查时导入，避免运行时循环导入
+    from ..core.orm import PureBaseModel, CRUDBaseModel
 
 # 基础模型泛型参数，绑定到 PureBaseModel
 # 用于大部分查询和结果类型

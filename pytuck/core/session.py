@@ -211,7 +211,7 @@ class Session:
             record = self.storage.get_table(table_name).get(pk)
 
             # 创建模型实例
-            instance = model_class(**record)
+            instance: T = model_class(**record)
 
             # 加入标识映射
             self._identity_map[key] = instance
@@ -347,10 +347,9 @@ class Session:
         """上下文管理器入口"""
         return self
 
-    def __exit__(self, exc_type: Optional[Type[BaseException]], exc_val: Optional[BaseException], exc_tb: Any) -> bool:
+    def __exit__(self, exc_type: Optional[Type[BaseException]], exc_val: Optional[BaseException], exc_tb: Any) -> None:
         """上下文管理器出口"""
         if exc_type is None:
             self.commit()
         else:
             self.rollback()
-        return False

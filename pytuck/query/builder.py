@@ -45,19 +45,19 @@ class Condition:
         field_value = record[self.field]
 
         if self.operator == '=':
-            return field_value == self.value
+            return bool(field_value == self.value)
         elif self.operator == '>':
-            return field_value > self.value
+            return bool(field_value > self.value)
         elif self.operator == '<':
-            return field_value < self.value
+            return bool(field_value < self.value)
         elif self.operator == '>=':
-            return field_value >= self.value
+            return bool(field_value >= self.value)
         elif self.operator == '<=':
-            return field_value <= self.value
+            return bool(field_value <= self.value)
         elif self.operator == '!=':
-            return field_value != self.value
+            return bool(field_value != self.value)
         elif self.operator == 'IN':
-            return field_value in self.value
+            return bool(field_value in self.value)
         else:
             raise ValueError(f"Unsupported operator: {self.operator}")
 
@@ -303,7 +303,7 @@ class Query(Generic[T]):
         # 排序
         if self._order_by_field:
             records.sort(
-                key=lambda r: r.get(self._order_by_field),
+                key=lambda r: r.get(self._order_by_field) or '',
                 reverse=self._order_desc
             )
 

@@ -218,6 +218,31 @@ def create(cls: Type[T], **kwargs: Any) -> T:
 - 每个模块只导入其职责范围内需要的依赖
 - 避免循环依赖：使用 `TYPE_CHECKING` 进行类型注解导入
 
+### 存储引擎元数据规范（强制）
+
+存储引擎的元数据（schema）必须采用**统一存储**方式，**禁止为每个表单独创建元数据结构**。
+
+**原则**：
+- 所有表的 schema 信息必须集中存储在一个位置
+- 不要为每个表创建单独的 schema 文件、工作表或数据库表
+
+**各引擎的正确做法**：
+
+| 引擎 | 元数据存储位置 | 禁止的做法 |
+|------|----------------|-----------|
+| CSV (ZIP) | `_metadata.json` 中的 `tables` 字段 | ❌ 为每个表创建 `{table}_schema.json` |
+| Excel | `_pytuck_tables` 工作表 | ❌ 为每个表创建 `{table}_schema` 工作表 |
+| SQLite | `_pytuck_tables` 表 | ❌ 为每个表创建 `_pytuck_{table}_schema` 表 |
+| JSON | `_metadata` 中的 `tables` 字段 | ❌ 为每个表创建单独的 schema 键 |
+| XML | `<_pytuck_tables>` 元素 | ❌ 为每个表创建 `<{table}_schema>` 元素 |
+| Binary | 文件头中的统一 schema 区域 | ❌ 为每个表创建单独的 schema 块 |
+
+**新增引擎时必须遵循**：
+1. 设计一个统一的元数据存储结构
+2. 所有表的 schema 信息存储在同一位置
+3. 使用类似 `_pytuck_tables` 的命名约定
+4. 结构应包含：`table_name`, `primary_key`, `next_id`, `columns` (JSON)
+
 ### 示例代码
 - 新示例应使用新 API（declarative_base + Session 或 crud=True）
 - 示例文件命名：`<功能>_demo.py`

@@ -20,14 +20,17 @@ littleDB/
 │   ├── index.py             # 索引管理
 │   ├── types.py             # 类型编解码
 │   ├── utils.py             # 工具函数
-│   └── backends/            # 存储引擎实现
-│       ├── base.py          # 基类
-│       ├── binary.py        # 二进制引擎（默认）
-│       ├── json_backend.py  # JSON 引擎
-│       ├── csv_backend.py   # CSV 引擎
-│       ├── sqlite_backend.py # SQLite 引擎
-│       ├── excel_backend.py # Excel 引擎
-│       └── xml_backend.py   # XML 引擎
+│   ├── backends/            # 存储引擎实现
+│   │   ├── base.py          # 基类
+│   │   ├── binary.py        # 二进制引擎（默认）
+│   │   ├── json_backend.py  # JSON 引擎
+│   │   ├── csv_backend.py   # CSV 引擎
+│   │   ├── sqlite_backend.py # SQLite 引擎
+│   │   ├── excel_backend.py # Excel 引擎
+│   │   └── xml_backend.py   # XML 引擎
+│   └── tools/               # 工具模块
+│       ├── __init__.py      # 工具导出
+│       └── migrate.py       # 数据迁移工具
 ├── examples/                 # 示例代码
 │   ├── new_api_demo.py      # 纯模型模式示例（PureBaseModel + Session）
 │   ├── active_record_demo.py # Active Record 模式示例（CRUDBaseModel）
@@ -120,7 +123,25 @@ def create(cls: Type[T], **kwargs: Any) -> T:
 
 ### 测试
 - 测试文件位于 `tests/` 目录
-- 运行测试：`python -m pytest tests/` 或 `python tests/test_orm.py`
+- 运行测试：`python -m unittest tests.test_orm` 或 `python tests/test_orm.py`
+
+### 模块职责规范（强制）
+
+每个模块应保持单一职责，不应定义不属于其职责范围的内容：
+
+| 模块 | 职责 | 可以定义 | 不可以定义 |
+|------|------|----------|-----------|
+| `exceptions.py` | 异常定义 | 所有自定义异常类 | 业务逻辑、工具函数 |
+| `orm.py` | ORM 核心 | 模型基类、Column、Relationship | 异常类、存储逻辑 |
+| `storage.py` | 存储封装 | Storage、Table 类 | 异常类、ORM 逻辑 |
+| `query.py` | 查询构建 | Query、Condition、BinaryExpression | 异常类、存储逻辑 |
+| `backends/*.py` | 后端实现 | 具体后端类 | 异常类、ORM 逻辑 |
+| `tools/*.py` | 工具函数 | 迁移等辅助功能 | 异常类、核心逻辑 |
+
+**规则**：
+- 异常类只能在 `exceptions.py` 中定义，其他模块通过 `from .exceptions import XxxError` 导入使用
+- 每个模块只导入其职责范围内需要的依赖
+- 避免循环依赖：使用 `TYPE_CHECKING` 进行类型注解导入
 
 ### 示例代码
 - 新示例应使用新 API（declarative_base + Session 或 crud=True）

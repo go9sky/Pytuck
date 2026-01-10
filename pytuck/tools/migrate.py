@@ -7,9 +7,9 @@ Pytuck 数据迁移工具
 from typing import Any, Dict, List, Optional
 
 from ..backends import get_backend
-from ..exceptions import MigrationError
-from ..storage import Table
-from ..orm import Column
+from ..core.exceptions import MigrationError
+from ..core.storage import Table
+from ..core.orm import Column
 from .adapters import get_source_adapter, get_available_source_types
 
 

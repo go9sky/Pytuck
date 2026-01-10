@@ -10,7 +10,7 @@ from contextlib import contextmanager
 
 from .orm import Column
 from .index import HashIndex
-from .query import Condition
+from ..query import Condition
 from .exceptions import (
     TableNotFoundError,
     RecordNotFoundError,
@@ -20,7 +20,7 @@ from .exceptions import (
 )
 
 if TYPE_CHECKING:
-    from .backends.base import StorageBackend
+    from ..backends.base import StorageBackend
 
 
 class TransactionSnapshot:
@@ -310,7 +310,7 @@ class Storage:
         # 初始化后端
         self.backend = None
         if not self.in_memory and file_path:
-            from .backends import get_backend
+            from ..backends import get_backend
             self.backend = get_backend(engine, file_path, **backend_options)
 
             # 如果文件存在，自动加载

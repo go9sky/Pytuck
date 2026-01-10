@@ -8,7 +8,7 @@ from abc import ABC, abstractmethod
 from typing import Dict, Any, List, Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from ..storage import Table
+    from ..core.storage import Table
 
 
 class StorageBackend(ABC):

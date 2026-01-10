@@ -10,12 +10,12 @@ import tempfile
 from typing import Any, Dict, TYPE_CHECKING, BinaryIO
 
 if TYPE_CHECKING:
-    from ..storage import Table
+    from ..core.storage import Table
 
 from .base import StorageBackend
-from ..exceptions import SerializationError
-from ..types import TypeRegistry, TypeCode
-from ..orm import Column
+from ..core.exceptions import SerializationError
+from ..core.types import TypeRegistry, TypeCode
+from ..core.orm import Column
 from .versions import get_format_version
 
 
@@ -238,7 +238,7 @@ class BinaryBackend(StorageBackend):
 
     def _read_table_data(self, f: BinaryIO, schema: Dict[str, Any]) -> 'Table':
         """根据 schema 读取表数据，返回 Table 对象"""
-        from ..storage import Table
+        from ..core.storage import Table
 
         # 创建 Table 对象
         table = Table(
@@ -308,7 +308,7 @@ class BinaryBackend(StorageBackend):
 
     def _read_column(self, f: BinaryIO) -> Column:
         """读取列定义"""
-        from ..orm import Column
+        from ..core.orm import Column
 
         # Column Name
         name_len = struct.unpack('<H', f.read(2))[0]

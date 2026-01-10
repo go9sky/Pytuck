@@ -7,7 +7,7 @@ Result - 查询结果包装器
 from typing import Any, Dict, List, Optional, Type, Union, TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from .orm import PureBaseModel
+    from ..core.orm import PureBaseModel
 
 
 class Row:

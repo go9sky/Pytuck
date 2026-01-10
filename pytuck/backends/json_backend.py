@@ -9,12 +9,12 @@ import os
 from typing import Any, Dict, TYPE_CHECKING
 from datetime import datetime
 from .base import StorageBackend
-from ..exceptions import SerializationError
+from ..core.exceptions import SerializationError
 from .versions import get_format_version
 
 if TYPE_CHECKING:
-    from ..storage import Table
-    from ..orm import Column
+    from ..core.storage import Table
+    from ..core.orm import Column
 
 
 class JSONBackend(StorageBackend):
@@ -107,8 +107,8 @@ class JSONBackend(StorageBackend):
 
     def _deserialize_table(self, table_name: str, table_data: Dict[str, Any]) -> 'Table':
         """反序列化表"""
-        from ..storage import Table
-        from ..orm import Column
+        from ..core.storage import Table
+        from ..core.orm import Column
 
         # 重建列定义
         columns = []

@@ -11,11 +11,11 @@ from datetime import datetime
 
 from .base import StorageBackend
 from ..connectors.sqlite_connector import SQLiteConnector
-from ..exceptions import SerializationError
+from ..core.exceptions import SerializationError
 from .versions import get_format_version
 
 if TYPE_CHECKING:
-    from ..storage import Table
+    from ..core.storage import Table
 
 
 class SQLiteBackend(StorageBackend):
@@ -184,8 +184,8 @@ class SQLiteBackend(StorageBackend):
         columns_json: str
     ) -> 'Table':
         """加载单个表"""
-        from ..storage import Table
-        from ..orm import Column
+        from ..core.storage import Table
+        from ..core.orm import Column
 
         # 重建列定义
         columns_data = json.loads(columns_json)

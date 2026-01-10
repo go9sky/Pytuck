@@ -8,9 +8,9 @@ from typing import Any, Dict, List, Optional, Type, TYPE_CHECKING, Union
 from abc import ABC, abstractmethod
 
 if TYPE_CHECKING:
-    from .orm import PureBaseModel, Column
-    from .query import BinaryExpression
-    from .storage import Storage
+    from ..core.orm import PureBaseModel, Column
+    from .builder import BinaryExpression
+    from ..core.storage import Storage
 
 
 class Statement(ABC):
@@ -86,7 +86,7 @@ class Select(Statement):
             # 复杂表达式查询（使用 where）
             stmt = select(User).where(User.age >= 20, User.name != 'Alice')
         """
-        from .query import BinaryExpression
+        from .builder import BinaryExpression
 
         # 为每个 kwargs 创建等值表达式
         for field_name, value in kwargs.items():
@@ -119,7 +119,7 @@ class Select(Statement):
 
     def _execute(self, storage: 'Storage') -> List[Dict[str, Any]]:
         """执行查询，返回记录字典列表"""
-        from .query import Condition
+        from .builder import Condition
 
         # 转换 BinaryExpression 为 Condition
         conditions = [expr.to_condition() for expr in self._where_clauses]
@@ -216,7 +216,7 @@ class Update(Statement):
 
     def _execute(self, storage: 'Storage') -> int:
         """执行更新，返回受影响的行数"""
-        from .query import Condition
+        from .builder import Condition
 
         table_name = self.model_class.__tablename__
         conditions = [expr.to_condition() for expr in self._where_clauses]
@@ -267,7 +267,7 @@ class Delete(Statement):
 
     def _execute(self, storage: 'Storage') -> int:
         """执行删除，返回受影响的行数"""
-        from .query import Condition
+        from .builder import Condition
 
         table_name = self.model_class.__tablename__
         conditions = [expr.to_condition() for expr in self._where_clauses]

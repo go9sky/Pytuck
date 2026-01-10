@@ -10,11 +10,11 @@ import base64
 from typing import Any, Dict, TYPE_CHECKING
 from datetime import datetime
 from .base import StorageBackend
-from ..exceptions import SerializationError
+from ..core.exceptions import SerializationError
 from .versions import get_format_version
 
 if TYPE_CHECKING:
-    from ..storage import Table
+    from ..core.storage import Table
     from openpyxl import Workbook
 
 
@@ -162,8 +162,8 @@ class ExcelBackend(StorageBackend):
         self, wb: 'Workbook', table_name: str, schema: Dict[str, Any]
     ) -> 'Table':
         """从工作簿加载单个表"""
-        from ..storage import Table
-        from ..orm import Column
+        from ..core.storage import Table
+        from ..core.orm import Column
 
         primary_key = schema.get('primary_key', 'id')
         next_id = schema.get('next_id', 1)

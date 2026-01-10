@@ -13,12 +13,12 @@ import zipfile
 from typing import Any, Dict, TYPE_CHECKING
 from datetime import datetime
 from .base import StorageBackend
-from ..exceptions import SerializationError
+from ..core.exceptions import SerializationError
 from .versions import get_format_version
 
 if TYPE_CHECKING:
-    from ..storage import Table
-    from ..orm import Column
+    from ..core.storage import Table
+    from ..core.orm import Column
 
 
 class CSVBackend(StorageBackend):
@@ -141,8 +141,8 @@ class CSVBackend(StorageBackend):
         self, zf: zipfile.ZipFile, table_name: str, schema: Dict[str, Any]
     ) -> 'Table':
         """从ZIP加载单个表"""
-        from ..storage import Table
-        from ..orm import Column
+        from ..core.storage import Table
+        from ..core.orm import Column
 
         csv_file = f'{table_name}.csv'
 

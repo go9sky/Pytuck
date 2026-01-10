@@ -9,12 +9,12 @@ from contextlib import contextmanager
 
 
 if TYPE_CHECKING:
-    from .result import Result, CursorResult
-    from .statements import Statement, Insert, Select, Update, Delete
+    from ..query.result import Result, CursorResult
+    from ..query.statements import Statement, Insert, Select, Update, Delete
     from .storage import Storage
     from .orm import PureBaseModel
 
-from .query import Query
+from ..query.builder import Query
 
 
 class Session:
@@ -243,8 +243,8 @@ class Session:
             result = session.execute(stmt)
             session.commit()
         """
-        from .statements import Select, Insert, Update, Delete
-        from .result import Result, CursorResult
+        from ..query.statements import Select, Insert, Update, Delete
+        from ..query.result import Result, CursorResult
 
         # 执行 statement
         if isinstance(statement, Select):

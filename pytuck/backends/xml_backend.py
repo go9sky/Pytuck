@@ -10,11 +10,11 @@ import base64
 from typing import Any, Dict, TYPE_CHECKING
 from datetime import datetime
 from .base import StorageBackend
-from ..exceptions import SerializationError
+from ..core.exceptions import SerializationError
 from .versions import get_format_version
 
 if TYPE_CHECKING:
-    from ..storage import Table
+    from ..core.storage import Table
     from lxml import etree
 
 
@@ -143,8 +143,8 @@ class XMLBackend(StorageBackend):
 
     def _load_table_from_xml(self, table_elem: Any) -> 'Table':
         """从XML加载单个表"""
-        from ..storage import Table
-        from ..orm import Column
+        from ..core.storage import Table
+        from ..core.orm import Column
 
         table_name = table_elem.get('name')
         primary_key = table_elem.get('primary_key')

@@ -16,7 +16,7 @@ from .types import TypeCode, TypeRegistry
 
 if TYPE_CHECKING:
     from .storage import Storage
-    from .query import Query, BinaryExpression
+    from ..query import Query, BinaryExpression
 
 
 class Column:
@@ -148,37 +148,37 @@ class Column:
 
     def __eq__(self, other: Any) -> 'BinaryExpression':
         """等于：Student.age == 20"""
-        from .query import BinaryExpression
+        from ..query import BinaryExpression
         return BinaryExpression(self, '=', other)
 
     def __ne__(self, other: Any) -> 'BinaryExpression':
         """不等于：Student.age != 20"""
-        from .query import BinaryExpression
+        from ..query import BinaryExpression
         return BinaryExpression(self, '!=', other)
 
     def __lt__(self, other: Any) -> 'BinaryExpression':
         """小于：Student.age < 20"""
-        from .query import BinaryExpression
+        from ..query import BinaryExpression
         return BinaryExpression(self, '<', other)
 
     def __le__(self, other: Any) -> 'BinaryExpression':
         """小于等于：Student.age <= 20"""
-        from .query import BinaryExpression
+        from ..query import BinaryExpression
         return BinaryExpression(self, '<=', other)
 
     def __gt__(self, other: Any) -> 'BinaryExpression':
         """大于：Student.age > 20"""
-        from .query import BinaryExpression
+        from ..query import BinaryExpression
         return BinaryExpression(self, '>', other)
 
     def __ge__(self, other: Any) -> 'BinaryExpression':
         """大于等于：Student.age >= 20"""
-        from .query import BinaryExpression
+        from ..query import BinaryExpression
         return BinaryExpression(self, '>=', other)
 
     def in_(self, values: list) -> 'BinaryExpression':
         """IN 操作：Student.age.in_([18, 19, 20])"""
-        from .query import BinaryExpression
+        from ..query import BinaryExpression
         return BinaryExpression(self, 'IN', values)
 
 
@@ -767,7 +767,7 @@ def _create_crud_base(storage: 'Storage') -> Type[CRUDBaseModel]:
             Example:
                 users = User.filter(User.age >= 18).all()
             """
-            from .query import Query
+            from ..query import Query
             query = Query(cls)
             if expressions:
                 query = query.filter(*expressions)
@@ -787,7 +787,7 @@ def _create_crud_base(storage: 'Storage') -> Type[CRUDBaseModel]:
             Example:
                 users = User.filter_by(name='Alice').all()
             """
-            from .query import Query
+            from ..query import Query
             query = Query(cls)
             if kwargs:
                 query = query.filter_by(**kwargs)
@@ -796,7 +796,7 @@ def _create_crud_base(storage: 'Storage') -> Type[CRUDBaseModel]:
         @classmethod
         def all(cls) -> List['DeclarativeCRUDBase']:
             """获取所有记录"""
-            from .query import Query
+            from ..query import Query
             return Query(cls).all()
 
     return DeclarativeCRUDBase  # type: ignore

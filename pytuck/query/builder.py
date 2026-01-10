@@ -7,8 +7,8 @@ Pytuck 查询构建器
 from typing import Any, List, Optional, Type, TYPE_CHECKING, Union
 
 if TYPE_CHECKING:
-    from .orm import PureBaseModel, Column
-    from .storage import Storage
+    from ..core.orm import PureBaseModel, Column
+    from ..core.storage import Storage
 
 
 class Condition:

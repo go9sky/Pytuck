@@ -23,11 +23,28 @@
   - `import_from_database()` - 从外部关系型数据库导入到 Pytuck 格式
   - `get_available_engines()` - 获取可用存储引擎
 
+- **统一引擎版本管理**
+  - 新增 `pytuck/backends/versions.py`，集中管理所有引擎格式版本
+  - 使用整数格式（1, 2, 3...）统一版本号
+  - 引擎版本独立于库版本，便于格式演进和向后兼容检测
+
+- **表和列备注支持**
+  - `Column` 类新增 `comment` 参数，支持字段备注
+  - `Table` 类新增 `comment` 参数，支持表备注
+  - 模型类支持 `__table_comment__` 类属性
+  - 所有存储引擎均支持备注的序列化和反序列化
+
 ### 变更
 
 - **重构 SQLiteBackend**
   - 改为使用 `SQLiteConnector` 进行底层数据库操作
   - 减少代码重复，提高可维护性
+
+- **重构存储引擎元数据结构**
+  - CSV 引擎：所有表 schema 统一存储在 `_metadata.json`
+  - Excel 引擎：所有表 schema 统一存储在 `_pytuck_tables` 工作表
+  - Binary 引擎：分离 Schema 区和数据区
+  - 遵循"不为每个表创建单独 schema"的原则
 
 - **调整导出规范**
   - tools 模块不再从 `pytuck` 根包导出
@@ -39,6 +56,14 @@
   # 不再支持
   # from pytuck import migrate_engine
   ```
+
+- **引擎格式版本升级**
+  - Binary: v2 → v3（添加 comment 支持）
+  - CSV: v2 → v3（添加 comment 支持）
+  - Excel: v2 → v3（添加 comment 支持）
+  - JSON: v1 → v2（添加 comment 支持）
+  - SQLite: v1 → v2（添加 comment 支持）
+  - XML: v1 → v2（添加 comment 支持）
 
 ### 架构改进
 

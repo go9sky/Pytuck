@@ -590,6 +590,8 @@ Pytuck 是一个轻量级嵌入式数据库，设计目标是简单易用。以�
 - [x] 统一数据库连接器架构（`pytuck/connectors/` 模块）
 - [x] 数据迁移工具（`migrate_engine()`, `import_from_database()`）
 - [x] 从外部关系型数据库导入功能
+- [x] 统一引擎版本管理（`pytuck/backends/versions.py`）
+- [x] 表和列备注支持（`comment` 参数）
 
 ### 计划中的功能
 

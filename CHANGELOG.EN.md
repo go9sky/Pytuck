@@ -21,11 +21,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `import_from_database()` - Import from external relational databases to Pytuck format
   - `get_available_engines()` - Get available storage engines
 
+- **Unified Engine Version Management**
+  - New `pytuck/backends/versions.py` for centralized engine format version management
+  - Uses integer format (1, 2, 3...) for unified version numbers
+  - Engine versions are independent of library version for easier format evolution and backward compatibility detection
+
+- **Table and Column Comment Support**
+  - `Column` class now accepts `comment` parameter for field annotations
+  - `Table` class now accepts `comment` parameter for table annotations
+  - Model classes support `__table_comment__` class attribute
+  - All storage engines support comment serialization and deserialization
+
 ### Changed
 
 - **Refactored SQLiteBackend**
   - Now uses `SQLiteConnector` for underlying database operations
   - Reduced code duplication, improved maintainability
+
+- **Refactored Storage Engine Metadata Structure**
+  - CSV engine: All table schemas unified in `_metadata.json`
+  - Excel engine: All table schemas unified in `_pytuck_tables` worksheet
+  - Binary engine: Separated Schema section and Data section
+  - Follows "no per-table schema" principle
 
 - **Export Policy Adjustment**
   - tools module is no longer exported from `pytuck` root package
@@ -37,6 +54,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   # No longer supported
   # from pytuck import migrate_engine
   ```
+
+- **Engine Format Version Upgrades**
+  - Binary: v2 → v3 (added comment support)
+  - CSV: v2 → v3 (added comment support)
+  - Excel: v2 → v3 (added comment support)
+  - JSON: v1 → v2 (added comment support)
+  - SQLite: v1 → v2 (added comment support)
+  - XML: v1 → v2 (added comment support)
 
 ### Architecture Improvements
 

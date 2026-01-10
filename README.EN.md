@@ -624,6 +624,8 @@ Pytuck is a lightweight embedded database designed for simplicity. Here are the 
 - [x] Unified database connector architecture (`pytuck/connectors/` module)
 - [x] Data migration tools (`migrate_engine()`, `import_from_database()`)
 - [x] Import from external relational databases feature
+- [x] Unified engine version management (`pytuck/backends/versions.py`)
+- [x] Table and column comment support (`comment` parameter)
 
 ### Planned Features
 

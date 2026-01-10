@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=45", "wheel", "setuptools-scm[toml]>=6.2"]
+requires = ["setuptools>=77.0.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -7,7 +7,8 @@ name = "pytuck"
 version = "0.1.0"
 description = "Lightweight Python document database - No SQL, multi-engine, pluggable persistence"
 readme = "README.md"
-license = {text = "MIT"}
+license = "MIT"
+license-files = ["LICENSE"]
 authors = [
     {name = "go9sky"}
 ]
@@ -31,7 +32,6 @@ classifiers = [
     "Topic :: Database",
     "Topic :: Database :: Database Engines/Servers",
     "Topic :: Software Development :: Libraries :: Python Modules",
-    "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.7",

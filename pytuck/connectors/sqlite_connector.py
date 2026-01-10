@@ -81,7 +81,7 @@ class SQLiteConnector(DatabaseConnector):
     def connect(self) -> None:
         """连接到 SQLite 数据库"""
         # 构建连接参数，只包含非None的值
-        connect_kwargs = {
+        connect_kwargs: Dict[str, Any] = {
             'check_same_thread': self.options.check_same_thread,
         }
 

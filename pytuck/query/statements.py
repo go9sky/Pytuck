@@ -128,12 +128,14 @@ class Select(Statement[T]):
 
         # 查询
         table_name = self.model_class.__tablename__
+        assert table_name is not None, f"Model {self.model_class.__name__} must have __tablename__ defined"
         records = storage.query(table_name, conditions)
 
         # 排序
         if self._order_by_field:
+            order_field = self._order_by_field  # Type narrowing for mypy
             records.sort(
-                key=lambda r: r.get(self._order_by_field) or '',
+                key=lambda r: r.get(order_field) or '',
                 reverse=self._order_desc
             )
 
@@ -172,6 +174,7 @@ class Insert(Statement[T]):
     def _execute(self, storage: 'Storage') -> Any:
         """执行插入，返回插入的主键"""
         table_name = self.model_class.__tablename__
+        assert table_name is not None, f"Model {self.model_class.__name__} must have __tablename__ defined"
 
         # 验证和转换值
         validated_data: Dict[str, Any] = {}
@@ -221,6 +224,7 @@ class Update(Statement[T]):
         from .builder import Condition
 
         table_name = self.model_class.__tablename__
+        assert table_name is not None, f"Model {self.model_class.__name__} must have __tablename__ defined"
         conditions = [expr.to_condition() for expr in self._where_clauses]
 
         # 查询符合条件的记录
@@ -272,6 +276,7 @@ class Delete(Statement[T]):
         from .builder import Condition
 
         table_name = self.model_class.__tablename__
+        assert table_name is not None, f"Model {self.model_class.__name__} must have __tablename__ defined"
         conditions = [expr.to_condition() for expr in self._where_clauses]
 
         # 查询符合条件的记录

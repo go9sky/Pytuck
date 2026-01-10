@@ -146,7 +146,7 @@ class BinaryBackend(StorageBackend):
         # 验证 Magic Number
         magic = header[0:4]
         if magic != self.MAGIC_NUMBER:
-            raise SerializationError(f"Invalid magic number: {magic}")
+            raise SerializationError(f"Invalid magic number: {magic!r}")
 
         # 读取 Version
         version = struct.unpack('<H', header[4:6])[0]
@@ -428,7 +428,7 @@ class BinaryBackend(StorageBackend):
         offset += 2
 
         # Fields
-        record = {}
+        record: Dict[str, Any] = {}
         col_names = list(columns.keys())
 
         for _ in range(field_count):

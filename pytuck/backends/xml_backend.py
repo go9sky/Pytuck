@@ -199,6 +199,7 @@ class XMLBackend(StorageBackend):
                     col_name = field_elem.get('name')
                     col_type_name = field_elem.get('type')
 
+                    value: Any
                     # 处理 NULL
                     if field_elem.get('null') == 'true':
                         value = None

@@ -4,7 +4,7 @@ Pytuck 配置选项 dataclass 定义
 该模块定义了所有后端和连接器的配置选项，替代原有的 **kwargs 参数。
 """
 from dataclasses import dataclass
-from typing import Optional, Union
+from typing import Optional, Union, Dict
 
 @dataclass
 class JsonBackendOptions:
@@ -63,7 +63,7 @@ ConnectorOptions = Union[SqliteConnectorOptions]
 # 默认选项获取函数
 def get_default_backend_options(engine: str) -> BackendOptions:
     """根据引擎类型返回默认选项"""
-    defaults = {
+    defaults: Dict[str, BackendOptions] = {
         'json': JsonBackendOptions(),
         'csv': CsvBackendOptions(),
         'sqlite': SqliteBackendOptions(),
@@ -75,7 +75,7 @@ def get_default_backend_options(engine: str) -> BackendOptions:
 
 def get_default_connector_options(db_type: str) -> ConnectorOptions:
     """根据连接器类型返回默认选项"""
-    defaults = {
+    defaults: Dict[str, ConnectorOptions] = {
         'sqlite': SqliteConnectorOptions()
     }
     return defaults.get(db_type, SqliteConnectorOptions())

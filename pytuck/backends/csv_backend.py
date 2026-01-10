@@ -191,7 +191,10 @@ class CSVBackend(StorageBackend):
 
         # 加载 CSV 数据
         with zf.open(csv_file) as f:
-            text_stream = io.TextIOWrapper(f, encoding=self.options.encoding)
+            encoding = 'utf-8'
+            if hasattr(self.options, 'encoding'):
+                encoding = self.options.encoding  # type: ignore
+            text_stream = io.TextIOWrapper(f, encoding=encoding)
             reader = csv.DictReader(text_stream)
 
             for row_data in reader:
@@ -226,7 +229,7 @@ class CSVBackend(StorageBackend):
 
     def _deserialize_record(self, record_data: Dict[str, str], columns: Dict[str, 'Column']) -> Dict[str, Any]:
         """反序列化记录"""
-        result = {}
+        result: Dict[str, Any] = {}
         for key, value in record_data.items():
             if key not in columns:
                 continue

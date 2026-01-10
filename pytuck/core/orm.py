@@ -209,12 +209,12 @@ class Column:
 
     # ==================== 查询表达式支持（魔术方法） ====================
 
-    def __eq__(self, other: Any) -> 'BinaryExpression':
+    def __eq__(self, other: Any) -> 'BinaryExpression':  # type: ignore[override]
         """等于：Student.age == 20"""
         from ..query import BinaryExpression
         return BinaryExpression(self, '=', other)
 
-    def __ne__(self, other: Any) -> 'BinaryExpression':
+    def __ne__(self, other: Any) -> 'BinaryExpression':  # type: ignore[override]
         """不等于：Student.age != 20"""
         from ..query import BinaryExpression
         return BinaryExpression(self, '!=', other)
@@ -278,7 +278,7 @@ class PureBaseModel:
 
     # 类属性
     __abstract__: bool = True
-    __storage__: 'Storage' = None
+    __storage__: Optional['Storage'] = None
     __tablename__: Optional[str] = None
     __columns__: Dict[str, Column] = {}
     __primary_key__: str = 'id'
@@ -445,8 +445,8 @@ class Relationship:
         self.lazy = lazy
         self.back_populates = back_populates
         self.is_one_to_many = False
-        self.name = None
-        self.owner = None
+        self.name: Optional[str] = None
+        self.owner: Optional[Type[PureBaseModel]] = None
 
     def __set_name__(self, owner: Type[PureBaseModel], name: str) -> None:
         """在类定义时调用"""
@@ -769,15 +769,18 @@ def _create_crud_base(storage: 'Storage') -> Type[CRUDBaseModel]:
             # 判断是insert还是update
             pk_value = getattr(self, self.__primary_key__)
 
+            table_name = self.__tablename__
+            assert table_name is not None, f"Model {self.__class__.__name__} must have __tablename__ defined"
+
             if pk_value is None or not self._loaded_from_db:
                 # Insert
-                pk_value = storage.insert(self.__tablename__, data)
+                pk_value = storage.insert(table_name, data)
                 setattr(self, self.__primary_key__, pk_value)
                 self._pk_value = pk_value
                 self._loaded_from_db = True
             else:
                 # Update
-                storage.update(self.__tablename__, pk_value, data)
+                storage.update(table_name, pk_value, data)
 
         def delete(self) -> None:
             """删除当前记录"""
@@ -785,7 +788,10 @@ def _create_crud_base(storage: 'Storage') -> Type[CRUDBaseModel]:
             if pk_value is None:
                 raise ValidationError("Cannot delete record without primary key")
 
-            storage.delete(self.__tablename__, pk_value)
+            table_name = self.__tablename__
+            assert table_name is not None, f"Model {self.__class__.__name__} must have __tablename__ defined"
+
+            storage.delete(table_name, pk_value)
             self._loaded_from_db = False
 
         def refresh(self) -> None:
@@ -794,7 +800,10 @@ def _create_crud_base(storage: 'Storage') -> Type[CRUDBaseModel]:
             if pk_value is None:
                 raise ValidationError("Cannot refresh record without primary key")
 
-            data = storage.select(self.__tablename__, pk_value)
+            table_name = self.__tablename__
+            assert table_name is not None, f"Model {self.__class__.__name__} must have __tablename__ defined"
+
+            data = storage.select(table_name, pk_value)
 
             for col_name, value in data.items():
                 setattr(self, col_name, value)
@@ -812,7 +821,10 @@ def _create_crud_base(storage: 'Storage') -> Type[CRUDBaseModel]:
         def get(cls, pk: Any) -> Optional['DeclarativeCRUDBase']:
             """根据主键获取记录"""
             try:
-                data = storage.select(cls.__tablename__, pk)
+                table_name = cls.__tablename__
+                assert table_name is not None, f"Model {cls.__name__} must have __tablename__ defined"
+
+                data = storage.select(table_name, pk)
                 instance = cls(**data)
                 instance._loaded_from_db = True
                 instance._pk_value = pk
@@ -861,7 +873,7 @@ def _create_crud_base(storage: 'Storage') -> Type[CRUDBaseModel]:
             return query
 
         @classmethod
-        def all(cls) -> List['DeclarativeCRUDBase']:
+        def all(cls) -> List['DeclarativeCRUDBase']:  # type: ignore[override]
             """获取所有记录"""
             from ..query import Query
             return Query(cls).all()

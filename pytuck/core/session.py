@@ -117,6 +117,7 @@ class Session:
         # 1. 处理待插入对象
         for instance in self._new_objects:
             table_name = instance.__tablename__
+            assert table_name is not None, f"Model {instance.__class__.__name__} must have __tablename__ defined"
 
             # 构建要插入的数据
             data = {}
@@ -138,6 +139,8 @@ class Session:
         # 2. 处理待更新对象
         for instance in self._dirty_objects:
             table_name = instance.__tablename__
+            assert table_name is not None, f"Model {instance.__class__.__name__} must have __tablename__ defined"
+
             pk_name = instance.__primary_key__
             pk = getattr(instance, pk_name)
 
@@ -154,6 +157,8 @@ class Session:
         # 3. 处理待删除对象
         for instance in self._deleted_objects:
             table_name = instance.__tablename__
+            assert table_name is not None, f"Model {instance.__class__.__name__} must have __tablename__ defined"
+
             pk_name = instance.__primary_key__
             pk = getattr(instance, pk_name)
 
@@ -203,15 +208,17 @@ class Session:
         # 先从标识映射查找
         key = (model_class, pk)
         if key in self._identity_map:
-            return self._identity_map[key]
+            return self._identity_map[key]  # type: ignore
 
         # 从数据库查询
         table_name = model_class.__tablename__
+        assert table_name is not None, f"Model {model_class.__name__} must have __tablename__ defined"
+
         try:
             record = self.storage.get_table(table_name).get(pk)
 
             # 创建模型实例
-            instance: T = model_class(**record)
+            instance = model_class(**record)
 
             # 加入标识映射
             self._identity_map[key] = instance

@@ -46,16 +46,17 @@ class JSONBackend(StorageBackend):
 
         # 序列化所有表
         for table_name, table in tables.items():
-            data['tables'][table_name] = self._serialize_table(table)
+            data['tables'][table_name] = self._serialize_table(table)  # type: ignore
 
         # 写入文件（原子性）
         temp_path = self.file_path + '.tmp'
 
         try:
             with open(temp_path, 'w', encoding='utf-8') as f:
-                json.dump(data, f,
-                         indent=self.options.indent,
-                         ensure_ascii=self.options.ensure_ascii)
+                # Use default values if options doesn't have the attributes
+                indent = getattr(self.options, 'indent', 2)
+                ensure_ascii = getattr(self.options, 'ensure_ascii', False)
+                json.dump(data, f, indent=indent, ensure_ascii=ensure_ascii)
 
             # 原子性重命名
             if os.path.exists(self.file_path):

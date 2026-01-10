@@ -337,6 +337,7 @@ def import_from_database(
                     columns.append(col)
 
                 # 创建 Table
+                assert pk is not None, f"Primary key not found for table {table_name}"
                 table = Table(table_name, columns, pk)
 
                 # 导入数据
@@ -351,6 +352,7 @@ def import_from_database(
                             record['_rowid'] = i
 
                         # 获取主键值
+                        assert pk is not None, f"Primary key not found for table {table_name}"
                         pk_value = record[pk]
                         table.data[pk_value] = record
 

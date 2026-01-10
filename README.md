@@ -244,6 +244,47 @@ db = Storage(file_path='data.xml', engine='xml')
 
 ## 高级特性
 
+### 数据持久化
+
+Pytuck 提供灵活的数据持久化机制：
+
+#### 默认模式（手动持久化）
+
+```python
+db = Storage(file_path='data.db')  # auto_flush=False（默认）
+
+# 数据修改只在内存中
+session.execute(insert(User).values(name='Alice'))
+session.commit()  # 提交到 Storage 内存
+
+# 手动写入磁盘
+db.flush()  # 方式1：显式刷新
+# 或
+db.close()  # 方式2：关闭时自动刷新
+```
+
+#### 自动持久化模式
+
+```python
+db = Storage(file_path='data.db', auto_flush=True)
+
+# 每次 commit 后自动写入磁盘
+session.execute(insert(User).values(name='Alice'))
+session.commit()  # 自动写入磁盘，无需手动 flush
+```
+
+#### 持久化方法总结
+
+| 方法 | 说明 |
+|------|------|
+| `session.commit()` | 提交事务到 Storage 内存；若 `auto_flush=True` 则同时写入磁盘 |
+| `storage.flush()` | 强制将内存数据写入磁盘 |
+| `storage.close()` | 关闭数据库，自动调用 `flush()` |
+
+**建议**：
+- 生产环境使用 `auto_flush=True` 确保数据安全
+- 批量操作时使用默认模式，最后调用 `flush()` 提高性能
+
 ### 事务支持
 
 Pytuck 支持内存级事务，异常时自动回滚：
@@ -506,6 +547,12 @@ Pytuck 是一个轻量级嵌入式数据库，设计目标是简单易用。以�
 | **无嵌套事务** | 仅支持单层事务，不支持嵌套 |
 
 ## 路线图 / TODO
+
+### 已完成
+
+- [x] 统一数据库连接器架构（`pytuck/connectors/` 模块）
+- [x] 数据迁移工具（`migrate_engine()`, `import_from_database()`）
+- [x] 从外部关系型数据库导入功能
 
 ### 计划中的功能
 

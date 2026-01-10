@@ -243,6 +243,47 @@ db = Storage(file_path='data.xml', engine='xml')
 
 ## Advanced Features
 
+### Data Persistence
+
+Pytuck provides flexible data persistence mechanisms:
+
+#### Default Mode (Manual Persistence)
+
+```python
+db = Storage(file_path='data.db')  # auto_flush=False (default)
+
+# Data changes only in memory
+session.execute(insert(User).values(name='Alice'))
+session.commit()  # Commits to Storage memory
+
+# Manually write to disk
+db.flush()  # Method 1: Explicit flush
+# or
+db.close()  # Method 2: Auto-flush on close
+```
+
+#### Auto Persistence Mode
+
+```python
+db = Storage(file_path='data.db', auto_flush=True)
+
+# Each commit automatically writes to disk
+session.execute(insert(User).values(name='Alice'))
+session.commit()  # Automatically writes to disk, no manual flush needed
+```
+
+#### Persistence Method Summary
+
+| Method | Description |
+|--------|-------------|
+| `session.commit()` | Commits transaction to Storage memory; if `auto_flush=True`, also writes to disk |
+| `storage.flush()` | Forces in-memory data to be written to disk |
+| `storage.close()` | Closes database, automatically calls `flush()` |
+
+**Recommendations**:
+- Use `auto_flush=True` in production for data safety
+- Use default mode for batch operations, call `flush()` at the end for better performance
+
 ### Transaction Support
 
 Pytuck supports memory-level transactions with automatic rollback on exceptions:
@@ -540,6 +581,12 @@ Pytuck is a lightweight embedded database designed for simplicity. Here are the 
 | **No nested transactions** | Only single-level transactions supported |
 
 ## Roadmap / TODO
+
+### Completed
+
+- [x] Unified database connector architecture (`pytuck/connectors/` module)
+- [x] Data migration tools (`migrate_engine()`, `import_from_database()`)
+- [x] Import from external relational databases feature
 
 ### Planned Features
 

@@ -1,9 +1,11 @@
 # Pytuck - Lightweight Python Document Database
 
+[![Gitee](https://img.shields.io/badge/Gitee-go9sky%2Fpytuck-red)](https://gitee.com/go9sky/pytuck)
+[![GitHub](https://img.shields.io/badge/GitHub-go9sky%2Fpytuck-blue)](https://github.com/go9sky/pytuck)
+
 [![PyPI version](https://badge.fury.io/py/pytuck.svg)](https://badge.fury.io/py/pytuck)
 [![Python Versions](https://img.shields.io/pypi/pyversions/pytuck.svg)](https://pypi.org/project/pytuck/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Gitee](https://img.shields.io/badge/Gitee-go9sky%2Fpytuck-red)](https://gitee.com/go9sky/pytuck)
 
 [中文文档](README.md)
 
@@ -12,7 +14,7 @@ A lightweight, pure Python document database with multi-engine support. No SQL r
 ## Repository Mirrors
 
 - **GitHub**: https://github.com/go9sky/pytuck
-- **Gitee (China Mirror)**: https://gitee.com/go9sky/pytuck
+- **Gitee**: https://gitee.com/go9sky/pytuck
 
 ## Key Features
 

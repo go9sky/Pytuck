@@ -1,9 +1,11 @@
 # Pytuck - 轻量级 Python 文档数据库
 
+[![Gitee](https://img.shields.io/badge/Gitee-go9sky%2Fpytuck-red)](https://gitee.com/go9sky/pytuck)
+[![GitHub](https://img.shields.io/badge/GitHub-go9sky%2Fpytuck-blue)](https://github.com/go9sky/pytuck)
+
 [![PyPI version](https://badge.fury.io/py/pytuck.svg)](https://badge.fury.io/py/pytuck)
 [![Python Versions](https://img.shields.io/pypi/pyversions/pytuck.svg)](https://pypi.org/project/pytuck/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Gitee](https://img.shields.io/badge/Gitee-go9sky%2Fpytuck-red)](https://gitee.com/go9sky/pytuck)
 
 [English Documentation](README.EN.md)
 
@@ -12,7 +14,7 @@
 ## 仓库镜像
 
 - **GitHub**: https://github.com/go9sky/pytuck
-- **Gitee (国内镜像)**: https://gitee.com/go9sky/pytuck
+- **Gitee**: https://gitee.com/go9sky/pytuck
 
 ## 核心特性
 

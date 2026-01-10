@@ -183,7 +183,11 @@ db = Storage(file_path='data.db', engine='binary')
 **Features**: Human-readable, debug-friendly, standard format
 
 ```python
-db = Storage(file_path='data.json', engine='json', indent=2)
+from pytuck.common.options import JsonBackendOptions
+
+# Configure JSON options
+json_opts = JsonBackendOptions(indent=2, ensure_ascii=False)
+db = Storage(file_path='data.json', engine='json', backend_options=json_opts)
 ```
 
 **Use Cases**:
@@ -196,7 +200,11 @@ db = Storage(file_path='data.json', engine='json', indent=2)
 **Features**: Excel compatible, tabular format, data analysis friendly
 
 ```python
-db = Storage(file_path='data_dir', engine='csv', encoding='utf-8')
+from pytuck.common.options import CsvBackendOptions
+
+# Configure CSV options
+csv_opts = CsvBackendOptions(encoding='utf-8', delimiter=',')
+db = Storage(file_path='data_dir', engine='csv', backend_options=csv_opts)
 ```
 
 **Use Cases**:
@@ -209,7 +217,11 @@ db = Storage(file_path='data_dir', engine='csv', encoding='utf-8')
 **Features**: Mature, stable, ACID compliance, SQL support
 
 ```python
-db = Storage(file_path='data.sqlite', engine='sqlite')
+from pytuck.common.options import SqliteBackendOptions
+
+# Configure SQLite options (optional)
+sqlite_opts = SqliteBackendOptions()  # Use default config
+db = Storage(file_path='data.sqlite', engine='sqlite', backend_options=sqlite_opts)
 ```
 
 **Use Cases**:
@@ -222,7 +234,11 @@ db = Storage(file_path='data.sqlite', engine='sqlite')
 **Requires**: `openpyxl>=3.0.0`
 
 ```python
-db = Storage(file_path='data.xlsx', engine='excel')
+from pytuck.common.options import ExcelBackendOptions
+
+# Configure Excel options (optional)
+excel_opts = ExcelBackendOptions(sheet_name='Sheet1')  # Use default config
+db = Storage(file_path='data.xlsx', engine='excel', backend_options=excel_opts)
 ```
 
 **Use Cases**:
@@ -235,7 +251,11 @@ db = Storage(file_path='data.xlsx', engine='excel')
 **Requires**: `lxml>=4.9.0`
 
 ```python
-db = Storage(file_path='data.xml', engine='xml')
+from pytuck.common.options import XmlBackendOptions
+
+# Configure XML options
+xml_opts = XmlBackendOptions(encoding='utf-8', pretty_print=True)
+db = Storage(file_path='data.xml', engine='xml', backend_options=xml_opts)
 ```
 
 **Use Cases**:
@@ -726,6 +746,27 @@ python -m twine upload dist/*
 python -m twine upload --repository testpypi dist/*
 ```
 
+## Data Migration
+
+Migrate data between different engines:
+
+```python
+from pytuck.tools.migrate import migrate_engine
+from pytuck.common.options import JsonBackendOptions
+
+# Configure target engine options
+json_opts = JsonBackendOptions(indent=2, ensure_ascii=False)
+
+# Migrate from binary to JSON
+migrate_engine(
+    source_path='data.db',
+    source_engine='binary',
+    target_path='data.json',
+    target_engine='json',
+    target_options=json_opts  # Use strongly-typed options
+)
+```
+
 ## Architecture
 
 ```
@@ -823,6 +864,8 @@ See the `examples/` directory for more examples:
 - `transaction_demo.py` - Transaction management example
 - `type_validation_demo.py` - Type validation and conversion example
 - `data_model_demo.py` - Data model independence features example
+- `backend_options_demo.py` - Backend configuration options demo (new)
+- `migration_tools_demo.py` - Data migration tools demo (new)
 
 ## Contributing
 

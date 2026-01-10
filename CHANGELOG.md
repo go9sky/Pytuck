@@ -7,9 +7,15 @@
 
 > [English Version](./CHANGELOG.EN.md)
 
-## [0.2.0] - 2026-01-10
+## [0.2.0] - 2026-01-11
 
 ### 新增
+
+- **强类型配置选项系统**
+  - 新增 `pytuck/common/options.py` 模块，定义所有后端和连接器配置选项
+  - 使用 dataclass 替代 **kwargs 参数，提升类型安全性和 IDE 支持
+  - `JsonBackendOptions`、`CsvBackendOptions`、`SqliteBackendOptions` 等强类型配置类
+  - `get_default_backend_options()` 和 `get_default_connector_options()` 辅助函数
 
 - **统一数据库连接器架构**
   - 新增 `pytuck/connectors/` 模块，提供统一的数据库操作接口
@@ -34,10 +40,30 @@
   - 模型类支持 `__table_comment__` 类属性
   - 所有存储引擎均支持备注的序列化和反序列化
 
+- **新示例文件**
+  - `backend_options_demo.py` - 演示强类型后端配置选项
+  - `migration_tools_demo.py` - 演示数据迁移和导入工具
+
 ### 变更
+
+- **API 破坏性变更**：移除 **kwargs 参数支持
+  ```python
+  # ❌ 旧方式（不再支持）
+  Storage('file.json', engine='json', indent=4)
+
+  # ✅ 新方式（强类型）
+  opts = JsonBackendOptions(indent=4)
+  Storage('file.json', engine='json', backend_options=opts)
+  ```
+
+- **架构规范化**
+  - 创建 `pytuck/common/` 目录，存放无内部依赖的模块
+  - `pytuck/` 根目录只允许 `__init__.py` 和 `py.typed` 两个文件
+  - 强制使用强类型选项替代 **kwargs（除 ORM 动态字段外）
 
 - **重构 SQLiteBackend**
   - 改为使用 `SQLiteConnector` 进行底层数据库操作
+  - 修复连接参数处理，支持 None 值的可选参数
   - 减少代码重复，提高可维护性
 
 - **重构存储引擎元数据结构**
@@ -65,12 +91,27 @@
   - SQLite: v1 → v2（添加 comment 支持）
   - XML: v1 → v2（添加 comment 支持）
 
+### 文档更新
+
+- 更新 `README.md`，所有存储引擎示例使用新的强类型选项 API
+- 更新 `CLAUDE.md` 开发规范：
+  - 新增目录结构规范（根目录限制、common 目录规范）
+  - 新增 **kwargs 使用规范（禁止和允许场景）
+  - 新增 dataclass 设计规范
+
 ### 架构改进
 
 - 为未来扩展（如 DuckDB）奠定基础，添加新引擎只需：
   1. 创建 `pytuck/connectors/<db>_connector.py`
   2. 在 `CONNECTORS` 注册表中注册
   3. 创建对应的 backend
+  4. 在 `pytuck/common/options.py` 中定义配置选项
+
+### 测试
+
+- 所有现有测试通过
+- 验证所有存储引擎在新选项系统下正常工作
+- 验证数据迁移工具的强类型选项功能
 
 ## [0.1.0] - 2026-01-10
 

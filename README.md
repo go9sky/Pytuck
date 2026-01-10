@@ -184,7 +184,11 @@ db = Storage(file_path='data.db', engine='binary')
 **特点**: 人类可读、便于调试、标准格式
 
 ```python
-db = Storage(file_path='data.json', engine='json', indent=2)
+from pytuck.common.options import JsonBackendOptions
+
+# 配置 JSON 选项
+json_opts = JsonBackendOptions(indent=2, ensure_ascii=False)
+db = Storage(file_path='data.json', engine='json', backend_options=json_opts)
 ```
 
 **适用场景**:
@@ -197,7 +201,11 @@ db = Storage(file_path='data.json', engine='json', indent=2)
 **特点**: Excel兼容、表格格式、数据分析友好
 
 ```python
-db = Storage(file_path='data_dir', engine='csv', encoding='utf-8')
+from pytuck.common.options import CsvBackendOptions
+
+# 配置 CSV 选项
+csv_opts = CsvBackendOptions(encoding='utf-8', delimiter=',')
+db = Storage(file_path='data_dir', engine='csv', backend_options=csv_opts)
 ```
 
 **适用场景**:
@@ -210,7 +218,11 @@ db = Storage(file_path='data_dir', engine='csv', encoding='utf-8')
 **特点**: 成熟稳定、ACID特性、支持SQL
 
 ```python
-db = Storage(file_path='data.sqlite', engine='sqlite')
+from pytuck.common.options import SqliteBackendOptions
+
+# 配置 SQLite 选项（可选）
+sqlite_opts = SqliteBackendOptions()  # 使用默认配置
+db = Storage(file_path='data.sqlite', engine='sqlite', backend_options=sqlite_opts)
 ```
 
 **适用场景**:
@@ -223,7 +235,11 @@ db = Storage(file_path='data.sqlite', engine='sqlite')
 **依赖**: `openpyxl>=3.0.0`
 
 ```python
-db = Storage(file_path='data.xlsx', engine='excel')
+from pytuck.common.options import ExcelBackendOptions
+
+# 配置 Excel 选项（可选）
+excel_opts = ExcelBackendOptions(sheet_name='Sheet1')  # 使用默认配置
+db = Storage(file_path='data.xlsx', engine='excel', backend_options=excel_opts)
 ```
 
 **适用场景**:
@@ -236,7 +252,11 @@ db = Storage(file_path='data.xlsx', engine='excel')
 **依赖**: `lxml>=4.9.0`
 
 ```python
-db = Storage(file_path='data.xml', engine='xml')
+from pytuck.common.options import XmlBackendOptions
+
+# 配置 XML 选项
+xml_opts = XmlBackendOptions(encoding='utf-8', pretty_print=True)
+db = Storage(file_path='data.xml', engine='xml', backend_options=xml_opts)
 ```
 
 **适用场景**:
@@ -685,13 +705,18 @@ user_json = json.dumps(user.to_dict())
 
 ```python
 from pytuck.tools.migrate import migrate_engine
+from pytuck.common.options import JsonBackendOptions
+
+# 配置目标引擎选项
+json_opts = JsonBackendOptions(indent=2, ensure_ascii=False)
 
 # 从二进制迁移到JSON
 migrate_engine(
     source_path='data.db',
     source_engine='binary',
     target_path='data.json',
-    target_engine='json'
+    target_engine='json',
+    target_options=json_opts  # 使用强类型选项
 )
 ```
 
@@ -837,6 +862,8 @@ python -m twine upload --repository testpypi dist/*
 - `transaction_demo.py` - 事务管理示例
 - `type_validation_demo.py` - 类型验证和转换示例
 - `data_model_demo.py` - 数据模型独立性特性示例
+- `backend_options_demo.py` - 后端配置选项演示（新）
+- `migration_tools_demo.py` - 数据迁移工具演示（新）
 
 ## 贡献
 

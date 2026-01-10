@@ -5,9 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.2.0] - 2026-01-10
+## [0.2.0] - 2026-01-11
 
 ### Added
+
+- **Strongly-Typed Configuration Options System**
+  - New `pytuck/common/options.py` module defining all backend and connector configuration options
+  - Use dataclass to replace **kwargs parameters, enhancing type safety and IDE support
+  - Strongly-typed configuration classes: `JsonBackendOptions`, `CsvBackendOptions`, `SqliteBackendOptions`, etc.
+  - Helper functions: `get_default_backend_options()` and `get_default_connector_options()`
 
 - **Unified Database Connector Architecture**
   - New `pytuck/connectors/` module providing unified database operation interface
@@ -32,10 +38,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Model classes support `__table_comment__` class attribute
   - All storage engines support comment serialization and deserialization
 
+- **New Example Files**
+  - `backend_options_demo.py` - Demonstrates strongly-typed backend configuration options
+  - `migration_tools_demo.py` - Demonstrates data migration and import tools
+
 ### Changed
+
+- **Breaking API Changes**: Removed **kwargs parameter support
+  ```python
+  # ❌ Old way (no longer supported)
+  Storage('file.json', engine='json', indent=4)
+
+  # ✅ New way (strongly-typed)
+  opts = JsonBackendOptions(indent=4)
+  Storage('file.json', engine='json', backend_options=opts)
+  ```
+
+- **Architecture Standardization**
+  - Created `pytuck/common/` directory for modules with no internal dependencies
+  - `pytuck/` root directory only allows `__init__.py` and `py.typed` files
+  - Enforced strongly-typed options to replace **kwargs (except ORM dynamic fields)
 
 - **Refactored SQLiteBackend**
   - Now uses `SQLiteConnector` for underlying database operations
+  - Fixed connection parameter handling, supporting None values for optional parameters
   - Reduced code duplication, improved maintainability
 
 - **Refactored Storage Engine Metadata Structure**
@@ -63,12 +89,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - SQLite: v1 → v2 (added comment support)
   - XML: v1 → v2 (added comment support)
 
+### Documentation Updates
+
+- Updated `README.EN.md`, all storage engine examples use new strongly-typed options API
+- Updated `CLAUDE.md` development standards:
+  - Added directory structure standards (root directory restrictions, common directory standards)
+  - Added **kwargs usage standards (prohibited and allowed scenarios)
+  - Added dataclass design standards
+
 ### Architecture Improvements
 
 - Foundation laid for future extensions (e.g., DuckDB), adding new engines only requires:
   1. Create `pytuck/connectors/<db>_connector.py`
   2. Register in `CONNECTORS` registry
   3. Create corresponding backend
+  4. Define configuration options in `pytuck/common/options.py`
+
+### Testing
+
+- All existing tests pass
+- Verified all storage engines work properly under new options system
+- Verified data migration tools' strongly-typed options functionality
 
 ## [0.1.0] - 2026-01-10
 

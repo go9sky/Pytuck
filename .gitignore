@@ -4,8 +4,16 @@ __pycache__/
 *.pyc
 .vscode/
 .DS_Store
-tmp/
-*.json
+tmp
 *.egg-info/
 dist/
 build/
+
+# database files
+*.json
+*.xlsx
+*.csv
+*.zip
+*.db
+*.xml
+*.sqlite

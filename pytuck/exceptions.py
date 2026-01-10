@@ -59,3 +59,8 @@ class ColumnNotFoundError(PytuckException):
 class IndexError(PytuckException):
     """索引异常"""
     pass
+
+
+class MigrationError(PytuckException):
+    """数据迁移异常"""
+    pass

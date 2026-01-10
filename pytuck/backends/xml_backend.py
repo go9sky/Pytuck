@@ -13,6 +13,8 @@ from .base import StorageBackend
 from ..core.exceptions import SerializationError
 from .versions import get_format_version
 
+from ..common.options import XmlBackendOptions
+
 if TYPE_CHECKING:
     from ..core.storage import Table
     from lxml import etree
@@ -24,6 +26,16 @@ class XMLBackend(StorageBackend):
     ENGINE_NAME = 'xml'
     REQUIRED_DEPENDENCIES = ['lxml']
     FORMAT_VERSION = get_format_version('xml')
+
+    def __init__(self, file_path: str, options: XmlBackendOptions):
+        """
+        初始化 XML 后端
+
+        Args:
+            file_path: XML 文件路径
+            options: XML 后端配置选项
+        """
+        super().__init__(file_path, options)
 
     def save(self, tables: Dict[str, 'Table']) -> None:
         """保存所有表数据到XML文件"""

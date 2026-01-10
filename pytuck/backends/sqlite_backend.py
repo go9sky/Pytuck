@@ -14,6 +14,8 @@ from ..connectors.sqlite_connector import SQLiteConnector
 from ..core.exceptions import SerializationError
 from .versions import get_format_version
 
+from ..common.options import SqliteBackendOptions, SqliteConnectorOptions
+
 if TYPE_CHECKING:
     from ..core.storage import Table
 
@@ -29,10 +31,22 @@ class SQLiteBackend(StorageBackend):
     REQUIRED_DEPENDENCIES = []  # 内置 sqlite3
     FORMAT_VERSION = get_format_version('sqlite')
 
+    def __init__(self, file_path: str, options: SqliteBackendOptions):
+        """
+        初始化 SQLite 后端
+
+        Args:
+            file_path: SQLite 数据库文件路径
+            options: SQLite 后端配置选项
+        """
+        super().__init__(file_path, options)
+
     def save(self, tables: Dict[str, 'Table']) -> None:
         """保存所有表数据到SQLite数据库"""
         try:
-            connector = SQLiteConnector(self.file_path)
+            # 创建连接器，使用默认选项
+            connector_options = SqliteConnectorOptions()
+            connector = SQLiteConnector(self.file_path, connector_options)
             with connector:
                 # 创建元数据表
                 self._ensure_metadata_tables(connector)
@@ -62,7 +76,9 @@ class SQLiteBackend(StorageBackend):
             raise FileNotFoundError(f"SQLite database not found: {self.file_path}")
 
         try:
-            connector = SQLiteConnector(self.file_path)
+            # 创建连接器，使用默认选项
+            connector_options = SqliteConnectorOptions()
+            connector = SQLiteConnector(self.file_path, connector_options)
             with connector:
                 # 检查是否是 Pytuck 格式
                 if not connector.table_exists('_pytuck_tables'):
@@ -257,7 +273,9 @@ class SQLiteBackend(StorageBackend):
                 'modified': modified_time
             }
 
-            connector = SQLiteConnector(self.file_path)
+            # 创建连接器，使用默认选项
+            connector_options = SqliteConnectorOptions()
+            connector = SQLiteConnector(self.file_path, connector_options)
             with connector:
                 try:
                     cursor = connector.execute(

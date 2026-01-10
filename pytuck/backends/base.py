@@ -7,6 +7,8 @@ Pytuck 存储后端抽象基类
 from abc import ABC, abstractmethod
 from typing import Dict, Any, List, Optional, TYPE_CHECKING
 
+from ..common.options import BackendOptions
+
 if TYPE_CHECKING:
     from ..core.storage import Table
 
@@ -24,7 +26,7 @@ class StorageBackend(ABC):
     # 所需的外部依赖列表（用于检查可用性）
     REQUIRED_DEPENDENCIES: List[str] = []
 
-    def __init__(self, file_path: str, **kwargs: Any):
+    def __init__(self, file_path: str, options: BackendOptions):
         """
         初始化后端
 
@@ -36,10 +38,10 @@ class StorageBackend(ABC):
                 - sqlite: 单个 .sqlite 文件
                 - excel: 单个 .xlsx 文件
                 - xml: 单个 .xml 文件
-            **kwargs: 引擎特定参数
+            options: 强类型的后端配置选项对象
         """
         self.file_path = file_path
-        self.options = kwargs
+        self.options = options
 
     @abstractmethod
     def save(self, tables: Dict[str, 'Table']) -> None:

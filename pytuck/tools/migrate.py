@@ -10,6 +10,7 @@ from ..backends import get_backend
 from ..core.exceptions import MigrationError
 from ..core.storage import Table
 from ..core.orm import Column
+from ..common.options import BackendOptions, ConnectorOptions, get_default_backend_options, get_default_connector_options
 from .adapters import get_source_adapter, get_available_source_types
 
 
@@ -20,8 +21,8 @@ def migrate_engine(
     target_engine: str,
     *,
     overwrite: bool = False,
-    source_options: Optional[Dict[str, Any]] = None,
-    target_options: Optional[Dict[str, Any]] = None
+    source_options: Optional[BackendOptions] = None,
+    target_options: Optional[BackendOptions] = None
 ) -> Dict[str, Any]:
     """
     在不同存储引擎之间迁移数据
@@ -35,8 +36,8 @@ def migrate_engine(
         target_path: 目标数据文件路径
         target_engine: 目标引擎名称
         overwrite: 是否覆盖已存在的目标文件（默认 False）
-        source_options: 源引擎的额外选项
-        target_options: 目标引擎的额外选项
+        source_options: 源引擎的强类型配置选项
+        target_options: 目标引擎的强类型配置选项
 
     Returns:
         迁移统计信息字典:
@@ -73,12 +74,15 @@ def migrate_engine(
             overwrite=True
         )
     """
-    source_options = source_options or {}
-    target_options = target_options or {}
+    # 提供默认选项
+    if source_options is None:
+        source_options = get_default_backend_options(source_engine)
+    if target_options is None:
+        target_options = get_default_backend_options(target_engine)
 
     # 获取源后端
     try:
-        source_backend = get_backend(source_engine, source_path, **source_options)
+        source_backend = get_backend(source_engine, source_path, source_options)
     except ValueError as e:
         raise MigrationError(f"无法创建源引擎 '{source_engine}': {e}")
 
@@ -88,7 +92,7 @@ def migrate_engine(
 
     # 获取目标后端
     try:
-        target_backend = get_backend(target_engine, target_path, **target_options)
+        target_backend = get_backend(target_engine, target_path, target_options)
     except ValueError as e:
         raise MigrationError(f"无法创建目标引擎 '{target_engine}': {e}")
 
@@ -180,8 +184,8 @@ def import_from_database(
     exclude_tables: Optional[List[str]] = None,
     schema_only: bool = False,
     overwrite: bool = False,
-    source_options: Optional[Dict[str, Any]] = None,
-    target_options: Optional[Dict[str, Any]] = None
+    source_options: Optional[ConnectorOptions] = None,
+    target_options: Optional[BackendOptions] = None
 ) -> Dict[str, Any]:
     """
     从外部关系型数据库导入数据到 Pytuck 格式
@@ -199,8 +203,8 @@ def import_from_database(
         exclude_tables: 要排除的表名列表
         schema_only: 仅导入表结构，不导入数据
         overwrite: 是否覆盖已存在的目标文件
-        source_options: 源数据库连接选项
-        target_options: 目标引擎选项
+        source_options: 源数据库连接的强类型配置选项
+        target_options: 目标引擎的强类型配置选项
 
     Returns:
         导入统计信息字典:
@@ -253,8 +257,11 @@ def import_from_database(
     """
     import os
 
-    source_options = source_options or {}
-    target_options = target_options or {}
+    # 提供默认选项
+    if source_options is None:
+        source_options = get_default_connector_options(source_type)
+    if target_options is None:
+        target_options = get_default_backend_options(target_engine)
     primary_key_map = primary_key_map or {}
     exclude_tables = exclude_tables or []
 
@@ -264,7 +271,7 @@ def import_from_database(
 
     # 获取目标后端并检查是否已存在
     try:
-        target_backend = get_backend(target_engine, target_path, **target_options)
+        target_backend = get_backend(target_engine, target_path, target_options)
     except ValueError as e:
         raise MigrationError(f"无法创建目标引擎 '{target_engine}': {e}")
 
@@ -276,7 +283,7 @@ def import_from_database(
 
     # 获取源数据库适配器
     try:
-        adapter = get_source_adapter(source_type, source_path, **source_options)
+        adapter = get_source_adapter(source_type, source_path, source_options)
     except ValueError as e:
         raise MigrationError(str(e))
 

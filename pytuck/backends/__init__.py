@@ -4,8 +4,9 @@ Pytuck 后端注册器和工厂
 提供引擎注册、发现和实例化功能
 """
 
-from typing import Any, Dict, List, Type, Optional
+from typing import Any, Dict, List, Type, Optional, TYPE_CHECKING
 from .base import StorageBackend
+from ..common.options import BackendOptions
 
 
 class BackendRegistry:
@@ -149,14 +150,14 @@ class BackendRegistry:
             pass
 
 
-def get_backend(engine: str, file_path: str, **kwargs: Any) -> StorageBackend:
+def get_backend(engine: str, file_path: str, options: BackendOptions) -> StorageBackend:
     """
     获取后端实例（工厂函数）
 
     Args:
         engine: 引擎名称（'binary', 'json', 'csv', 'sqlite', 'excel', 'xml'）
         file_path: 文件路径
-        **kwargs: 引擎特定参数
+        options: 强类型的后端配置选项对象
 
     Returns:
         后端实例
@@ -165,9 +166,9 @@ def get_backend(engine: str, file_path: str, **kwargs: Any) -> StorageBackend:
         ValueError: 引擎不存在或不可用
 
     示例:
-        backend = get_backend('binary', 'data.db')
-        backend = get_backend('json', 'data.json', indent=2)
-        backend = get_backend('csv', 'data_dir', encoding='utf-8')
+        from pytuck.common.options import JsonBackendOptions
+        opts = JsonBackendOptions(indent=2)
+        backend = get_backend('json', 'data.json', opts)
     """
     backend_class = BackendRegistry.get(engine)
 
@@ -186,7 +187,7 @@ def get_backend(engine: str, file_path: str, **kwargs: Any) -> StorageBackend:
             f"Install with: pip install pytuck[{engine}]"
         )
 
-    return backend_class(file_path, **kwargs)
+    return backend_class(file_path, options)
 
 
 def print_available_engines():

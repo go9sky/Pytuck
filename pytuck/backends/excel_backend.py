@@ -13,6 +13,8 @@ from .base import StorageBackend
 from ..core.exceptions import SerializationError
 from .versions import get_format_version
 
+from ..common.options import ExcelBackendOptions
+
 if TYPE_CHECKING:
     from ..core.storage import Table
     from openpyxl import Workbook
@@ -24,6 +26,16 @@ class ExcelBackend(StorageBackend):
     ENGINE_NAME = 'excel'
     REQUIRED_DEPENDENCIES = ['openpyxl']
     FORMAT_VERSION = get_format_version('excel')
+
+    def __init__(self, file_path: str, options: ExcelBackendOptions):
+        """
+        初始化 Excel 后端
+
+        Args:
+            file_path: Excel 文件路径
+            options: Excel 后端配置选项
+        """
+        super().__init__(file_path, options)
 
     def save(self, tables: Dict[str, 'Table']) -> None:
         """保存所有表数据到Excel工作簿"""

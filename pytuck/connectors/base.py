@@ -7,6 +7,8 @@ Pytuck 数据库连接器抽象基类
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Tuple, Optional, Type
 
+from ..common.options import ConnectorOptions
+
 
 class DatabaseConnector(ABC):
     """
@@ -43,13 +45,13 @@ class DatabaseConnector(ABC):
     # SQL 类型到 Python 类型的映射
     SQL_TO_TYPE: Dict[str, Type] = {}
 
-    def __init__(self, db_path: str, **options: Any):
+    def __init__(self, db_path: str, options: ConnectorOptions):
         """
         初始化连接器
 
         Args:
             db_path: 数据库文件路径或连接字符串
-            **options: 额外的连接选项
+            options: 强类型的连接器配置选项
         """
         self.db_path = db_path
         self.options = options

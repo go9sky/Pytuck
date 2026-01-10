@@ -19,6 +19,8 @@ from ..core.orm import Column
 from .versions import get_format_version
 
 
+from ..common.options import BinaryBackendOptions
+
 class BinaryBackend(StorageBackend):
     """Binary format storage engine (default, no dependencies)"""
 
@@ -29,6 +31,16 @@ class BinaryBackend(StorageBackend):
     MAGIC_NUMBER = b'LTDB'
     FORMAT_VERSION = get_format_version('binary')
     FILE_HEADER_SIZE = 64
+
+    def __init__(self, file_path: str, options: BinaryBackendOptions):
+        """
+        初始化 Binary 后端
+
+        Args:
+            file_path: 二进制文件路径
+            options: Binary 后端配置选项
+        """
+        super().__init__(file_path, options)
 
     def save(self, tables: Dict[str, 'Table']) -> None:
         """保存所有表数据到二进制文件"""

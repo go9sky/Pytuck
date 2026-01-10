@@ -16,6 +16,8 @@ from .base import StorageBackend
 from ..core.exceptions import SerializationError
 from .versions import get_format_version
 
+from ..common.options import CsvBackendOptions
+
 if TYPE_CHECKING:
     from ..core.storage import Table
     from ..core.orm import Column
@@ -27,6 +29,16 @@ class CSVBackend(StorageBackend):
     ENGINE_NAME = 'csv'
     REQUIRED_DEPENDENCIES = []  # 标准库
     FORMAT_VERSION = get_format_version('csv')
+
+    def __init__(self, file_path: str, options: CsvBackendOptions):
+        """
+        初始化 CSV 后端
+
+        Args:
+            file_path: CSV ZIP 文件路径
+            options: CSV 后端配置选项
+        """
+        super().__init__(file_path, options)
 
     def save(self, tables: Dict[str, 'Table']) -> None:
         """保存所有表数据到ZIP压缩包"""
@@ -179,7 +191,7 @@ class CSVBackend(StorageBackend):
 
         # 加载 CSV 数据
         with zf.open(csv_file) as f:
-            text_stream = io.TextIOWrapper(f, encoding=self.options.get('encoding', 'utf-8'))
+            text_stream = io.TextIOWrapper(f, encoding=self.options.encoding)
             reader = csv.DictReader(text_stream)
 
             for row_data in reader:

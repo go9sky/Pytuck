@@ -12,6 +12,8 @@ from .base import StorageBackend
 from ..core.exceptions import SerializationError
 from .versions import get_format_version
 
+from ..common.options import JsonBackendOptions
+
 if TYPE_CHECKING:
     from ..core.storage import Table
     from ..core.orm import Column
@@ -23,6 +25,16 @@ class JSONBackend(StorageBackend):
     ENGINE_NAME = 'json'
     REQUIRED_DEPENDENCIES = []  # 标准库
     FORMAT_VERSION = get_format_version('json')
+
+    def __init__(self, file_path: str, options: JsonBackendOptions):
+        """
+        初始化 JSON 后端
+
+        Args:
+            file_path: JSON 文件路径
+            options: JSON 后端配置选项
+        """
+        super().__init__(file_path, options)
 
     def save(self, tables: Dict[str, 'Table']) -> None:
         """保存所有表数据到JSON文件"""
@@ -41,8 +53,9 @@ class JSONBackend(StorageBackend):
 
         try:
             with open(temp_path, 'w', encoding='utf-8') as f:
-                indent = self.options.get('indent', 2)
-                json.dump(data, f, indent=indent, ensure_ascii=False)
+                json.dump(data, f,
+                         indent=self.options.indent,
+                         ensure_ascii=self.options.ensure_ascii)
 
             # 原子性重命名
             if os.path.exists(self.file_path):

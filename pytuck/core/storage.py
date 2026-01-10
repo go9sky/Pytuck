@@ -8,6 +8,7 @@ import copy
 from typing import Any, Dict, List, Iterator, Tuple, Optional, Generator, TYPE_CHECKING
 from contextlib import contextmanager
 
+from ..common.options import BackendOptions
 from .orm import Column
 from .index import HashIndex
 from ..query import Condition
@@ -278,7 +279,7 @@ class Storage:
         in_memory: bool = False,
         engine: str = 'binary',  # 新增：引擎选择
         auto_flush: bool = False,  # 新增：自动刷新
-        **backend_options  # 新增：后端特定选项
+        backend_options: Optional[BackendOptions] = None  # 新增：强类型后端选项
     ):
         """
         初始化存储引擎
@@ -288,11 +289,7 @@ class Storage:
             in_memory: 是否纯内存模式
             engine: 后端引擎名称（'binary', 'json', 'csv', 'sqlite', 'excel', 'xml'）
             auto_flush: 是否自动刷新到磁盘
-            **backend_options: 传递给后端的额外选项
-                - binary: 无特殊选项
-                - json: indent=2 (美化输出)
-                - csv: encoding='utf-8'
-                - sqlite: check_same_thread=False
+            backend_options: 强类型的后端配置选项对象（JsonBackendOptions, CsvBackendOptions等）
         """
         self.file_path = file_path
         self.in_memory = in_memory or (file_path is None)
@@ -310,8 +307,13 @@ class Storage:
         # 初始化后端
         self.backend = None
         if not self.in_memory and file_path:
+            # 如果没有提供选项，使用默认选项
+            if backend_options is None:
+                from ..common.options import get_default_backend_options
+                backend_options = get_default_backend_options(engine)
+
             from ..backends import get_backend
-            self.backend = get_backend(engine, file_path, **backend_options)
+            self.backend = get_backend(engine, file_path, backend_options)
 
             # 如果文件存在，自动加载
             if self.backend.exists():

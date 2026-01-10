@@ -8,6 +8,7 @@ import sqlite3
 from typing import Any, Dict, List, Tuple, Optional, Type
 
 from .base import DatabaseConnector
+from ..common.options import SqliteConnectorOptions
 
 
 class SQLiteConnector(DatabaseConnector):
@@ -66,13 +67,31 @@ class SQLiteConnector(DatabaseConnector):
         'BOOL': bool,
     }
 
-    def __init__(self, db_path: str, **options: Any):
-        super().__init__(db_path, **options)
+    def __init__(self, db_path: str, options: SqliteConnectorOptions):
+        """
+        初始化 SQLite 连接器
+
+        Args:
+            db_path: SQLite 数据库文件路径
+            options: SQLite 连接器配置选项
+        """
+        super().__init__(db_path, options)
         self.conn: Optional[sqlite3.Connection] = None
 
     def connect(self) -> None:
         """连接到 SQLite 数据库"""
-        self.conn = sqlite3.connect(self.db_path)
+        # 构建连接参数，只包含非None的值
+        connect_kwargs = {
+            'check_same_thread': self.options.check_same_thread,
+        }
+
+        if self.options.timeout is not None:
+            connect_kwargs['timeout'] = self.options.timeout
+
+        if self.options.isolation_level is not None:
+            connect_kwargs['isolation_level'] = self.options.isolation_level
+
+        self.conn = sqlite3.connect(self.db_path, **connect_kwargs)
         self.conn.row_factory = sqlite3.Row
 
     def close(self) -> None:

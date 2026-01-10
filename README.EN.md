@@ -24,7 +24,9 @@ A lightweight, pure Python document database with multi-engine support. No SQL r
 - **SQLAlchemy 2.0 Style API** - Modern query builders (`select()`, `insert()`, `update()`, `delete()`)
 - **Pythonic Query Syntax** - Use native Python operators (`User.age >= 18`)
 - **Index Optimization** - Hash indexes for accelerated queries
-- **Type Safety** - Automatic type validation and conversion
+- **Type Safety** - Automatic type validation and conversion (loose/strict modes)
+- **Relationships** - Supports one-to-many and many-to-one with lazy loading + auto caching
+- **Independent Data Models** - Accessible after session close, usable like Pydantic
 - **Persistence** - Automatic or manual data persistence to disk
 
 ## Quick Start
@@ -454,6 +456,167 @@ adults = result.scalars().all()
 count = len(adults)
 ```
 
+## Data Model Features
+
+Pytuck's data models have unique characteristics that make them behave like both ORM and pure data containers.
+
+### Independent Data Objects
+
+Pytuck model instances are completely independent Python objects that are immediately materialized to memory after query:
+
+- ✅ **Accessible After Session Close**: No DetachedInstanceError
+- ✅ **Operable After Storage Close**: Loaded objects are completely independent
+- ✅ **No Lazy Loading**: All direct attributes are loaded immediately
+- ✅ **Serializable**: Supports JSON, Pickle, and other serialization formats
+- ✅ **Usable as Data Containers**: Use like Pydantic models
+
+```python
+from pytuck import Storage, declarative_base, Session, Column, select
+
+db = Storage(file_path='data.db')
+Base = declarative_base(db)
+
+class User(Base):
+    __tablename__ = 'users'
+    id = Column('id', int, primary_key=True)
+    name = Column('name', str)
+
+session = Session(db)
+stmt = select(User).where(User.id == 1)
+user = session.execute(stmt).scalars().first()
+
+# Close session and storage
+session.close()
+db.close()
+
+# Still accessible!
+print(user.name)  # ✅ Works
+print(user.to_dict())  # ✅ Works
+```
+
+**Comparison with SQLAlchemy**:
+
+| Feature | Pytuck | SQLAlchemy |
+|---------|--------|------------|
+| Access after Session close | ✅ Supported | ❌ DetachedInstanceError |
+| Lazy loading relationships | ✅ Supported (with cache) | ✅ Supported |
+| Model as pure data container | ✅ Yes | ❌ No (bound to session) |
+
+### Relationships
+
+Pytuck supports one-to-many and many-to-one relationships with lazy loading and caching:
+
+```python
+from pytuck.core.orm import Relationship
+
+# Define relationships
+class User(Base):
+    __tablename__ = 'users'
+    id = Column('id', int, primary_key=True)
+    name = Column('name', str)
+    # One-to-many: one user has many orders
+    orders = Relationship('Order', foreign_key='user_id')
+
+class Order(Base):
+    __tablename__ = 'orders'
+    id = Column('id', int, primary_key=True)
+    user_id = Column('user_id', int)
+    amount = Column('amount', float)
+    # Many-to-one: one order belongs to one user
+    user = Relationship(User, foreign_key='user_id')
+
+# Use relationships
+user = User.get(1)
+orders = user.orders  # Lazy loaded on first access
+for order in orders:
+    print(f"Order: {order.amount}")
+
+# Reverse access
+order = Order.get(1)
+user = order.user  # Many-to-one query
+print(f"User: {user.name}")
+```
+
+**Relationship Features**:
+
+- ✅ **Lazy Loading**: Queries database only on first access
+- ✅ **Auto Caching**: Caches results to avoid repeated queries
+- ✅ **Bidirectional**: Supports back_populates parameter
+- ✅ **After Storage Close**: Already loaded relationships remain accessible (uses cache)
+- ⚠️ **Requires Eager Loading**: Access once before storage close to trigger loading
+
+```python
+# Eager loading strategy
+user = User.get(1)
+orders = user.orders  # Access before storage close to load and cache
+
+db.close()
+
+# Still accessible after close (uses cache)
+for order in orders:
+    print(order.amount)  # ✅ Works
+```
+
+### Type Validation and Conversion
+
+Pytuck provides zero-dependency automatic type validation and conversion:
+
+```python
+class User(Base):
+    __tablename__ = 'users'
+    id = Column('id', int, primary_key=True)
+    age = Column('age', int)  # Declared as int
+
+# Loose mode (default): auto conversion
+user = User(age='25')  # ✅ Automatically converts '25' → 25
+
+# Strict mode: no conversion, raises error on type mismatch
+class StrictUser(Base):
+    __tablename__ = 'strict_users'
+    id = Column('id', int, primary_key=True)
+    age = Column('age', int, strict=True)  # Strict mode
+
+user = StrictUser(age='25')  # ❌ ValidationError
+```
+
+**Type Conversion Rules (Loose Mode)**:
+
+| Python Type | Conversion Rule | Example |
+|------------|----------------|---------|
+| int | int(value) | '123' → 123 |
+| float | float(value) | '3.14' → 3.14 |
+| str | str(value) | 123 → '123' |
+| bool | Special rules* | '1', 'true', 1 → True |
+| bytes | encode() if str | 'hello' → b'hello' |
+| None | Allowed if nullable=True | None → None |
+
+*bool conversion rules:
+- True: `True`, `1`, `'1'`, `'true'`, `'True'`, `'yes'`, `'Yes'`
+- False: `False`, `0`, `'0'`, `'false'`, `'False'`, `'no'`, `'No'`, `''`
+
+**Use Cases**:
+
+```python
+# Web API development: return directly after query, no connection concerns
+@app.get("/users/{id}")
+def get_user(id: int):
+    session = Session(db)
+    stmt = select(User).where(User.id == id)
+    user = session.execute(stmt).scalars().first()
+    session.close()
+
+    # Return model, no concern about closed session
+    return user.to_dict()
+
+# Data transfer: model objects can be passed freely between functions
+def process_users(users: List[User]) -> List[dict]:
+    return [u.to_dict() for u in users]
+
+# JSON serialization
+import json
+user_json = json.dumps(user.to_dict())
+```
+
 ## Performance Benchmark
 
 Here are benchmark results from different environments.
@@ -658,6 +821,8 @@ See the `examples/` directory for more examples:
 - `sqlalchemy20_api_demo.py` - Complete SQLAlchemy 2.0 style API example (recommended)
 - `all_engines_test.py` - All storage engine functionality tests
 - `transaction_demo.py` - Transaction management example
+- `type_validation_demo.py` - Type validation and conversion example
+- `data_model_demo.py` - Data model independence features example
 
 ## Contributing
 

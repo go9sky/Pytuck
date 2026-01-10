@@ -24,7 +24,9 @@
 - **SQLAlchemy 2.0 风格 API** - 现代化的查询构建器（`select()`, `insert()`, `update()`, `delete()`）
 - **Pythonic 查询语法** - 使用原生 Python 运算符构建查询（`User.age >= 18`）
 - **索引优化** - 哈希索引加速查询
-- **类型安全** - 自动类型验证和转换
+- **类型安全** - 自动类型验证和转换（宽松/严格模式）
+- **关联关系** - 支持一对多和多对一关联，延迟加载+自动缓存
+- **独立数据模型** - Session 关闭后仍可访问，像 Pydantic 一样使用
 - **持久化** - 数据自动或手动持久化到磁盘
 
 ## 快速开始
@@ -455,6 +457,167 @@ adults = result.scalars().all()
 count = len(adults)
 ```
 
+## 数据模型特性
+
+Pytuck 的数据模型具有独特的特性，使其既像 ORM 又像纯数据容器。
+
+### 独立的数据对象
+
+Pytuck 的模型实例是完全独立的 Python 对象，查询后立即物化到内存：
+
+- ✅ **Session 关闭后仍可访问**：无 DetachedInstanceError
+- ✅ **Storage 关闭后仍可操作**：已加载的对象完全独立
+- ✅ **无延迟加载**：所有直接属性立即加载
+- ✅ **可序列化**：支持 JSON、Pickle 等序列化
+- ✅ **可作为数据容器**：像 Pydantic 模型一样使用
+
+```python
+from pytuck import Storage, declarative_base, Session, Column, select
+
+db = Storage(file_path='data.db')
+Base = declarative_base(db)
+
+class User(Base):
+    __tablename__ = 'users'
+    id = Column('id', int, primary_key=True)
+    name = Column('name', str)
+
+session = Session(db)
+stmt = select(User).where(User.id == 1)
+user = session.execute(stmt).scalars().first()
+
+# 关闭 session 和 storage
+session.close()
+db.close()
+
+# 仍然可以访问！
+print(user.name)  # ✅ 正常工作
+print(user.to_dict())  # ✅ 正常工作
+```
+
+**对比 SQLAlchemy**：
+
+| 特性 | Pytuck | SQLAlchemy |
+|------|--------|------------|
+| Session 关闭后访问属性 | ✅ 支持 | ❌ DetachedInstanceError |
+| 关联对象延迟加载 | ✅ 支持（带缓存） | ✅ 支持 |
+| 模型作为纯数据容器 | ✅ 是 | ❌ 否（绑定 session） |
+
+### 关联关系（Relationship）
+
+Pytuck 支持一对多和多对一关联关系，具有延迟加载和缓存机制：
+
+```python
+from pytuck.core.orm import Relationship
+
+# 定义关联关系
+class User(Base):
+    __tablename__ = 'users'
+    id = Column('id', int, primary_key=True)
+    name = Column('name', str)
+    # 一对多：一个用户有多个订单
+    orders = Relationship('Order', foreign_key='user_id')
+
+class Order(Base):
+    __tablename__ = 'orders'
+    id = Column('id', int, primary_key=True)
+    user_id = Column('user_id', int)
+    amount = Column('amount', float)
+    # 多对一：一个订单属于一个用户
+    user = Relationship(User, foreign_key='user_id')
+
+# 使用关联
+user = User.get(1)
+orders = user.orders  # 延迟加载，首次访问时查询
+for order in orders:
+    print(f"Order: {order.amount}")
+
+# 反向访问
+order = Order.get(1)
+user = order.user  # 多对一查询
+print(f"User: {user.name}")
+```
+
+**Relationship 特性**：
+
+- ✅ **延迟加载**：首次访问时才查询数据库
+- ✅ **自动缓存**：加载后缓存结果，避免重复查询
+- ✅ **双向关联**：支持 back_populates 参数
+- ✅ **Storage 关闭后**：已加载的关联仍可访问（使用缓存）
+- ⚠️ **需要预加载**：Storage 关闭前访问一次以触发加载
+
+```python
+# 预加载策略
+user = User.get(1)
+orders = user.orders  # 在 storage 关闭前访问，触发加载并缓存
+
+db.close()
+
+# 关闭后仍可访问（使用缓存）
+for order in orders:
+    print(order.amount)  # ✅ 正常工作
+```
+
+### 类型验证与转换
+
+Pytuck 提供零依赖的自动类型验证和转换：
+
+```python
+class User(Base):
+    __tablename__ = 'users'
+    id = Column('id', int, primary_key=True)
+    age = Column('age', int)  # 声明为 int
+
+# 宽松模式（默认）：自动转换
+user = User(age='25')  # ✅ 自动转换 '25' → 25
+
+# 严格模式：不转换，类型错误抛出异常
+class StrictUser(Base):
+    __tablename__ = 'strict_users'
+    id = Column('id', int, primary_key=True)
+    age = Column('age', int, strict=True)  # 严格模式
+
+user = StrictUser(age='25')  # ❌ ValidationError
+```
+
+**类型转换规则（宽松模式）**：
+
+| Python 类型 | 转换规则 | 示例 |
+|------------|---------|------|
+| int | int(value) | '123' → 123 |
+| float | float(value) | '3.14' → 3.14 |
+| str | str(value) | 123 → '123' |
+| bool | 特殊规则* | '1', 'true', 1 → True |
+| bytes | encode() 如果是 str | 'hello' → b'hello' |
+| None | nullable=True 允许 | None → None |
+
+*bool 转换规则：
+- True: `True`, `1`, `'1'`, `'true'`, `'True'`, `'yes'`, `'Yes'`
+- False: `False`, `0`, `'0'`, `'false'`, `'False'`, `'no'`, `'No'`, `''`
+
+**使用场景**：
+
+```python
+# Web API 开发：查询后直接返回，无需担心连接
+@app.get("/users/{id}")
+def get_user(id: int):
+    session = Session(db)
+    stmt = select(User).where(User.id == id)
+    user = session.execute(stmt).scalars().first()
+    session.close()
+
+    # 返回模型，无需担心 session 已关闭
+    return user.to_dict()
+
+# 数据传递：模型对象可以在函数间自由传递
+def process_users(users: List[User]) -> List[dict]:
+    return [u.to_dict() for u in users]
+
+# JSON 序列化
+import json
+user_json = json.dumps(user.to_dict())
+```
+
 ## 性能基准测试
 
 以下是不同环境下的基准测试结果。
@@ -672,6 +835,8 @@ python -m twine upload --repository testpypi dist/*
 - `sqlalchemy20_api_demo.py` - SQLAlchemy 2.0 风格 API 完整示例（推荐）
 - `all_engines_test.py` - 所有存储引擎功能测试
 - `transaction_demo.py` - 事务管理示例
+- `type_validation_demo.py` - 类型验证和转换示例
+- `data_model_demo.py` - 数据模型独立性特性示例
 
 ## 贡献
 

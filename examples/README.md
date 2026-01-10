@@ -1,6 +1,6 @@
-# littleDB 示例代码
+# Pytuck 示例代码
 
-本目录包含 littleDB 的各种使用示例。
+本目录包含 Pytuck 的各种使用示例。
 
 ## 示例列表
 
@@ -21,7 +21,7 @@ python3 examples/new_api_demo.py
 ```
 
 **适合对象：**
-- 新用户学习 littleDB
+- 新用户学习 Pytuck
 - 从其他 ORM（如 SQLAlchemy）迁移过来的用户
 - 希望使用最佳实践的开发者
 
@@ -75,7 +75,7 @@ python3 examples/all_engines_test.py
 
 **示例：**
 ```python
-from littledb import Storage, declarative_base, Session, Column
+from pytuck import Storage, declarative_base, Session, Column
 
 db = Storage('mydb.db')
 Base = declarative_base(db)

@@ -67,7 +67,13 @@ class TransactionSnapshot:
 class Table:
     """表管理"""
 
-    def __init__(self, name: str, columns: List[Column], primary_key: str = 'id'):
+    def __init__(
+        self,
+        name: str,
+        columns: List[Column],
+        primary_key: str = 'id',
+        comment: Optional[str] = None
+    ):
         """
         初始化表
 
@@ -75,10 +81,12 @@ class Table:
             name: 表名
             columns: 列定义列表
             primary_key: 主键字段名
+            comment: 表备注/注释
         """
         self.name = name
         self.columns: Dict[str, Column] = {col.name: col for col in columns}
         self.primary_key = primary_key
+        self.comment = comment
         self.data: Dict[Any, Dict[str, Any]] = {}  # {pk: record}
         self.indexes: Dict[str, HashIndex] = {}  # {column_name: HashIndex}
         self.next_id = 1
@@ -310,13 +318,19 @@ class Storage:
                 self.tables = self.backend.load()
                 self._dirty = False
 
-    def create_table(self, name: str, columns: List[Column]) -> None:
+    def create_table(
+        self,
+        name: str,
+        columns: List[Column],
+        comment: Optional[str] = None
+    ) -> None:
         """
         创建表
 
         Args:
             name: 表名
             columns: 列定义列表
+            comment: 表备注/注释
 
         Raises:
             ValueError: 表已存在
@@ -332,7 +346,7 @@ class Storage:
                 primary_key = col.name
                 break
 
-        table = Table(name, columns, primary_key)
+        table = Table(name, columns, primary_key, comment)
         self.tables[name] = table
         self._dirty = True
 

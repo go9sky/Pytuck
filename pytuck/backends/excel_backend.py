@@ -11,6 +11,7 @@ from typing import Any, Dict, TYPE_CHECKING
 from datetime import datetime
 from .base import StorageBackend
 from ..exceptions import SerializationError
+from .versions import get_format_version
 
 if TYPE_CHECKING:
     from ..storage import Table
@@ -22,6 +23,7 @@ class ExcelBackend(StorageBackend):
 
     ENGINE_NAME = 'excel'
     REQUIRED_DEPENDENCIES = ['openpyxl']
+    FORMAT_VERSION = get_format_version('excel')
 
     def save(self, tables: Dict[str, 'Table']) -> None:
         """保存所有表数据到Excel工作簿"""
@@ -40,13 +42,13 @@ class ExcelBackend(StorageBackend):
             # 创建元数据工作表
             metadata_sheet = wb.create_sheet('_metadata', 0)
             metadata_sheet.append(['Key', 'Value'])
-            metadata_sheet.append(['version', '0.2.0'])
+            metadata_sheet.append(['format_version', self.FORMAT_VERSION])
             metadata_sheet.append(['timestamp', datetime.now().isoformat()])
             metadata_sheet.append(['table_count', len(tables)])
 
             # 创建统一的表结构工作表 _pytuck_tables
             tables_sheet = wb.create_sheet('_pytuck_tables', 1)
-            tables_sheet.append(['table_name', 'primary_key', 'next_id', 'columns'])
+            tables_sheet.append(['table_name', 'primary_key', 'next_id', 'comment', 'columns'])
             for table_name, table in tables.items():
                 columns_json = json.dumps([
                     {
@@ -54,11 +56,12 @@ class ExcelBackend(StorageBackend):
                         'type': col.col_type.__name__,
                         'nullable': col.nullable,
                         'primary_key': col.primary_key,
-                        'index': col.index
+                        'index': col.index,
+                        'comment': col.comment
                     }
                     for col in table.columns.values()
                 ])
-                tables_sheet.append([table_name, table.primary_key, table.next_id, columns_json])
+                tables_sheet.append([table_name, table.primary_key, table.next_id, table.comment or '', columns_json])
 
             # 为每个表创建数据工作表
             for table_name, table in tables.items():
@@ -100,7 +103,8 @@ class ExcelBackend(StorageBackend):
                         tables_schema[table_name] = {
                             'primary_key': row[1],
                             'next_id': int(row[2]) if row[2] else 1,
-                            'columns': json.loads(row[3]) if row[3] else []
+                            'comment': row[3] if row[3] else None,
+                            'columns': json.loads(row[4]) if row[4] else []
                         }
 
             # 获取所有数据表名（排除元数据表）
@@ -163,6 +167,7 @@ class ExcelBackend(StorageBackend):
 
         primary_key = schema.get('primary_key', 'id')
         next_id = schema.get('next_id', 1)
+        table_comment = schema.get('comment')
         columns_data = schema.get('columns', [])
 
         # 重建列
@@ -182,12 +187,13 @@ class ExcelBackend(StorageBackend):
                 col_type,
                 nullable=col_data['nullable'],
                 primary_key=col_data['primary_key'],
-                index=col_data.get('index', False)
+                index=col_data.get('index', False),
+                comment=col_data.get('comment')
             )
             columns.append(column)
 
         # 创建表
-        table = Table(table_name, columns, primary_key)
+        table = Table(table_name, columns, primary_key, comment=table_comment)
         table.next_id = next_id
 
         # 读取数据

@@ -16,6 +16,7 @@ from .base import StorageBackend
 from ..exceptions import SerializationError
 from ..types import TypeRegistry, TypeCode
 from ..orm import Column
+from .versions import get_format_version
 
 
 class BinaryBackend(StorageBackend):
@@ -26,7 +27,7 @@ class BinaryBackend(StorageBackend):
 
     # 文件格式常量
     MAGIC_NUMBER = b'LTDB'
-    VERSION = 2  # 版本升级：分离 schema 区和数据区
+    FORMAT_VERSION = get_format_version('binary')
     FILE_HEADER_SIZE = 64
 
     def save(self, tables: Dict[str, 'Table']) -> None:
@@ -111,7 +112,7 @@ class BinaryBackend(StorageBackend):
         header[0:4] = self.MAGIC_NUMBER
 
         # Version
-        struct.pack_into('<H', header, 4, self.VERSION)
+        struct.pack_into('<H', header, 4, self.FORMAT_VERSION)
 
         # Table Count
         struct.pack_into('<I', header, 6, table_count)
@@ -137,7 +138,7 @@ class BinaryBackend(StorageBackend):
 
         # 读取 Version
         version = struct.unpack('<H', header[4:6])[0]
-        if version != self.VERSION:
+        if version != self.FORMAT_VERSION:
             raise SerializationError(f"Unsupported version: {version}")
 
         # 读取 Table Count
@@ -154,6 +155,8 @@ class BinaryBackend(StorageBackend):
         - Table Name (UTF-8)
         - Primary Key Length (2 bytes)
         - Primary Key (UTF-8)
+        - Table Comment Length (2 bytes)
+        - Table Comment (UTF-8)
         - Column Count (2 bytes)
         - Next ID (8 bytes)
         - Columns Data
@@ -167,6 +170,12 @@ class BinaryBackend(StorageBackend):
         pk_bytes = table.primary_key.encode('utf-8')
         f.write(struct.pack('<H', len(pk_bytes)))
         f.write(pk_bytes)
+
+        # Table Comment
+        comment_bytes = (table.comment or '').encode('utf-8')
+        f.write(struct.pack('<H', len(comment_bytes)))
+        if comment_bytes:
+            f.write(comment_bytes)
 
         # Column Count
         f.write(struct.pack('<H', len(table.columns)))
@@ -188,6 +197,10 @@ class BinaryBackend(StorageBackend):
         pk_len = struct.unpack('<H', f.read(2))[0]
         primary_key = f.read(pk_len).decode('utf-8')
 
+        # Table Comment
+        comment_len = struct.unpack('<H', f.read(2))[0]
+        table_comment = f.read(comment_len).decode('utf-8') if comment_len > 0 else None
+
         # Column Count
         col_count = struct.unpack('<H', f.read(2))[0]
 
@@ -203,6 +216,7 @@ class BinaryBackend(StorageBackend):
         return {
             'table_name': table_name,
             'primary_key': primary_key,
+            'table_comment': table_comment,
             'next_id': next_id,
             'columns': columns
         }
@@ -227,7 +241,12 @@ class BinaryBackend(StorageBackend):
         from ..storage import Table
 
         # 创建 Table 对象
-        table = Table(schema['table_name'], schema['columns'], schema['primary_key'])
+        table = Table(
+            schema['table_name'],
+            schema['columns'],
+            schema['primary_key'],
+            comment=schema.get('table_comment')
+        )
         table.next_id = schema['next_id']
 
         # 构建 columns 字典用于记录读取
@@ -259,6 +278,8 @@ class BinaryBackend(StorageBackend):
         - Column Name (UTF-8)
         - Type Code (1 byte)
         - Flags (1 byte): nullable, primary_key, index
+        - Column Comment Length (2 bytes)
+        - Column Comment (UTF-8)
         """
         # Column Name
         col_name_bytes = column.name.encode('utf-8')
@@ -279,6 +300,12 @@ class BinaryBackend(StorageBackend):
             flags |= 0x04
         f.write(struct.pack('B', flags))
 
+        # Column Comment
+        comment_bytes = (column.comment or '').encode('utf-8')
+        f.write(struct.pack('<H', len(comment_bytes)))
+        if comment_bytes:
+            f.write(comment_bytes)
+
     def _read_column(self, f: BinaryIO) -> Column:
         """读取列定义"""
         from ..orm import Column
@@ -297,12 +324,17 @@ class BinaryBackend(StorageBackend):
         primary_key = bool(flags & 0x02)
         index = bool(flags & 0x04)
 
+        # Column Comment
+        comment_len = struct.unpack('<H', f.read(2))[0]
+        comment = f.read(comment_len).decode('utf-8') if comment_len > 0 else None
+
         return Column(
             col_name,
             col_type,
             nullable=nullable,
             primary_key=primary_key,
-            index=index
+            index=index,
+            comment=comment
         )
 
     def _write_record(self, f: BinaryIO, pk: Any, record: Dict[str, Any], columns: Dict[str, Column]) -> None:

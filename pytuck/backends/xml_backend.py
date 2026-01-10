@@ -11,6 +11,7 @@ from typing import Any, Dict, TYPE_CHECKING
 from datetime import datetime
 from .base import StorageBackend
 from ..exceptions import SerializationError
+from .versions import get_format_version
 
 if TYPE_CHECKING:
     from ..storage import Table
@@ -22,6 +23,7 @@ class XMLBackend(StorageBackend):
 
     ENGINE_NAME = 'xml'
     REQUIRED_DEPENDENCIES = ['lxml']
+    FORMAT_VERSION = get_format_version('xml')
 
     def save(self, tables: Dict[str, 'Table']) -> None:
         """保存所有表数据到XML文件"""
@@ -30,10 +32,11 @@ class XMLBackend(StorageBackend):
         except ImportError:
             raise SerializationError("lxml is required for XML backend. Install with: pip install pytuck[xml]")
 
+        temp_path = self.file_path + '.tmp'
         try:
             # 创建根元素
             root = etree.Element('database',
-                               version='0.1.0',
+                               format_version=str(self.FORMAT_VERSION),
                                timestamp=datetime.now().isoformat())
 
             # 为每个表创建 <table> 元素
@@ -100,15 +103,21 @@ class XMLBackend(StorageBackend):
                                       primary_key=table.primary_key,
                                       next_id=str(table.next_id))
 
+        # 表备注
+        if table.comment:
+            table_elem.set('comment', table.comment)
+
         # 列定义
         columns_elem = etree.SubElement(table_elem, 'columns')
         for col in table.columns.values():
-            etree.SubElement(columns_elem, 'column',
+            col_elem = etree.SubElement(columns_elem, 'column',
                            name=col.name,
                            type=col.col_type.__name__,
                            nullable=str(col.nullable).lower(),
                            primary_key=str(col.primary_key).lower(),
                            index=str(col.index).lower())
+            if col.comment:
+                col_elem.set('comment', col.comment)
 
         # 记录数据
         records_elem = etree.SubElement(table_elem, 'records')
@@ -140,6 +149,7 @@ class XMLBackend(StorageBackend):
         table_name = table_elem.get('name')
         primary_key = table_elem.get('primary_key')
         next_id = int(table_elem.get('next_id'))
+        table_comment = table_elem.get('comment')
 
         # 重建列
         columns = []
@@ -159,12 +169,13 @@ class XMLBackend(StorageBackend):
                 col_type,
                 nullable=(col_elem.get('nullable') == 'true'),
                 primary_key=(col_elem.get('primary_key') == 'true'),
-                index=(col_elem.get('index') == 'true')
+                index=(col_elem.get('index') == 'true'),
+                comment=col_elem.get('comment')
             )
             columns.append(column)
 
         # 创建表
-        table = Table(table_name, columns, primary_key)
+        table = Table(table_name, columns, primary_key, comment=table_comment)
         table.next_id = next_id
 
         # 加载记录

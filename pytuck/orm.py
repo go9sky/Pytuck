@@ -22,7 +22,7 @@ if TYPE_CHECKING:
 class Column:
     """列定义"""
     __slots__ = ['name', 'col_type', 'nullable', 'primary_key',
-                 'index', 'default', 'foreign_key', '_type_code',
+                 'index', 'default', 'foreign_key', 'comment', '_type_code',
                  '_attr_name', '_owner_class']
 
     def __init__(self,
@@ -32,7 +32,8 @@ class Column:
                  primary_key: bool = False,
                  index: bool = False,
                  default: Any = None,
-                 foreign_key: Optional[tuple] = None):
+                 foreign_key: Optional[tuple] = None,
+                 comment: Optional[str] = None):
         """
         初始化列定义
 
@@ -44,6 +45,7 @@ class Column:
             index: 是否建立索引
             default: 默认值
             foreign_key: 外键关系 (table_name, column_name)
+            comment: 列备注/注释
         """
         self.name = name
         self.col_type = col_type
@@ -52,6 +54,7 @@ class Column:
         self.index = index
         self.default = default
         self.foreign_key = foreign_key
+        self.comment = comment
 
         # 获取类型编码
         try:
@@ -70,6 +73,7 @@ class Column:
             'index': self.index,
             'default': self.default,
             'foreign_key': self.foreign_key,
+            'comment': self.comment,
         }
 
     def validate(self, value: Any) -> Any:
@@ -535,6 +539,7 @@ def _create_pure_base(storage: 'Storage') -> Type[PureBaseModel]:
         __abstract__ = True
         __storage__ = storage
         __tablename__: Optional[str] = None
+        __table_comment__: Optional[str] = None
         __columns__: Dict[str, Column] = {}
         __primary_key__: str = 'id'
         __relationships__: Dict[str, Relationship] = {}
@@ -570,7 +575,8 @@ def _create_pure_base(storage: 'Storage') -> Type[PureBaseModel]:
             if cls.__columns__:
                 try:
                     columns_list = list(cls.__columns__.values())
-                    storage.create_table(cls.__tablename__, columns_list)
+                    table_comment = getattr(cls, '__table_comment__', None)
+                    storage.create_table(cls.__tablename__, columns_list, table_comment)
                 except Exception:
                     # 表可能已存在，忽略
                     pass
@@ -613,6 +619,7 @@ def _create_crud_base(storage: 'Storage') -> Type[CRUDBaseModel]:
         __abstract__ = True
         __storage__ = storage
         __tablename__: Optional[str] = None
+        __table_comment__: Optional[str] = None
         __columns__: Dict[str, Column] = {}
         __primary_key__: str = 'id'
         __relationships__: Dict[str, Relationship] = {}
@@ -648,7 +655,8 @@ def _create_crud_base(storage: 'Storage') -> Type[CRUDBaseModel]:
             if cls.__columns__:
                 try:
                     columns_list = list(cls.__columns__.values())
-                    storage.create_table(cls.__tablename__, columns_list)
+                    table_comment = getattr(cls, '__table_comment__', None)
+                    storage.create_table(cls.__tablename__, columns_list, table_comment)
                 except Exception:
                     # 表可能已存在，忽略
                     pass

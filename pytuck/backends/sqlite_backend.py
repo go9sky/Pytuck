@@ -12,6 +12,7 @@ from datetime import datetime
 from .base import StorageBackend
 from ..connectors.sqlite_connector import SQLiteConnector
 from ..exceptions import SerializationError
+from .versions import get_format_version
 
 if TYPE_CHECKING:
     from ..storage import Table
@@ -26,6 +27,7 @@ class SQLiteBackend(StorageBackend):
 
     ENGINE_NAME = 'sqlite'
     REQUIRED_DEPENDENCIES = []  # 内置 sqlite3
+    FORMAT_VERSION = get_format_version('sqlite')
 
     def save(self, tables: Dict[str, 'Table']) -> None:
         """保存所有表数据到SQLite数据库"""
@@ -38,7 +40,7 @@ class SQLiteBackend(StorageBackend):
                 # 保存版本信息
                 connector.execute(
                     "INSERT OR REPLACE INTO _pytuck_metadata VALUES (?, ?)",
-                    ('version', '0.1.0')
+                    ('format_version', str(self.FORMAT_VERSION))
                 )
                 connector.execute(
                     "INSERT OR REPLACE INTO _pytuck_metadata VALUES (?, ?)",
@@ -71,14 +73,14 @@ class SQLiteBackend(StorageBackend):
 
                 # 读取所有表
                 cursor = connector.execute(
-                    'SELECT table_name, primary_key, next_id, columns FROM _pytuck_tables'
+                    'SELECT table_name, primary_key, next_id, comment, columns FROM _pytuck_tables'
                 )
                 table_rows = cursor.fetchall()
 
                 tables = {}
-                for table_name, primary_key, next_id, columns_json in table_rows:
+                for table_name, primary_key, next_id, table_comment, columns_json in table_rows:
                     table = self._load_table(
-                        connector, table_name, primary_key, next_id, columns_json
+                        connector, table_name, primary_key, next_id, table_comment, columns_json
                     )
                     tables[table_name] = table
 
@@ -112,6 +114,7 @@ class SQLiteBackend(StorageBackend):
                 table_name TEXT PRIMARY KEY,
                 primary_key TEXT,
                 next_id INTEGER,
+                comment TEXT,
                 columns TEXT
             )
         ''')
@@ -130,16 +133,17 @@ class SQLiteBackend(StorageBackend):
                 'type': col.col_type.__name__,
                 'nullable': col.nullable,
                 'primary_key': col.primary_key,
-                'index': col.index
+                'index': col.index,
+                'comment': col.comment
             }
             for col in table.columns.values()
         ])
 
         connector.execute('''
             INSERT OR REPLACE INTO _pytuck_tables
-            (table_name, primary_key, next_id, columns)
-            VALUES (?, ?, ?, ?)
-        ''', (table_name, table.primary_key, table.next_id, columns_json))
+            (table_name, primary_key, next_id, comment, columns)
+            VALUES (?, ?, ?, ?, ?)
+        ''', (table_name, table.primary_key, table.next_id, table.comment, columns_json))
 
         # 删除旧表（如果存在）
         connector.drop_table(table_name)
@@ -176,6 +180,7 @@ class SQLiteBackend(StorageBackend):
         table_name: str,
         primary_key: str,
         next_id: int,
+        table_comment: str,
         columns_json: str
     ) -> 'Table':
         """加载单个表"""
@@ -202,12 +207,13 @@ class SQLiteBackend(StorageBackend):
                 col_type,
                 nullable=col_data['nullable'],
                 primary_key=col_data['primary_key'],
-                index=col_data.get('index', False)
+                index=col_data.get('index', False),
+                comment=col_data.get('comment')
             )
             columns.append(column)
 
         # 创建表对象
-        table = Table(table_name, columns, primary_key)
+        table = Table(table_name, columns, primary_key, comment=table_comment)
         table.next_id = next_id
 
         # 加载数据

@@ -10,6 +10,7 @@ from typing import Any, Dict, TYPE_CHECKING
 from datetime import datetime
 from .base import StorageBackend
 from ..exceptions import SerializationError
+from .versions import get_format_version
 
 if TYPE_CHECKING:
     from ..storage import Table
@@ -21,11 +22,12 @@ class JSONBackend(StorageBackend):
 
     ENGINE_NAME = 'json'
     REQUIRED_DEPENDENCIES = []  # 标准库
+    FORMAT_VERSION = get_format_version('json')
 
     def save(self, tables: Dict[str, 'Table']) -> None:
         """保存所有表数据到JSON文件"""
         data = {
-            'version': '0.1.0',
+            'format_version': self.FORMAT_VERSION,
             'timestamp': datetime.now().isoformat(),
             'tables': {}
         }
@@ -85,6 +87,7 @@ class JSONBackend(StorageBackend):
         return {
             'primary_key': table.primary_key,
             'next_id': table.next_id,
+            'comment': table.comment,
             'columns': [
                 {
                     'name': col.name,
@@ -92,6 +95,7 @@ class JSONBackend(StorageBackend):
                     'nullable': col.nullable,
                     'primary_key': col.primary_key,
                     'index': col.index,
+                    'comment': col.comment,
                 }
                 for col in table.columns.values()
             ],
@@ -124,12 +128,18 @@ class JSONBackend(StorageBackend):
                 col_type,
                 nullable=col_data['nullable'],
                 primary_key=col_data['primary_key'],
-                index=col_data.get('index', False)
+                index=col_data.get('index', False),
+                comment=col_data.get('comment')
             )
             columns.append(column)
 
         # 创建表
-        table = Table(table_name, columns, table_data['primary_key'])
+        table = Table(
+            table_name,
+            columns,
+            table_data['primary_key'],
+            comment=table_data.get('comment')
+        )
         table.next_id = table_data['next_id']
 
         # 加载记录

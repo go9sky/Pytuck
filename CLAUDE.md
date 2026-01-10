@@ -7,7 +7,7 @@ Pytuck 是一个纯 Python 实现的轻量级文档数据库，支持多种存�
 ## 目录结构
 
 ```
-littleDB/
+pytuck/
 ├── pytuck/                   # 核心库
 │   ├── __init__.py          # 公开 API 导出
 │   ├── orm.py               # ORM 核心：Column, PureBaseModel, CRUDBaseModel, declarative_base
@@ -28,9 +28,14 @@ littleDB/
 │   │   ├── sqlite_backend.py # SQLite 引擎
 │   │   ├── excel_backend.py # Excel 引擎
 │   │   └── xml_backend.py   # XML 引擎
-│   └── tools/               # 工具模块
+│   ├── connectors/          # 数据库连接器（统一接口）
+│   │   ├── __init__.py      # 连接器导出
+│   │   ├── base.py          # DatabaseConnector 抽象基类
+│   │   └── sqlite_connector.py # SQLite 连接器
+│   └── tools/               # 工具模块（不从根包导出）
 │       ├── __init__.py      # 工具导出
-│       └── migrate.py       # 数据迁移工具
+│       ├── migrate.py       # 数据迁移工具
+│       └── adapters.py      # 数据库适配器（connectors 的薄包装）
 ├── examples/                 # 示例代码
 │   ├── new_api_demo.py      # 纯模型模式示例（PureBaseModel + Session）
 │   ├── active_record_demo.py # Active Record 模式示例（CRUDBaseModel）
@@ -87,6 +92,53 @@ Base: Type[CRUDBaseModel] = declarative_base(db, crud=True)
 | `BinaryExpression` | query.py | 查询表达式 |
 | `select/insert/update/delete` | statements.py | SQL 风格语句 |
 | `Result` | result.py | 查询结果 |
+| `DatabaseConnector` | connectors/base.py | 数据库连接器抽象基类 |
+| `SQLiteConnector` | connectors/sqlite_connector.py | SQLite 连接器 |
+| `migrate_engine` | tools/migrate.py | Pytuck 格式间数据迁移 |
+| `import_from_database` | tools/migrate.py | 从外部数据库导入 |
+
+## 数据持久化
+
+Pytuck 的数据持久化机制需要特别注意：
+
+### 持久化时机
+
+```python
+# 默认模式：auto_flush=False
+db = Storage(file_path='data.db')
+
+session.execute(insert(User).values(name='Alice'))
+session.commit()  # 只提交到 Storage 内存，不写入磁盘！
+
+# 必须手动写入磁盘
+db.flush()  # 方式1：显式刷新
+# 或
+db.close()  # 方式2：关闭时自动刷新
+```
+
+### 自动持久化
+
+```python
+# 自动模式：每次 commit 后自动写入磁盘
+db = Storage(file_path='data.db', auto_flush=True)
+
+session.commit()  # 自动写入磁盘
+```
+
+### 方法说明
+
+| 方法 | 说明 |
+|------|------|
+| `session.flush()` | 将 Session 待处理对象刷新到 Storage 内存 |
+| `session.commit()` | 调用 flush()；若 `auto_flush=True` 则同时写入磁盘 |
+| `storage.flush()` | 强制将内存数据写入磁盘（当 `_dirty=True` 时） |
+| `storage.close()` | 关闭数据库，自动调用 `flush()` |
+
+### 注意事项
+
+- **默认不自动写入磁盘**：`commit()` 只是提交到内存，需要 `flush()` 或 `close()` 才写入磁盘
+- **生产环境建议**：使用 `auto_flush=True` 确保数据安全
+- **批量操作优化**：大量操作时使用默认模式，最后统一 `flush()`
 
 ## 开发约定
 
@@ -146,6 +198,37 @@ def create(cls: Type[T], **kwargs: Any) -> T:
 ### 示例代码
 - 新示例应使用新 API（declarative_base + Session 或 crud=True）
 - 示例文件命名：`<功能>_demo.py`
+
+### 文档更新规范（强制）
+
+当更新 README.md 或 CHANGELOG.md 时，**必须同步更新对应的英文文档**：
+
+| 中文文档 | 英文文档 |
+|----------|----------|
+| `README.md` | `README.EN.md` |
+| `CHANGELOG.md` | `CHANGELOG.EN.md` |
+
+**规则**：
+- 任何添加到中文文档的内容，必须同时添加到英文文档
+- 保持两个文档的结构和章节对应一致
+- 代码示例可以保持一致（代码本身是英文）
+
+### CHANGELOG 日期规范（强制）
+
+在创建或更新 CHANGELOG 条目时，**必须先获取当前日期**再写入：
+
+```bash
+# Windows PowerShell
+powershell -Command "Get-Date -Format 'yyyy-MM-dd'"
+
+# Linux/macOS
+date +%Y-%m-%d
+```
+
+**规则**：
+- 版本条目格式：`## [版本号] - YYYY-MM-DD`
+- 日期必须是实际创建/发布日期，不能使用占位符或猜测日期
+- 创建新版本条目前，必须先执行日期获取命令确认当前日期
 
 ## 常用命令
 

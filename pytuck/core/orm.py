@@ -23,7 +23,7 @@ class Column:
     """列定义"""
     __slots__ = ['name', 'col_type', 'nullable', 'primary_key',
                  'index', 'default', 'foreign_key', 'comment', '_type_code',
-                 '_attr_name', '_owner_class']
+                 '_attr_name', '_owner_class', 'strict']
 
     def __init__(self,
                  name: str,
@@ -33,7 +33,8 @@ class Column:
                  index: bool = False,
                  default: Any = None,
                  foreign_key: Optional[tuple] = None,
-                 comment: Optional[str] = None):
+                 comment: Optional[str] = None,
+                 strict: bool = False):
         """
         初始化列定义
 
@@ -46,6 +47,7 @@ class Column:
             default: 默认值
             foreign_key: 外键关系 (table_name, column_name)
             comment: 列备注/注释
+            strict: 是否严格模式（不进行类型转换）
         """
         self.name = name
         self.col_type = col_type
@@ -55,6 +57,7 @@ class Column:
         self.default = default
         self.foreign_key = foreign_key
         self.comment = comment
+        self.strict = strict
 
         # 获取类型编码
         try:
@@ -78,16 +81,16 @@ class Column:
 
     def validate(self, value: Any) -> Any:
         """
-        验证并处理值
+        验证并转换值
 
         Args:
-            value: 要验证的值
+            value: 待验证的值
 
         Returns:
-            处理后的值
+            验证/转换后的值
 
         Raises:
-            ValidationError: 验证失败
+            ValidationError: 类型不匹配且无法转换
         """
         # 处理None值
         if value is None:
@@ -95,22 +98,82 @@ class Column:
                 raise ValidationError(f"Column '{self.name}' cannot be null")
             return None
 
-        # 类型检查（bool要放在int前面，因为bool是int的子类）
-        if self.col_type == bool:
-            if not isinstance(value, bool):
+        # 特殊处理：int 列拒绝 bool（bool 是 int 的子类）
+        if self.col_type == int and isinstance(value, bool):
+            if self.strict:
                 raise ValidationError(
-                    f"Column '{self.name}' expects type {self.col_type.__name__}, got {type(value).__name__}"
+                    f"Column '{self.name}' expects type int, got bool (strict mode)"
                 )
-        elif not isinstance(value, self.col_type):
-            # 尝试类型转换
-            try:
-                value = self.col_type(value)
-            except (ValueError, TypeError):
+            else:
                 raise ValidationError(
-                    f"Column '{self.name}' expects type {self.col_type.__name__}, got {type(value).__name__}"
+                    f"Column '{self.name}' expects type int, got bool"
                 )
 
-        return value
+        # 如果已经是正确类型，直接返回
+        if isinstance(value, self.col_type):
+            return value
+
+        # 严格模式：不进行类型转换
+        if self.strict:
+            raise ValidationError(
+                f"Column '{self.name}' expects type {self.col_type.__name__}, "
+                f"got {type(value).__name__} (strict mode)"
+            )
+
+        # 宽松模式：尝试类型转换
+        try:
+            if self.col_type == bool:
+                # 布尔类型特殊处理
+                return self._convert_to_bool(value)
+            elif self.col_type == bytes:
+                # bytes 类型特殊处理
+                return self._convert_to_bytes(value)
+            elif self.col_type == int:
+                # int 类型转换
+                return int(value)
+            elif self.col_type == float:
+                return float(value)
+            elif self.col_type == str:
+                return str(value)
+            else:
+                # 其他类型：尝试直接转换
+                return self.col_type(value)
+        except (ValueError, TypeError) as e:
+            raise ValidationError(
+                f"Column '{self.name}' cannot convert {type(value).__name__} "
+                f"to {self.col_type.__name__}: {e}"
+            )
+
+    def _convert_to_bool(self, value: Any) -> bool:
+        """
+        转换为布尔值
+
+        True: True, 1, '1', 'true', 'True', 'yes', 'Yes'
+        False: False, 0, '0', 'false', 'False', 'no', 'No', ''
+        """
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, int):
+            return value != 0
+        if isinstance(value, str):
+            lower_val = value.lower()
+            if lower_val in ('1', 'true', 'yes'):
+                return True
+            elif lower_val in ('0', 'false', 'no', ''):
+                return False
+            else:
+                raise ValueError(f"Cannot convert '{value}' to bool")
+        raise ValueError(f"Cannot convert {type(value).__name__} to bool")
+
+    def _convert_to_bytes(self, value: Any) -> bytes:
+        """转换为字节类型"""
+        if isinstance(value, bytes):
+            return value
+        if isinstance(value, str):
+            return value.encode('utf-8')
+        if isinstance(value, (bytearray, memoryview)):
+            return bytes(value)
+        raise ValueError(f"Cannot convert {type(value).__name__} to bytes")
 
     def __repr__(self) -> str:
         return f"Column(name='{self.name}', type={self.col_type.__name__}, pk={self.primary_key})"

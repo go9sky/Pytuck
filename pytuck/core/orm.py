@@ -284,6 +284,10 @@ class PureBaseModel:
     __primary_key__: str = 'id'
     __relationships__: Dict[str, 'Relationship'] = {}
 
+    def __init__(self, **kwargs: Any):
+        """初始化模型实例"""
+        raise NotImplementedError("This method should be overridden by declarative_base")
+
     def to_dict(self) -> Dict[str, Any]:
         """转换为字典"""
         data = {}

@@ -7,14 +7,11 @@ Session - 会话管理器
 from typing import Any, Dict, List, Optional, Type, Tuple, TYPE_CHECKING, Union, Generator
 from contextlib import contextmanager
 
-
-# if TYPE_CHECKING:
+from ..query.builder import Query
 from ..query.result import Result, CursorResult
 from ..query.statements import Statement, Insert, Select, Update, Delete
 from .storage import Storage
 from .orm import PureBaseModel
-
-from ..query.builder import Query
 
 
 class Session:
@@ -49,7 +46,7 @@ class Session:
             session.add(User(name='Charlie'))
     """
 
-    def __init__(self, storage: 'Storage', autocommit: bool = False):
+    def __init__(self, storage: Storage, autocommit: bool = False):
         """
         初始化 Session
 
@@ -61,17 +58,17 @@ class Session:
         self.autocommit = autocommit
 
         # 对象状态追踪
-        self._new_objects: List['PureBaseModel'] = []      # 待插入对象
-        self._dirty_objects: List['PureBaseModel'] = []    # 待更新对象
-        self._deleted_objects: List['PureBaseModel'] = []  # 待删除对象
+        self._new_objects: List[PureBaseModel] = []      # 待插入对象
+        self._dirty_objects: List[PureBaseModel] = []    # 待更新对象
+        self._deleted_objects: List[PureBaseModel] = []  # 待删除对象
 
         # 标识映射：缓存已加载的对象 {(model_class, pk): instance}
-        self._identity_map: Dict[Tuple[Type['PureBaseModel'], Any], 'PureBaseModel'] = {}
+        self._identity_map: Dict[Tuple[Type[PureBaseModel], Any], PureBaseModel] = {}
 
         # 事务状态
         self._in_transaction = False
 
-    def add(self, instance: 'PureBaseModel') -> None:
+    def add(self, instance: PureBaseModel) -> None:
         """
         添加对象到会话（标记为待插入）
 
@@ -84,7 +81,7 @@ class Session:
         if self.autocommit:
             self.commit()
 
-    def add_all(self, instances: List['PureBaseModel']) -> None:
+    def add_all(self, instances: List[PureBaseModel]) -> None:
         """
         批量添加对象到会话
 
@@ -94,7 +91,7 @@ class Session:
         for instance in instances:
             self.add(instance)
 
-    def delete(self, instance: 'PureBaseModel') -> None:
+    def delete(self, instance: PureBaseModel) -> None:
         """
         标记对象为待删除
 
@@ -191,7 +188,7 @@ class Session:
         self._deleted_objects.clear()
         self._identity_map.clear()
 
-    def get(self, model_class: Type['PureBaseModel'], pk: Any) -> Optional['PureBaseModel']:
+    def get(self, model_class: Type[PureBaseModel], pk: Any) -> Optional[PureBaseModel]:
         """
         通过主键获取对象
 
@@ -222,7 +219,7 @@ class Session:
         except Exception:
             return None
 
-    def execute(self, statement: 'Statement') -> Union['Result', 'CursorResult']:
+    def execute(self, statement: Statement) -> Union[Result, CursorResult]:
         """
         执行 statement（SQLAlchemy 2.0 风格）
 
@@ -268,7 +265,7 @@ class Session:
         else:
             raise TypeError(f"Unsupported statement type: {type(statement)}")
 
-    def query(self, model_class: Type['PureBaseModel']) -> Query:
+    def query(self, model_class: Type[PureBaseModel]) -> Query:
         """
         创建查询构建器（SQLAlchemy 1.4 风格，不推荐）
 

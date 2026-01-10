@@ -1,0 +1,89 @@
+[build-system]
+requires = ["setuptools>=45", "wheel", "setuptools-scm[toml]>=6.2"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pytuck"
+version = "0.1.0"
+description = "Lightweight Python document database - No SQL, multi-engine, pluggable persistence"
+readme = "README.md"
+license = {text = "MIT"}
+authors = [
+    {name = "go9sky"}
+]
+maintainers = [
+    {name = "go9sky"}
+]
+keywords = [
+    "database",
+    "orm",
+    "nosql",
+    "document-database",
+    "python",
+    "lightweight",
+    "pytuck",
+    "embedded-database",
+    "key-value-store"
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Topic :: Database",
+    "Topic :: Database :: Database Engines/Servers",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.7",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Typing :: Typed",
+]
+requires-python = ">=3.7"
+dependencies = []
+
+[project.optional-dependencies]
+json = []
+csv = []
+sqlite = []
+excel = ["openpyxl>=3.0.0"]
+xml = ["lxml>=4.9.0"]
+all = ["openpyxl>=3.0.0", "lxml>=4.9.0"]
+dev = [
+    "mypy>=0.950",
+    "build>=0.7.0",
+    "twine>=4.0.0",
+]
+full = [
+    "openpyxl>=3.0.0",
+    "lxml>=4.9.0",
+    "mypy>=0.950",
+]
+
+[project.urls]
+Homepage = "https://github.com/go9sky/pytuck"
+Documentation = "https://github.com/go9sky/pytuck#readme"
+Repository = "https://github.com/go9sky/pytuck.git"
+Issues = "https://github.com/go9sky/pytuck/issues"
+Changelog = "https://github.com/go9sky/pytuck/blob/main/CHANGELOG.md"
+
+[tool.setuptools]
+packages = ["pytuck", "pytuck.backends"]
+include-package-data = true
+
+[tool.setuptools.package-data]
+pytuck = ["py.typed"]
+
+[tool.black]
+line-length = 100
+target-version = ['py37', 'py38', 'py39', 'py310', 'py311', 'py312']
+
+[tool.mypy]
+python_version = "3.7"
+warn_return_any = true
+warn_unused_configs = true
+ignore_missing_imports = true

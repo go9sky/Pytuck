@@ -4,9 +4,10 @@ Session - 会话管理器
 提供类似 SQLAlchemy 的 Session 模式，统一管理数据库操作。
 """
 
-from typing import Any, Dict, List, Optional, Type, Tuple, TYPE_CHECKING, Union, Generator
+from typing import Any, Dict, List, Optional, Type, Tuple, TYPE_CHECKING, Union, Generator, overload
 from contextlib import contextmanager
 
+from ..common.types import T
 from ..query.builder import Query
 from ..query.result import Result, CursorResult
 from ..query.statements import Statement, Insert, Select, Update, Delete
@@ -188,7 +189,7 @@ class Session:
         self._deleted_objects.clear()
         self._identity_map.clear()
 
-    def get(self, model_class: Type[PureBaseModel], pk: Any) -> Optional[PureBaseModel]:
+    def get(self, model_class: Type[T], pk: Any) -> Optional[T]:
         """
         通过主键获取对象
 
@@ -218,6 +219,20 @@ class Session:
             return instance
         except Exception:
             return None
+
+    # ==================== 语句执行（带类型重载） ====================
+
+    @overload
+    def execute(self, statement: Select[T]) -> Result[T]: ...
+
+    @overload
+    def execute(self, statement: Insert[T]) -> CursorResult[T]: ...
+
+    @overload
+    def execute(self, statement: Update[T]) -> CursorResult[T]: ...
+
+    @overload
+    def execute(self, statement: Delete[T]) -> CursorResult[T]: ...
 
     def execute(self, statement: Statement) -> Union[Result, CursorResult]:
         """
@@ -265,7 +280,7 @@ class Session:
         else:
             raise TypeError(f"Unsupported statement type: {type(statement)}")
 
-    def query(self, model_class: Type[PureBaseModel]) -> Query:
+    def query(self, model_class: Type[T]) -> Query[T]:
         """
         创建查询构建器（SQLAlchemy 1.4 风格，不推荐）
 

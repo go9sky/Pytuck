@@ -4,7 +4,9 @@ Pytuck 查询构建器
 提供链式查询API
 """
 
-from typing import Any, List, Optional, Type, TYPE_CHECKING, Union
+from typing import Any, List, Optional, Type, Generic, TYPE_CHECKING, Union
+
+from ..common.types import T
 
 if TYPE_CHECKING:
     from ..core.orm import PureBaseModel, Column
@@ -92,10 +94,10 @@ class BinaryExpression:
         return f"BinaryExpression({self.column.name} {self.operator} {self.value})"
 
 
-class Query:
+class Query(Generic[T]):
     """查询构建器（支持链式调用）"""
 
-    def __init__(self, model_class: Type['PureBaseModel'], storage: Optional['Storage'] = None):
+    def __init__(self, model_class: Type[T], storage: Optional['Storage'] = None) -> None:
         """
         初始化查询构建器
 
@@ -111,7 +113,7 @@ class Query:
         self._limit_value: Optional[int] = None
         self._offset_value: int = 0
 
-    def filter(self, *expressions: BinaryExpression) -> 'Query':
+    def filter(self, *expressions: BinaryExpression) -> 'Query[T]':
         """
         添加过滤条件（只支持表达式语法）
 
@@ -147,7 +149,7 @@ class Query:
 
         return self
 
-    def filter_by(self, **kwargs) -> 'Query':
+    def filter_by(self, **kwargs) -> 'Query[T]':
         """
         添加过滤条件（简单等值查询，SQLAlchemy 风格）
 
@@ -172,7 +174,7 @@ class Query:
             self._conditions.append(condition)
         return self
 
-    def order_by(self, field: str, desc: bool = False) -> 'Query':
+    def order_by(self, field: str, desc: bool = False) -> 'Query[T]':
         """
         排序
 
@@ -187,7 +189,7 @@ class Query:
         self._order_desc = desc
         return self
 
-    def limit(self, n: int) -> 'Query':
+    def limit(self, n: int) -> 'Query[T]':
         """
         限制返回数量
 
@@ -200,7 +202,7 @@ class Query:
         self._limit_value = n
         return self
 
-    def offset(self, n: int) -> 'Query':
+    def offset(self, n: int) -> 'Query[T]':
         """
         偏移
 
@@ -213,7 +215,7 @@ class Query:
         self._offset_value = n
         return self
 
-    def first(self) -> Optional['PureBaseModel']:
+    def first(self) -> Optional[T]:
         """
         返回第一条记录
 
@@ -229,7 +231,7 @@ class Query:
 
         return results[0] if results else None
 
-    def all(self) -> List['PureBaseModel']:
+    def all(self) -> List[T]:
         """
         执行查询并返回所有结果
 

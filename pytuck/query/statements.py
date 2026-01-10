@@ -4,8 +4,10 @@ SQLAlchemy 2.0 风格的 Statement API
 提供 select, insert, update, delete 语句构建器
 """
 
-from typing import Any, Dict, List, Optional, Type, TYPE_CHECKING, Union
+from typing import Any, Dict, List, Optional, Type, Generic, TYPE_CHECKING, Union
 from abc import ABC, abstractmethod
+
+from ..common.types import T
 
 if TYPE_CHECKING:
     from ..core.orm import PureBaseModel, Column
@@ -13,7 +15,7 @@ if TYPE_CHECKING:
     from ..core.storage import Storage
 
 
-class Statement(ABC):
+class Statement(Generic[T], ABC):
     """
     Statement abstract base class.
 
@@ -24,7 +26,7 @@ class Statement(ABC):
         model_class: The model class this statement operates on
     """
 
-    def __init__(self, model_class: Type['PureBaseModel']):
+    def __init__(self, model_class: Type[T]) -> None:
         self.model_class = model_class
 
     @abstractmethod
@@ -33,7 +35,7 @@ class Statement(ABC):
         pass
 
 
-class Select(Statement):
+class Select(Statement[T]):
     """
     SELECT statement builder for querying records.
 
@@ -54,7 +56,7 @@ class Select(Statement):
         _offset_value: Number of records to skip
     """
 
-    def __init__(self, model_class: Type['PureBaseModel']):
+    def __init__(self, model_class: Type[T]) -> None:
         super().__init__(model_class)
         self._where_clauses: List['BinaryExpression'] = []
         self._order_by_field: Optional[str] = None
@@ -62,12 +64,12 @@ class Select(Statement):
         self._limit_value: Optional[int] = None
         self._offset_value: int = 0
 
-    def where(self, *expressions: 'BinaryExpression') -> 'Select':
+    def where(self, *expressions: 'BinaryExpression') -> 'Select[T]':
         """添加 WHERE 条件（表达式语法）"""
         self._where_clauses.extend(expressions)
         return self
 
-    def filter_by(self, **kwargs: Any) -> 'Select':
+    def filter_by(self, **kwargs: Any) -> 'Select[T]':
         """
         添加 WHERE 条件（简单等值查询，SQLAlchemy 风格）
 
@@ -101,18 +103,18 @@ class Select(Statement):
 
         return self
 
-    def order_by(self, field: str, desc: bool = False) -> 'Select':
+    def order_by(self, field: str, desc: bool = False) -> 'Select[T]':
         """排序"""
         self._order_by_field = field
         self._order_desc = desc
         return self
 
-    def limit(self, n: int) -> 'Select':
+    def limit(self, n: int) -> 'Select[T]':
         """限制返回数量"""
         self._limit_value = n
         return self
 
-    def offset(self, n: int) -> 'Select':
+    def offset(self, n: int) -> 'Select[T]':
         """偏移"""
         self._offset_value = n
         return self
@@ -144,7 +146,7 @@ class Select(Statement):
         return records
 
 
-class Insert(Statement):
+class Insert(Statement[T]):
     """
     INSERT statement builder for creating new records.
 
@@ -158,11 +160,11 @@ class Insert(Statement):
         _values: Dictionary of column names to values
     """
 
-    def __init__(self, model_class: Type['PureBaseModel']):
+    def __init__(self, model_class: Type[T]) -> None:
         super().__init__(model_class)
         self._values: Dict[str, Any] = {}
 
-    def values(self, **kwargs: Any) -> 'Insert':
+    def values(self, **kwargs: Any) -> 'Insert[T]':
         """设置要插入的值"""
         self._values.update(kwargs)
         return self
@@ -184,7 +186,7 @@ class Insert(Statement):
         return pk
 
 
-class Update(Statement):
+class Update(Statement[T]):
     """
     UPDATE statement builder for modifying existing records.
 
@@ -199,17 +201,17 @@ class Update(Statement):
         _values: Dictionary of column names to new values
     """
 
-    def __init__(self, model_class: Type['PureBaseModel']):
+    def __init__(self, model_class: Type[T]) -> None:
         super().__init__(model_class)
         self._where_clauses: List['BinaryExpression'] = []
         self._values: Dict[str, Any] = {}
 
-    def where(self, *expressions: 'BinaryExpression') -> 'Update':
+    def where(self, *expressions: 'BinaryExpression') -> 'Update[T]':
         """添加 WHERE 条件"""
         self._where_clauses.extend(expressions)
         return self
 
-    def values(self, **kwargs: Any) -> 'Update':
+    def values(self, **kwargs: Any) -> 'Update[T]':
         """设置要更新的值"""
         self._values.update(kwargs)
         return self
@@ -242,7 +244,7 @@ class Update(Statement):
         return count
 
 
-class Delete(Statement):
+class Delete(Statement[T]):
     """
     DELETE statement builder for removing records.
 
@@ -256,11 +258,11 @@ class Delete(Statement):
         _where_clauses: List of conditions to match records for deletion
     """
 
-    def __init__(self, model_class: Type['PureBaseModel']):
+    def __init__(self, model_class: Type[T]) -> None:
         super().__init__(model_class)
         self._where_clauses: List['BinaryExpression'] = []
 
-    def where(self, *expressions: 'BinaryExpression') -> 'Delete':
+    def where(self, *expressions: 'BinaryExpression') -> 'Delete[T]':
         """添加 WHERE 条件"""
         self._where_clauses.extend(expressions)
         return self
@@ -288,21 +290,21 @@ class Delete(Statement):
 
 # ==================== 顶层工厂函数 ====================
 
-def select(model_class: Type['PureBaseModel']) -> Select:
+def select(model_class: Type[T]) -> Select[T]:
     """创建 SELECT 语句"""
     return Select(model_class)
 
 
-def insert(model_class: Type['PureBaseModel']) -> Insert:
+def insert(model_class: Type[T]) -> Insert[T]:
     """创建 INSERT 语句"""
     return Insert(model_class)
 
 
-def update(model_class: Type['PureBaseModel']) -> Update:
+def update(model_class: Type[T]) -> Update[T]:
     """创建 UPDATE 语句"""
     return Update(model_class)
 
 
-def delete(model_class: Type['PureBaseModel']) -> Delete:
+def delete(model_class: Type[T]) -> Delete[T]:
     """创建 DELETE 语句"""
     return Delete(model_class)

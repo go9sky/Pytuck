@@ -4,7 +4,9 @@ Result - 查询结果包装器
 提供 SQLAlchemy 2.0 风格的结果处理接口
 """
 
-from typing import Any, Dict, List, Optional, Type, Union, TYPE_CHECKING
+from typing import Any, Dict, List, Optional, Type, Union, Generic, TYPE_CHECKING
+
+from ..common.types import T
 
 if TYPE_CHECKING:
     from ..core.orm import PureBaseModel
@@ -58,7 +60,7 @@ class Row:
         return f"Row({self._data})"
 
 
-class ScalarResult:
+class ScalarResult(Generic[T]):
     """
     Scalar result for accessing query results as model instances.
 
@@ -76,25 +78,25 @@ class ScalarResult:
         _model_class: The model class to instantiate
     """
 
-    def __init__(self, records: List[Dict[str, Any]], model_class: Type['PureBaseModel']):
+    def __init__(self, records: List[Dict[str, Any]], model_class: Type[T]) -> None:
         self._records = records
         self._model_class = model_class
 
-    def all(self) -> List['PureBaseModel']:
+    def all(self) -> List[T]:
         """返回所有模型实例"""
-        instances: List['PureBaseModel'] = []
+        instances: List[T] = []
         for record in self._records:
             instance = self._model_class(**record)
             instances.append(instance)
         return instances
 
-    def first(self) -> Optional['PureBaseModel']:
+    def first(self) -> Optional[T]:
         """返回第一个模型实例"""
         if not self._records:
             return None
         return self._model_class(**self._records[0])
 
-    def one(self) -> 'PureBaseModel':
+    def one(self) -> T:
         """返回唯一的模型实例（必须恰好一条）"""
         if len(self._records) == 0:
             raise ValueError("Expected one result, got 0")
@@ -102,7 +104,7 @@ class ScalarResult:
             raise ValueError(f"Expected one result, got {len(self._records)}")
         return self._model_class(**self._records[0])
 
-    def one_or_none(self) -> Optional['PureBaseModel']:
+    def one_or_none(self) -> Optional[T]:
         """返回唯一的模型实例或 None（最多一条）"""
         if len(self._records) == 0:
             return None
@@ -111,7 +113,7 @@ class ScalarResult:
         return self._model_class(**self._records[0])
 
 
-class Result:
+class Result(Generic[T]):
     """
     Query result wrapper for SELECT operations.
 
@@ -140,7 +142,7 @@ class Result:
         _operation: Operation type ('select', 'insert', 'update', 'delete')
     """
 
-    def __init__(self, records: List[Dict[str, Any]], model_class: Type['PureBaseModel'], operation: str = 'select'):
+    def __init__(self, records: List[Dict[str, Any]], model_class: Type[T], operation: str = 'select') -> None:
         """
         Args:
             records: 查询结果（字典列表）
@@ -151,7 +153,7 @@ class Result:
         self._model_class = model_class
         self._operation = operation
 
-    def scalars(self) -> ScalarResult:
+    def scalars(self) -> ScalarResult[T]:
         """返回标量结果（模型实例）"""
         return ScalarResult(self._records, self._model_class)
 
@@ -185,7 +187,7 @@ class Result:
         return self._records if isinstance(self._records, int) else 0
 
 
-class CursorResult(Result):
+class CursorResult(Result[T]):
     """
     Result wrapper for CUD (Create/Update/Delete) operations.
 
@@ -211,7 +213,7 @@ class CursorResult(Result):
         _inserted_pk: Primary key of inserted record (INSERT only)
     """
 
-    def __init__(self, affected_rows: int, model_class: Type['PureBaseModel'], operation: str, inserted_pk: Any = None):
+    def __init__(self, affected_rows: int, model_class: Type[T], operation: str, inserted_pk: Any = None) -> None:
         """
         Args:
             affected_rows: 受影响的行数
@@ -232,7 +234,7 @@ class CursorResult(Result):
         """返回插入的主键（仅 INSERT）"""
         return self._inserted_pk
 
-    def scalars(self) -> ScalarResult:
+    def scalars(self) -> ScalarResult[T]:
         raise NotImplementedError(f"scalars() not supported for {self._operation} operation")
 
     def all(self) -> List[Row]:

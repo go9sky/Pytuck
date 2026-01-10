@@ -245,9 +245,9 @@ db = Storage(file_path='data.xml', engine='xml')
 
 ### Data Persistence
 
-Pytuck provides flexible data persistence mechanisms:
+Pytuck provides flexible data persistence mechanisms.
 
-#### Default Mode (Manual Persistence)
+#### Pure Model Mode (Session)
 
 ```python
 db = Storage(file_path='data.db')  # auto_flush=False (default)
@@ -262,7 +262,7 @@ db.flush()  # Method 1: Explicit flush
 db.close()  # Method 2: Auto-flush on close
 ```
 
-#### Auto Persistence Mode
+Enable auto persistence:
 
 ```python
 db = Storage(file_path='data.db', auto_flush=True)
@@ -272,13 +272,50 @@ session.execute(insert(User).values(name='Alice'))
 session.commit()  # Automatically writes to disk, no manual flush needed
 ```
 
+#### Active Record Mode (CRUDBaseModel)
+
+CRUDBaseModel has no Session, operates directly on Storage:
+
+```python
+db = Storage(file_path='data.db')  # auto_flush=False (default)
+Base = declarative_base(db, crud=True)
+
+class User(Base):
+    __tablename__ = 'users'
+    id = Column('id', int, primary_key=True)
+    name = Column('name', str)
+
+# create/save/delete only modify memory
+user = User.create(name='Alice')
+user.name = 'Bob'
+user.save()
+
+# Manually write to disk
+db.flush()  # Method 1: Explicit flush
+# or
+db.close()  # Method 2: Auto-flush on close
+```
+
+Enable auto persistence:
+
+```python
+db = Storage(file_path='data.db', auto_flush=True)
+Base = declarative_base(db, crud=True)
+
+# Each create/save/delete automatically writes to disk
+user = User.create(name='Alice')  # Automatically writes to disk
+user.name = 'Bob'
+user.save()  # Automatically writes to disk
+```
+
 #### Persistence Method Summary
 
-| Method | Description |
-|--------|-------------|
-| `session.commit()` | Commits transaction to Storage memory; if `auto_flush=True`, also writes to disk |
-| `storage.flush()` | Forces in-memory data to be written to disk |
-| `storage.close()` | Closes database, automatically calls `flush()` |
+| Method | Mode | Description |
+|--------|------|-------------|
+| `session.commit()` | Pure Model | Commits transaction to Storage memory; if `auto_flush=True`, also writes to disk |
+| `Model.create/save/delete()` | Active Record | Modifies Storage memory; if `auto_flush=True`, also writes to disk |
+| `storage.flush()` | Both | Forces in-memory data to be written to disk |
+| `storage.close()` | Both | Closes database, automatically calls `flush()` |
 
 **Recommendations**:
 - Use `auto_flush=True` in production for data safety

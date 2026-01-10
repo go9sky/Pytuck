@@ -246,9 +246,9 @@ db = Storage(file_path='data.xml', engine='xml')
 
 ### 数据持久化
 
-Pytuck 提供灵活的数据持久化机制：
+Pytuck 提供灵活的数据持久化机制。
 
-#### 默认模式（手动持久化）
+#### 纯模型模式（Session）
 
 ```python
 db = Storage(file_path='data.db')  # auto_flush=False（默认）
@@ -263,7 +263,7 @@ db.flush()  # 方式1：显式刷新
 db.close()  # 方式2：关闭时自动刷新
 ```
 
-#### 自动持久化模式
+启用自动持久化：
 
 ```python
 db = Storage(file_path='data.db', auto_flush=True)
@@ -273,13 +273,50 @@ session.execute(insert(User).values(name='Alice'))
 session.commit()  # 自动写入磁盘，无需手动 flush
 ```
 
+#### Active Record 模式（CRUDBaseModel）
+
+CRUDBaseModel 没有 Session，直接操作 Storage：
+
+```python
+db = Storage(file_path='data.db')  # auto_flush=False（默认）
+Base = declarative_base(db, crud=True)
+
+class User(Base):
+    __tablename__ = 'users'
+    id = Column('id', int, primary_key=True)
+    name = Column('name', str)
+
+# create/save/delete 只修改内存
+user = User.create(name='Alice')
+user.name = 'Bob'
+user.save()
+
+# 手动写入磁盘
+db.flush()  # 方式1：显式刷新
+# 或
+db.close()  # 方式2：关闭时自动刷新
+```
+
+启用自动持久化：
+
+```python
+db = Storage(file_path='data.db', auto_flush=True)
+Base = declarative_base(db, crud=True)
+
+# 每次 create/save/delete 后自动写入磁盘
+user = User.create(name='Alice')  # 自动写入磁盘
+user.name = 'Bob'
+user.save()  # 自动写入磁盘
+```
+
 #### 持久化方法总结
 
-| 方法 | 说明 |
-|------|------|
-| `session.commit()` | 提交事务到 Storage 内存；若 `auto_flush=True` 则同时写入磁盘 |
-| `storage.flush()` | 强制将内存数据写入磁盘 |
-| `storage.close()` | 关闭数据库，自动调用 `flush()` |
+| 方法 | 模式 | 说明 |
+|------|------|------|
+| `session.commit()` | 纯模型 | 提交事务到 Storage 内存；若 `auto_flush=True` 则同时写入磁盘 |
+| `Model.create/save/delete()` | Active Record | 修改 Storage 内存；若 `auto_flush=True` 则同时写入磁盘 |
+| `storage.flush()` | 通用 | 强制将内存数据写入磁盘 |
+| `storage.close()` | 通用 | 关闭数据库，自动调用 `flush()` |
 
 **建议**：
 - 生产环境使用 `auto_flush=True` 确保数据安全

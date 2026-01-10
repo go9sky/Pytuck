@@ -101,7 +101,7 @@ Base: Type[CRUDBaseModel] = declarative_base(db, crud=True)
 
 Pytuck 的数据持久化机制需要特别注意：
 
-### 持久化时机
+### 纯模型模式（Session）
 
 ```python
 # 默认模式：auto_flush=False
@@ -116,27 +116,50 @@ db.flush()  # 方式1：显式刷新
 db.close()  # 方式2：关闭时自动刷新
 ```
 
+### Active Record 模式（CRUDBaseModel）
+
+```python
+# 默认模式：auto_flush=False
+db = Storage(file_path='data.db')
+Base = declarative_base(db, crud=True)
+
+# create/save/delete 只修改内存，不写入磁盘！
+user = User.create(name='Alice')
+user.save()
+
+# 必须手动写入磁盘
+db.flush()  # 方式1：显式刷新
+# 或
+db.close()  # 方式2：关闭时自动刷新
+```
+
 ### 自动持久化
 
 ```python
-# 自动模式：每次 commit 后自动写入磁盘
+# 自动模式：每次操作后自动写入磁盘
 db = Storage(file_path='data.db', auto_flush=True)
 
+# 纯模型模式
 session.commit()  # 自动写入磁盘
+
+# Active Record 模式
+User.create(name='Alice')  # 自动写入磁盘
+user.save()  # 自动写入磁盘
 ```
 
 ### 方法说明
 
-| 方法 | 说明 |
-|------|------|
-| `session.flush()` | 将 Session 待处理对象刷新到 Storage 内存 |
-| `session.commit()` | 调用 flush()；若 `auto_flush=True` 则同时写入磁盘 |
-| `storage.flush()` | 强制将内存数据写入磁盘（当 `_dirty=True` 时） |
-| `storage.close()` | 关闭数据库，自动调用 `flush()` |
+| 方法 | 模式 | 说明 |
+|------|------|------|
+| `session.flush()` | 纯模型 | 将 Session 待处理对象刷新到 Storage 内存 |
+| `session.commit()` | 纯模型 | 调用 flush()；若 `auto_flush=True` 则同时写入磁盘 |
+| `Model.create/save/delete()` | Active Record | 修改 Storage 内存；若 `auto_flush=True` 则同时写入磁盘 |
+| `storage.flush()` | 通用 | 强制将内存数据写入磁盘（当 `_dirty=True` 时） |
+| `storage.close()` | 通用 | 关闭数据库，自动调用 `flush()` |
 
 ### 注意事项
 
-- **默认不自动写入磁盘**：`commit()` 只是提交到内存，需要 `flush()` 或 `close()` 才写入磁盘
+- **默认不自动写入磁盘**：`commit()` 和 `save()` 只是提交到内存，需要 `flush()` 或 `close()` 才写入磁盘
 - **生产环境建议**：使用 `auto_flush=True` 确保数据安全
 - **批量操作优化**：大量操作时使用默认模式，最后统一 `flush()`
 

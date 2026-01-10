@@ -77,7 +77,6 @@ from .exceptions import (
     TransactionError,
     SerializationError
 )
-from .tools.migrate import migrate_engine, get_available_engines
 
 __version__ = '0.1.0'
 __all__ = [
@@ -118,9 +117,4 @@ __all__ = [
     'DuplicateKeyError',
     'TransactionError',
     'SerializationError',
-
-    # ==================== 工具 ====================
-
-    'migrate_engine',        # 数据迁移
-    'get_available_engines', # 获取可用引擎
 ]

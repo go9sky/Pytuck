@@ -13,16 +13,16 @@ pytuck/
 │   ├── py.typed             # 类型注解标记文件
 │   ├── common/              # 公共模块（无内部依赖，可直接导入）
 │   │   ├── __init__.py      # 公共模块导出
-│   │   └── options.py       # 配置选项 dataclass 定义
+│   │   ├── options.py       # 配置选项 dataclass 定义
+│   │   ├── utils.py         # 工具函数
+│   │   └── exceptions.py    # 异常定义
 │   ├── core/                # 核心模块
 │   │   ├── __init__.py      # 核心模块导出
 │   │   ├── orm.py           # ORM 核心：Column, PureBaseModel, CRUDBaseModel, declarative_base
 │   │   ├── storage.py       # 存储引擎封装
 │   │   ├── session.py       # 会话管理（事务、连接）
-│   │   ├── exceptions.py    # 异常定义
 │   │   ├── index.py         # 索引管理
-│   │   ├── types.py         # 类型编解码
-│   │   └── utils.py         # 工具函数
+│   │   └── types.py         # 类型编解码
 │   ├── query/               # 查询子系统
 │   │   ├── __init__.py      # 查询模块导出
 │   │   ├── builder.py       # 查询构建器（Query, BinaryExpression, Condition）
@@ -217,7 +217,9 @@ def create(cls: Type[T], **kwargs: Any) -> T:
 
 | 模块 | 职责 | 可以定义 | 不可以定义 |
 |------|------|----------|-----------|
-| `core/exceptions.py` | 异常定义 | 所有自定义异常类 | 业务逻辑、工具函数 |
+| `common/exceptions.py` | 异常定义 | 所有自定义异常类 | 业务逻辑、工具函数 |
+| `common/utils.py` | 工具函数 | 通用工具函数、辅助类 | 异常类、业务逻辑 |
+| `common/options.py` | 配置选项 | dataclass 配置选项、默认值函数 | 异常类、业务逻辑 |
 | `core/orm.py` | ORM 核心 | 模型基类、Column、Relationship | 异常类、存储逻辑 |
 | `core/storage.py` | 存储封装 | Storage、Table 类 | 异常类、ORM 逻辑 |
 | `query/builder.py` | 查询构建 | Query、Condition、BinaryExpression | 异常类、存储逻辑 |
@@ -225,7 +227,8 @@ def create(cls: Type[T], **kwargs: Any) -> T:
 | `tools/*.py` | 工具函数 | 迁移等辅助功能 | 异常类、核心逻辑 |
 
 **规则**：
-- 异常类只能在 `core/exceptions.py` 中定义，其他模块通过 `from ..core.exceptions import XxxError` 导入使用
+- 异常类只能在 `common/exceptions.py` 中定义，其他模块通过 `from ..common.exceptions import XxxError` 导入使用
+- 工具函数只能在 `common/utils.py` 中定义，其他模块通过 `from ..common.utils import xxx` 导入使用
 - 每个模块只导入其职责范围内需要的依赖
 - 避免循环依赖：使用 `TYPE_CHECKING` 进行类型注解导入
 

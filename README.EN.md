@@ -793,8 +793,8 @@ migrate_engine(
 └─────────────────────────────────────┘
                ↓
 ┌─────────────────────────────────────┐
-│        Utility Layer (utils/)       │
-│   Index, TypeCodec, Transaction     │
+│      Common Layer (common/)         │
+│   Exceptions, Utils, Options        │
 └─────────────────────────────────────┘
 ```
 

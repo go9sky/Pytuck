@@ -376,8 +376,24 @@ count = len(adults)
 
 ## Performance Benchmark
 
-- Test environment: macOS, Python 3.13.11
-- Test data: 100 000 records
+Here are benchmark results from different environments.
+
+### Test 1: Windows 11, Python 3.12.10
+
+Test data: 10,000 records
+
+| Engine | Insert | Full Scan | Indexed | Filtered | Update | Save | Load | File Size |
+|--------|--------|-----------|---------|----------|--------|------|------|-----------|
+| Binary | 85.38ms | 42.26ms | 1.10ms | 21.12ms | 709.34ms | 94.75ms | 110.68ms | 1.09MB |
+| JSON | 84.33ms | 58.12ms | 1.15ms | 21.77ms | 702.70ms | 110.68ms | 50.76ms | 1.86MB |
+| CSV | 83.61ms | 52.88ms | 1.12ms | 20.94ms | 697.88ms | 47.22ms | 54.73ms | 73.8KB |
+| SQLite | 95.75ms | 36.41ms | 1.15ms | 27.43ms | 699.34ms | 43.35ms | 41.86ms | 700.0KB |
+| Excel | 101.41ms | 47.06ms | 1.23ms | 21.25ms | 679.85ms | 551.74ms | 738.39ms | 294.2KB |
+| XML | 84.30ms | 95.31ms | 1.10ms | 20.99ms | 686.28ms | 245.91ms | 194.11ms | 3.43MB |
+
+### Test 2: macOS, Python 3.13.11
+
+Test data: 100,000 records
 
 | Engine | Insert | Full Scan | Indexed | Filtered | Update | Save | Load | File Size |
 |--------|--------|-----------|---------|----------|--------|------|------|-----------|
@@ -524,19 +540,28 @@ Pytuck is a lightweight embedded database designed for simplicity. Here are the 
 ## Roadmap / TODO
 
 ### Planned Features
-- JOIN support (multi-table queries)
-- OR condition support
-- Aggregate functions (COUNT, SUM, AVG, MIN, MAX)
-- Relationship lazy loading
-- Schema migration tools
-- Concurrent access support
+
+- [ ] JOIN support (multi-table queries)
+- [ ] OR condition support
+- [ ] Aggregate functions (COUNT, SUM, AVG, MIN, MAX)
+- [ ] Relationship lazy loading
+- [ ] Schema migration tools
+- [ ] Concurrent access support
+
+### Planned Engines
+
+- [ ] DuckDB - Analytical database engine
+- [ ] TinyDB - Pure Python document database
+- [ ] PyDbLite3 - Pure Python in-memory database
+- [ ] diskcache - Disk-based cache engine
 
 ### Planned Optimizations
-- Incremental save for non-binary backends (currently full rewrite on each save)
-- Use `tempfile` module for safer temporary file handling
-- Streaming read/write for large datasets
-- Connection pooling for SQLite backend
-- Relationship and lazy loading enhancements
+
+- [ ] Incremental save for non-binary backends (currently full rewrite on each save)
+- [ ] Use `tempfile` module for safer temporary file handling
+- [ ] Streaming read/write for large datasets
+- [ ] Connection pooling for SQLite backend
+- [ ] Relationship and lazy loading enhancements
 
 ## Examples
 

@@ -236,9 +236,8 @@ def create(cls: Type[T], **kwargs: Any) -> T:
 
 #### 1. pytuck/ 根目录限制
 
-**pytuck/ 根目录只允许存在两个文件**：
+**pytuck/ 根目录只允许存在一个 `.py` 文件**：
 - `__init__.py`：公开 API 导出
-- `py.typed`：类型注解标记文件
 
 **禁止在根目录下创建其他文件或模块**：
 ```

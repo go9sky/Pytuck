@@ -22,6 +22,7 @@
 - **多引擎支持** - 支持二进制、JSON、CSV、SQLite、Excel、XML等多种存储格式
 - **插件化架构** - 默认零依赖，可选引擎按需安装
 - **SQLAlchemy 2.0 风格 API** - 现代化的查询构建器（`select()`, `insert()`, `update()`, `delete()`）
+- **泛型类型提示** - 完整的泛型支持，IDE智能提示精确到具体模型类型（`List[User]` 而非 `List[PureBaseModel]`）
 - **Pythonic 查询语法** - 使用原生 Python 运算符构建查询（`User.age >= 18`）
 - **索引优化** - 哈希索引加速查询
 - **类型安全** - 自动类型验证和转换（宽松/严格模式）
@@ -265,6 +266,69 @@ db = Storage(file_path='data.xml', engine='xml', backend_options=xml_opts)
 - 配置文件
 
 ## 高级特性
+
+### 泛型类型提示
+
+Pytuck 提供完整的泛型类型支持，让 IDE 能够精确推断查询结果的具体类型，显著提升开发体验：
+
+#### IDE 类型推断效果
+
+```python
+from typing import List, Optional
+from pytuck import Storage, declarative_base, Session, Column
+from pytuck import select, insert, update, delete
+
+db = Storage('mydb.db')
+Base = declarative_base(db)
+
+class User(Base):
+    __tablename__ = 'users'
+    id = Column('id', int, primary_key=True)
+    name = Column('name', str)
+    age = Column('age', int)
+
+session = Session(db)
+
+# 语句构建器类型推断
+stmt = select(User)  # IDE 推断：Select[User] ✅
+chained = stmt.where(User.age >= 18)  # IDE 推断：Select[User] ✅
+
+# 会话执行类型推断
+result = session.execute(stmt)  # IDE 推断：Result[User] ✅
+
+# 结果处理精确类型
+users = result.scalars().all()  # IDE 推断：List[User] ✅ （不再是 List[PureBaseModel]）
+user = result.scalars().first()  # IDE 推断：Optional[User] ✅
+
+# IDE 知道具体属性类型
+for user in users:
+    user_name: str = user.name  # ✅ IDE 知道这是 str 类型
+    user_age: int = user.age    # ✅ IDE 知道这是 int 类型
+    # user.invalid_field        # ❌ IDE 警告属性不存在
+```
+
+#### 类型安全特性
+
+- **精确的类型推断**：`select(User)` 返回 `Select[User]`，不再是泛泛的 `Select`
+- **智能代码补全**：IDE 准确提示模型属性和方法
+- **编译时错误检测**：MyPy 可以在编译时发现类型错误
+- **方法链类型保持**：所有链式调用都保持具体的泛型类型
+- **100% 向后兼容**：现有代码无需修改，自动获得类型提示增强
+
+#### 对比效果
+
+**之前：**
+```python
+users = result.scalars().all()  # IDE: List[PureBaseModel] 😞
+user.name                       # IDE: 不知道有什么属性 😞
+```
+
+**现在：**
+```python
+users = result.scalars().all()  # IDE: List[User] ✅
+user.name                       # IDE: 知道是 str 类型 ✅
+user.age                        # IDE: 知道是 int 类型 ✅
+```
 
 ### 数据持久化
 

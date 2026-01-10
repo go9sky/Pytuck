@@ -22,6 +22,7 @@ A lightweight, pure Python document database with multi-engine support. No SQL r
 - **Multi-Engine Support** - Binary, JSON, CSV, SQLite, Excel, XML storage formats
 - **Pluggable Architecture** - Zero dependencies by default, optional engines on demand
 - **SQLAlchemy 2.0 Style API** - Modern query builders (`select()`, `insert()`, `update()`, `delete()`)
+- **Generic Type Hints** - Complete generic support with precise IDE type inference (`List[User]` instead of `List[PureBaseModel]`)
 - **Pythonic Query Syntax** - Use native Python operators (`User.age >= 18`)
 - **Index Optimization** - Hash indexes for accelerated queries
 - **Type Safety** - Automatic type validation and conversion (loose/strict modes)
@@ -264,6 +265,69 @@ db = Storage(file_path='data.xml', engine='xml', backend_options=xml_opts)
 - Configuration files
 
 ## Advanced Features
+
+### Generic Type Hints
+
+Pytuck provides complete generic type support, enabling IDEs to precisely infer the specific types of query results and significantly enhancing the development experience:
+
+#### IDE Type Inference Effects
+
+```python
+from typing import List, Optional
+from pytuck import Storage, declarative_base, Session, Column
+from pytuck import select, insert, update, delete
+
+db = Storage('mydb.db')
+Base = declarative_base(db)
+
+class User(Base):
+    __tablename__ = 'users'
+    id = Column('id', int, primary_key=True)
+    name = Column('name', str)
+    age = Column('age', int)
+
+session = Session(db)
+
+# Statement builder type inference
+stmt = select(User)  # IDE infers: Select[User] ✅
+chained = stmt.where(User.age >= 18)  # IDE infers: Select[User] ✅
+
+# Session execution type inference
+result = session.execute(stmt)  # IDE infers: Result[User] ✅
+
+# Result processing precise types
+users = result.scalars().all()  # IDE infers: List[User] ✅ (no longer List[PureBaseModel])
+user = result.scalars().first()  # IDE infers: Optional[User] ✅
+
+# IDE knows specific attribute types
+for user in users:
+    user_name: str = user.name  # ✅ IDE knows this is str
+    user_age: int = user.age    # ✅ IDE knows this is int
+    # user.invalid_field        # ❌ IDE warns attribute doesn't exist
+```
+
+#### Type Safety Features
+
+- **Precise Type Inference**: `select(User)` returns `Select[User]`, not generic `Select`
+- **Smart Code Completion**: IDE accurately suggests model attributes and methods
+- **Compile-time Error Detection**: MyPy can detect type errors at compile time
+- **Method Chain Type Preservation**: All chained calls maintain specific generic types
+- **100% Backward Compatibility**: Existing code works unchanged and automatically gains type hint enhancement
+
+#### Comparison Effects
+
+**Before:**
+```python
+users = result.scalars().all()  # IDE: List[PureBaseModel] 😞
+user.name                       # IDE: doesn't know what attributes exist 😞
+```
+
+**Now:**
+```python
+users = result.scalars().all()  # IDE: List[User] ✅
+user.name                       # IDE: knows this is str type ✅
+user.age                        # IDE: knows this is int type ✅
+```
 
 ### Data Persistence
 

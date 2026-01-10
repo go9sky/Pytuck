@@ -9,6 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Generic Type Hints System**
+  - Complete generic support, dramatically enhancing IDE development experience
+  - `select(User)` returns `Select[User]`, not generic `Select` type
+  - `session.execute(stmt)` returns precise `Result[User]` or `CursorResult[User]` types
+  - `result.scalars().all()` returns `List[User]`, not `List[PureBaseModel]`
+  - All statement builders (Select, Insert, Update, Delete) support generic type inference
+  - All result classes (Result, ScalarResult, CursorResult) support generic types
+  - Session.execute method provides precise type overloads through @overload
+  - Query builder supports generics (backward compatible but deprecated)
+  - New `pytuck/common/types.py` - Unified TypeVar definition module
+  - New `mypy.ini` - MyPy static type checking configuration
+  - New `tests/test_typing.py` - Type checking validation tests
+  - New `examples/typing_demo.py` - Complete type hints demonstration
+  - 100% backward compatible, existing code gains type hint enhancement without modification
+
 - **Strongly-Typed Configuration Options System**
   - New `pytuck/common/options.py` module defining all backend and connector configuration options
   - Use dataclass to replace **kwargs parameters, enhancing type safety and IDE support
@@ -56,7 +71,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Architecture Standardization**
   - Created `pytuck/common/` directory for modules with no internal dependencies
-  - `pytuck/` root directory only allows `__init__.py` and `py.typed` files
+  - `pytuck/` root directory only allows the `.py` file `__init__.py`
   - Enforced strongly-typed options to replace **kwargs (except ORM dynamic fields)
 
 - **Refactored SQLiteBackend**

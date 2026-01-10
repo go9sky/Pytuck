@@ -11,6 +11,21 @@
 
 ### 新增
 
+- **泛型类型提示系统**
+  - 完整的泛型支持，大幅提升 IDE 开发体验
+  - `select(User)` 返回 `Select[User]`，不再是泛泛的 `Select` 类型
+  - `session.execute(stmt)` 返回精确的 `Result[User]` 或 `CursorResult[User]` 类型
+  - `result.scalars().all()` 返回 `List[User]`，不再是 `List[PureBaseModel]`
+  - 所有语句构建器（Select、Insert、Update、Delete）支持泛型类型推断
+  - 所有结果类（Result、ScalarResult、CursorResult）支持泛型类型
+  - Session.execute 方法通过 @overload 提供精确类型重载
+  - Query 构建器支持泛型（向后兼容但已弃用）
+  - 新增 `pytuck/common/types.py` - 统一的 TypeVar 定义模块
+  - 新增 `mypy.ini` - MyPy 静态类型检查配置
+  - 新增 `tests/test_typing.py` - 类型检查验证测试
+  - 新增 `examples/typing_demo.py` - 完整的类型提示演示
+  - 100% 向后兼容，现有代码无需修改即可获得类型提示增强
+
 - **强类型配置选项系统**
   - 新增 `pytuck/common/options.py` 模块，定义所有后端和连接器配置选项
   - 使用 dataclass 替代 **kwargs 参数，提升类型安全性和 IDE 支持
@@ -58,7 +73,7 @@
 
 - **架构规范化**
   - 创建 `pytuck/common/` 目录，存放无内部依赖的模块
-  - `pytuck/` 根目录只允许 `__init__.py` 和 `py.typed` 两个文件
+  - `pytuck/` 根目录只允许 `__init__.py` 一个 `.py` 文件
   - 强制使用强类型选项替代 **kwargs（除 ORM 动态字段外）
 
 - **重构 SQLiteBackend**

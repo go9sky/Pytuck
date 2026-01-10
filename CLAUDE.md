@@ -10,18 +10,24 @@ Pytuck 是一个纯 Python 实现的轻量级文档数据库，支持多种存�
 pytuck/
 ├── pytuck/                   # 核心库
 │   ├── __init__.py          # 公开 API 导出
-│   ├── orm.py               # ORM 核心：Column, PureBaseModel, CRUDBaseModel, declarative_base
-│   ├── storage.py           # 存储引擎封装
-│   ├── session.py           # 会话管理（事务、连接）
-│   ├── query.py             # 查询构建器（Query, BinaryExpression, Condition）
-│   ├── statements.py        # SQL 风格语句构建（select, insert, update, delete）
-│   ├── result.py            # 查询结果封装（Result, ScalarResult, Row, CursorResult）
-│   ├── exceptions.py        # 异常定义
-│   ├── index.py             # 索引管理
-│   ├── types.py             # 类型编解码
-│   ├── utils.py             # 工具函数
+│   ├── core/                # 核心模块
+│   │   ├── __init__.py      # 核心模块导出
+│   │   ├── orm.py           # ORM 核心：Column, PureBaseModel, CRUDBaseModel, declarative_base
+│   │   ├── storage.py       # 存储引擎封装
+│   │   ├── session.py       # 会话管理（事务、连接）
+│   │   ├── exceptions.py    # 异常定义
+│   │   ├── index.py         # 索引管理
+│   │   ├── types.py         # 类型编解码
+│   │   └── utils.py         # 工具函数
+│   ├── query/               # 查询子系统
+│   │   ├── __init__.py      # 查询模块导出
+│   │   ├── builder.py       # 查询构建器（Query, BinaryExpression, Condition）
+│   │   ├── statements.py    # SQL 风格语句构建（select, insert, update, delete）
+│   │   └── result.py        # 查询结果封装（Result, ScalarResult, Row, CursorResult）
 │   ├── backends/            # 存储引擎实现
+│   │   ├── __init__.py      # 后端导出
 │   │   ├── base.py          # 基类
+│   │   ├── versions.py      # 统一引擎版本管理
 │   │   ├── binary.py        # 二进制引擎（默认）
 │   │   ├── json_backend.py  # JSON 引擎
 │   │   ├── csv_backend.py   # CSV 引擎
@@ -81,17 +87,17 @@ Base: Type[CRUDBaseModel] = declarative_base(db, crud=True)
 
 | 名称 | 位置 | 用途 |
 |------|------|------|
-| `Column` | orm.py | 列定义描述符 |
-| `PureBaseModel` | orm.py | 纯模型基类类型 |
-| `CRUDBaseModel` | orm.py | Active Record 基类类型 |
-| `declarative_base()` | orm.py | 创建模型基类的工厂函数 |
-| `Relationship` | orm.py | 关联关系描述符 |
-| `Storage` | storage.py | 存储引擎封装 |
-| `Session` | session.py | 会话管理 |
-| `Query` | query.py | 查询构建器 |
-| `BinaryExpression` | query.py | 查询表达式 |
-| `select/insert/update/delete` | statements.py | SQL 风格语句 |
-| `Result` | result.py | 查询结果 |
+| `Column` | core/orm.py | 列定义描述符 |
+| `PureBaseModel` | core/orm.py | 纯模型基类类型 |
+| `CRUDBaseModel` | core/orm.py | Active Record 基类类型 |
+| `declarative_base()` | core/orm.py | 创建模型基类的工厂函数 |
+| `Relationship` | core/orm.py | 关联关系描述符 |
+| `Storage` | core/storage.py | 存储引擎封装 |
+| `Session` | core/session.py | 会话管理 |
+| `Query` | query/builder.py | 查询构建器 |
+| `BinaryExpression` | query/builder.py | 查询表达式 |
+| `select/insert/update/delete` | query/statements.py | SQL 风格语句 |
+| `Result` | query/result.py | 查询结果 |
 | `DatabaseConnector` | connectors/base.py | 数据库连接器抽象基类 |
 | `SQLiteConnector` | connectors/sqlite_connector.py | SQLite 连接器 |
 | `migrate_engine` | tools/migrate.py | Pytuck 格式间数据迁移 |
@@ -183,7 +189,8 @@ user.save()  # 自动写入磁盘
 from typing import Any, Dict, List, Optional, Type, TypeVar, TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from .storage import Storage
+    from .storage import Storage  # 同包内引用
+    from ..core.storage import Storage  # 跨包引用示例
 
 T = TypeVar('T', bound='PureBaseModel')
 
@@ -206,15 +213,15 @@ def create(cls: Type[T], **kwargs: Any) -> T:
 
 | 模块 | 职责 | 可以定义 | 不可以定义 |
 |------|------|----------|-----------|
-| `exceptions.py` | 异常定义 | 所有自定义异常类 | 业务逻辑、工具函数 |
-| `orm.py` | ORM 核心 | 模型基类、Column、Relationship | 异常类、存储逻辑 |
-| `storage.py` | 存储封装 | Storage、Table 类 | 异常类、ORM 逻辑 |
-| `query.py` | 查询构建 | Query、Condition、BinaryExpression | 异常类、存储逻辑 |
+| `core/exceptions.py` | 异常定义 | 所有自定义异常类 | 业务逻辑、工具函数 |
+| `core/orm.py` | ORM 核心 | 模型基类、Column、Relationship | 异常类、存储逻辑 |
+| `core/storage.py` | 存储封装 | Storage、Table 类 | 异常类、ORM 逻辑 |
+| `query/builder.py` | 查询构建 | Query、Condition、BinaryExpression | 异常类、存储逻辑 |
 | `backends/*.py` | 后端实现 | 具体后端类 | 异常类、ORM 逻辑 |
 | `tools/*.py` | 工具函数 | 迁移等辅助功能 | 异常类、核心逻辑 |
 
 **规则**：
-- 异常类只能在 `exceptions.py` 中定义，其他模块通过 `from .exceptions import XxxError` 导入使用
+- 异常类只能在 `core/exceptions.py` 中定义，其他模块通过 `from ..core.exceptions import XxxError` 导入使用
 - 每个模块只导入其职责范围内需要的依赖
 - 避免循环依赖：使用 `TYPE_CHECKING` 进行类型注解导入
 

@@ -4,12 +4,13 @@ Pytuck SQLite存储引擎
 使用内置sqlite3数据库，支持SQL查询和ACID特性
 """
 
-import sqlite3
 import json
 import os
-from typing import Any, Dict, Type, TYPE_CHECKING
+from typing import Any, Dict, TYPE_CHECKING
 from datetime import datetime
+
 from .base import StorageBackend
+from ..connectors.sqlite_connector import SQLiteConnector
 from ..exceptions import SerializationError
 
 if TYPE_CHECKING:
@@ -17,55 +18,38 @@ if TYPE_CHECKING:
 
 
 class SQLiteBackend(StorageBackend):
-    """SQLite format storage engine (built-in, ACID)"""
+    """SQLite format storage engine (built-in, ACID)
+
+    使用 SQLiteConnector 进行底层数据库操作，
+    添加 Pytuck 特有的元数据管理。
+    """
 
     ENGINE_NAME = 'sqlite'
     REQUIRED_DEPENDENCIES = []  # 内置 sqlite3
 
-    # 类型映射
-    TYPE_MAPPING: Dict[Type, str] = {
-        int: 'INTEGER',
-        str: 'TEXT',
-        float: 'REAL',
-        bool: 'INTEGER',  # 0/1
-        bytes: 'BLOB'
-    }
-
     def save(self, tables: Dict[str, 'Table']) -> None:
         """保存所有表数据到SQLite数据库"""
         try:
-            conn = sqlite3.connect(self.file_path)
-            cursor = conn.cursor()
+            connector = SQLiteConnector(self.file_path)
+            with connector:
+                # 创建元数据表
+                self._ensure_metadata_tables(connector)
 
-            # 创建元数据表
-            cursor.execute('''
-                CREATE TABLE IF NOT EXISTS _pytuck_metadata (
-                    key TEXT PRIMARY KEY,
-                    value TEXT
+                # 保存版本信息
+                connector.execute(
+                    "INSERT OR REPLACE INTO _pytuck_metadata VALUES (?, ?)",
+                    ('version', '0.1.0')
                 )
-            ''')
-
-            cursor.execute('''
-                CREATE TABLE IF NOT EXISTS _pytuck_tables (
-                    table_name TEXT PRIMARY KEY,
-                    primary_key TEXT,
-                    next_id INTEGER,
-                    columns TEXT
+                connector.execute(
+                    "INSERT OR REPLACE INTO _pytuck_metadata VALUES (?, ?)",
+                    ('timestamp', datetime.now().isoformat())
                 )
-            ''')
 
-            # 保存版本信息
-            cursor.execute("INSERT OR REPLACE INTO _pytuck_metadata VALUES (?, ?)",
-                         ('version', '0.1.0'))
-            cursor.execute("INSERT OR REPLACE INTO _pytuck_metadata VALUES (?, ?)",
-                         ('timestamp', datetime.now().isoformat()))
+                # 为每个表创建 SQL 表并保存数据
+                for table_name, table in tables.items():
+                    self._save_table(connector, table_name, table)
 
-            # 为每个表创建 SQL 表并保存数据
-            for table_name, table in tables.items():
-                self._save_table(cursor, table_name, table)
-
-            conn.commit()
-            conn.close()
+                connector.commit()
 
         except Exception as e:
             raise SerializationError(f"Failed to save to SQLite: {e}")
@@ -76,21 +60,32 @@ class SQLiteBackend(StorageBackend):
             raise FileNotFoundError(f"SQLite database not found: {self.file_path}")
 
         try:
-            conn = sqlite3.connect(self.file_path)
-            cursor = conn.cursor()
+            connector = SQLiteConnector(self.file_path)
+            with connector:
+                # 检查是否是 Pytuck 格式
+                if not connector.table_exists('_pytuck_tables'):
+                    raise SerializationError(
+                        f"'{self.file_path}' 不是 Pytuck 格式的 SQLite 数据库。"
+                        f"如需从普通 SQLite 导入，请使用 pytuck.tools.import_from_database()"
+                    )
 
-            # 读取所有表
-            cursor.execute('SELECT table_name, primary_key, next_id, columns FROM _pytuck_tables')
-            table_rows = cursor.fetchall()
+                # 读取所有表
+                cursor = connector.execute(
+                    'SELECT table_name, primary_key, next_id, columns FROM _pytuck_tables'
+                )
+                table_rows = cursor.fetchall()
 
-            tables = {}
-            for table_name, primary_key, next_id, columns_json in table_rows:
-                table = self._load_table(cursor, table_name, primary_key, next_id, columns_json)
-                tables[table_name] = table
+                tables = {}
+                for table_name, primary_key, next_id, columns_json in table_rows:
+                    table = self._load_table(
+                        connector, table_name, primary_key, next_id, columns_json
+                    )
+                    tables[table_name] = table
 
-            conn.close()
-            return tables
+                return tables
 
+        except SerializationError:
+            raise
         except Exception as e:
             raise SerializationError(f"Failed to load from SQLite: {e}")
 
@@ -103,7 +98,30 @@ class SQLiteBackend(StorageBackend):
         if self.exists():
             os.remove(self.file_path)
 
-    def _save_table(self, cursor: sqlite3.Cursor, table_name: str, table: 'Table') -> None:
+    def _ensure_metadata_tables(self, connector: SQLiteConnector) -> None:
+        """确保元数据表存在"""
+        connector.execute('''
+            CREATE TABLE IF NOT EXISTS _pytuck_metadata (
+                key TEXT PRIMARY KEY,
+                value TEXT
+            )
+        ''')
+
+        connector.execute('''
+            CREATE TABLE IF NOT EXISTS _pytuck_tables (
+                table_name TEXT PRIMARY KEY,
+                primary_key TEXT,
+                next_id INTEGER,
+                columns TEXT
+            )
+        ''')
+
+    def _save_table(
+        self,
+        connector: SQLiteConnector,
+        table_name: str,
+        table: 'Table'
+    ) -> None:
         """保存单个表"""
         # 保存表元数据
         columns_json = json.dumps([
@@ -117,62 +135,49 @@ class SQLiteBackend(StorageBackend):
             for col in table.columns.values()
         ])
 
-        cursor.execute('''
+        connector.execute('''
             INSERT OR REPLACE INTO _pytuck_tables
             (table_name, primary_key, next_id, columns)
             VALUES (?, ?, ?, ?)
         ''', (table_name, table.primary_key, table.next_id, columns_json))
 
         # 删除旧表（如果存在）
-        cursor.execute(f'DROP TABLE IF EXISTS `{table_name}`')
+        connector.drop_table(table_name)
 
         # 创建新表
-        col_defs = []
-        for col_name, col in table.columns.items():
-            sql_type = self.TYPE_MAPPING[col.col_type]
-            constraints = []
-
-            if col.primary_key:
-                if col.col_type == int:
-                    # INTEGER PRIMARY KEY 自动是 ROWID 别名，支持自增
-                    constraints.append('PRIMARY KEY AUTOINCREMENT')
-                else:
-                    constraints.append('PRIMARY KEY')
-            elif not col.nullable:
-                constraints.append('NOT NULL')
-
-            col_def = f'`{col_name}` {sql_type}'
-            if constraints:
-                col_def += ' ' + ' '.join(constraints)
-            col_defs.append(col_def)
-
-        create_sql = f'CREATE TABLE `{table_name}` ({", ".join(col_defs)})'
-        cursor.execute(create_sql)
+        columns_def = [
+            {
+                'name': col.name,
+                'type': col.col_type,
+                'nullable': col.nullable,
+                'primary_key': col.primary_key
+            }
+            for col in table.columns.values()
+        ]
+        connector.create_table(table_name, columns_def, table.primary_key)
 
         # 创建索引
         for col_name, col in table.columns.items():
             if col.index and not col.primary_key:
                 index_name = f'idx_{table_name}_{col_name}'
-                cursor.execute(f'CREATE INDEX `{index_name}` ON `{table_name}`(`{col_name}`)')
+                connector.execute(
+                    f'CREATE INDEX `{index_name}` ON `{table_name}`(`{col_name}`)'
+                )
 
         # 插入数据
         if len(table.data) > 0:
             columns = list(table.columns.keys())
-            placeholders = ','.join(['?'] * len(columns))
-            insert_sql = f'INSERT INTO `{table_name}` ({",".join([f"`{c}`" for c in columns])}) VALUES ({placeholders})'
+            records = list(table.data.values())
+            connector.insert_records(table_name, columns, records)
 
-            for record in table.data.values():
-                values = []
-                for col_name in columns:
-                    value = record.get(col_name)
-                    # 处理 bool -> int
-                    if isinstance(value, bool):
-                        value = 1 if value else 0
-                    values.append(value)
-
-                cursor.execute(insert_sql, values)
-
-    def _load_table(self, cursor: sqlite3.Cursor, table_name: str, primary_key: str, next_id: int, columns_json: str) -> 'Table':
+    def _load_table(
+        self,
+        connector: SQLiteConnector,
+        table_name: str,
+        primary_key: str,
+        next_id: int,
+        columns_json: str
+    ) -> 'Table':
         """加载单个表"""
         from ..storage import Table
         from ..orm import Column
@@ -181,15 +186,15 @@ class SQLiteBackend(StorageBackend):
         columns_data = json.loads(columns_json)
         columns = []
 
+        type_map = {
+            'int': int,
+            'str': str,
+            'float': float,
+            'bool': bool,
+            'bytes': bytes,
+        }
+
         for col_data in columns_data:
-            # 类型名转类型
-            type_map = {
-                'int': int,
-                'str': str,
-                'float': float,
-                'bool': bool,
-                'bytes': bytes,
-            }
             col_type = type_map.get(col_data['type'], str)
 
             column = Column(
@@ -206,7 +211,7 @@ class SQLiteBackend(StorageBackend):
         table.next_id = next_id
 
         # 加载数据
-        cursor.execute(f'SELECT * FROM `{table_name}`')
+        cursor = connector.execute(f'SELECT * FROM `{table_name}`')
         rows = cursor.fetchall()
         col_names = [desc[0] for desc in cursor.description]
 
@@ -240,36 +245,39 @@ class SQLiteBackend(StorageBackend):
             file_size = os.path.getsize(self.file_path)
             modified_time = os.path.getmtime(self.file_path)
 
-            conn = sqlite3.connect(self.file_path)
-            cursor = conn.cursor()
-
-            # 读取版本信息
-            metadata = {
+            metadata: Dict[str, Any] = {
                 'engine': 'sqlite',
                 'file_size': file_size,
                 'modified': modified_time
             }
 
-            try:
-                cursor.execute("SELECT value FROM _pytuck_metadata WHERE key = 'version'")
-                row = cursor.fetchone()
-                if row:
-                    metadata['version'] = row[0]
+            connector = SQLiteConnector(self.file_path)
+            with connector:
+                try:
+                    cursor = connector.execute(
+                        "SELECT value FROM _pytuck_metadata WHERE key = 'version'"
+                    )
+                    row = cursor.fetchone()
+                    if row:
+                        metadata['version'] = row[0]
 
-                cursor.execute("SELECT value FROM _pytuck_metadata WHERE key = 'timestamp'")
-                row = cursor.fetchone()
-                if row:
-                    metadata['timestamp'] = row[0]
+                    cursor = connector.execute(
+                        "SELECT value FROM _pytuck_metadata WHERE key = 'timestamp'"
+                    )
+                    row = cursor.fetchone()
+                    if row:
+                        metadata['timestamp'] = row[0]
 
-                cursor.execute("SELECT COUNT(*) FROM _pytuck_tables")
-                row = cursor.fetchone()
-                if row:
-                    metadata['table_count'] = row[0]
-            except:
-                pass
+                    cursor = connector.execute(
+                        "SELECT COUNT(*) FROM _pytuck_tables"
+                    )
+                    row = cursor.fetchone()
+                    if row:
+                        metadata['table_count'] = row[0]
+                except Exception:
+                    pass
 
-            conn.close()
             return metadata
 
-        except:
+        except Exception:
             return {}

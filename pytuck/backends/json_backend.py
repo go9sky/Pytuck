@@ -5,9 +5,9 @@ Pytuck JSON存储引擎
 """
 
 import json
-import os
 import inspect
-from typing import Any, Dict, Callable, TYPE_CHECKING
+from pathlib import Path
+from typing import Any, Dict, Callable, Union, TYPE_CHECKING
 from datetime import datetime
 from .base import StorageBackend
 from ..common.exceptions import SerializationError
@@ -27,7 +27,7 @@ class JSONBackend(StorageBackend):
     REQUIRED_DEPENDENCIES = []  # 标准库
     FORMAT_VERSION = get_format_version('json')
 
-    def __init__(self, file_path: str, options: JsonBackendOptions):
+    def __init__(self, file_path: Union[str, Path], options: JsonBackendOptions):
         """
         初始化 JSON 后端
 
@@ -37,6 +37,8 @@ class JSONBackend(StorageBackend):
         """
         assert isinstance(options, JsonBackendOptions), "options must be an instance of JsonBackendOptions"
         super().__init__(file_path, options)
+        # 类型安全：将 options 转为具体的 JsonBackendOptions 类型
+        self.options: JsonBackendOptions = options
         self._setup_json_impl()
 
     def _setup_json_impl(self) -> None:
@@ -76,7 +78,7 @@ class JSONBackend(StorageBackend):
     def _setup_ujson(self) -> None:
         """设置ujson实现，智能适配参数"""
         try:
-            import ujson
+            import ujson  # type: ignore
         except ImportError:
             raise ImportError(f"ujson not installed. Install with: pip install pytuck[ujson]")
 

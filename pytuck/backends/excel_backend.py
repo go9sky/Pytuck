@@ -5,9 +5,9 @@ Pytuck Excel存储引擎
 """
 
 import json
-import os
 import base64
-from typing import Any, Dict, TYPE_CHECKING
+from pathlib import Path
+from typing import Any, Dict, Union, TYPE_CHECKING
 from datetime import datetime
 from .base import StorageBackend
 from ..common.exceptions import SerializationError
@@ -27,7 +27,7 @@ class ExcelBackend(StorageBackend):
     REQUIRED_DEPENDENCIES = ['openpyxl']
     FORMAT_VERSION = get_format_version('excel')
 
-    def __init__(self, file_path: str, options: ExcelBackendOptions):
+    def __init__(self, file_path: Union[str, Path], options: ExcelBackendOptions):
         """
         初始化 Excel 后端
 
@@ -37,6 +37,8 @@ class ExcelBackend(StorageBackend):
         """
         assert isinstance(options, ExcelBackendOptions), "options must be an instance of ExcelBackendOptions"
         super().__init__(file_path, options)
+        # 类型安全：将 options 转为具体的 ExcelBackendOptions 类型
+        self.options: ExcelBackendOptions = options
 
     def save(self, tables: Dict[str, 'Table']) -> None:
         """保存所有表数据到Excel工作簿"""
@@ -45,7 +47,7 @@ class ExcelBackend(StorageBackend):
         except ImportError:
             raise SerializationError("openpyxl is required for Excel backend. Install with: pip install pytuck[excel]")
 
-        temp_path = self.file_path + '.tmp'
+        temp_path = self.file_path.parent / (self.file_path.name + '.tmp')
         try:
             wb = Workbook()
             # 删除默认工作表
@@ -81,15 +83,18 @@ class ExcelBackend(StorageBackend):
                 self._save_table_to_workbook(wb, table_name, table)
 
             # 原子性保存
-            wb.save(temp_path)
+            wb.save(str(temp_path))
 
-            if os.path.exists(self.file_path):
-                os.remove(self.file_path)
-            os.rename(temp_path, self.file_path)
+            if self.file_path.exists():
+                self.file_path.unlink()
+            temp_path.replace(self.file_path)
 
         except Exception as e:
-            if os.path.exists(temp_path):
-                os.remove(temp_path)
+            if temp_path.exists():
+                try:
+                    temp_path.unlink()
+                except FileNotFoundError:
+                    pass
             raise SerializationError(f"Failed to save Excel file: {e}")
 
     def load(self) -> Dict[str, 'Table']:
@@ -103,7 +108,7 @@ class ExcelBackend(StorageBackend):
             raise SerializationError("openpyxl is required for Excel backend. Install with: pip install pytuck[excel]")
 
         try:
-            wb = load_workbook(self.file_path)
+            wb = load_workbook(str(self.file_path))
 
             # 从 _pytuck_tables 工作表读取所有表的 schema
             tables_schema: Dict[str, Dict[str, Any]] = {}
@@ -139,12 +144,12 @@ class ExcelBackend(StorageBackend):
 
     def exists(self) -> bool:
         """检查文件是否存在"""
-        return os.path.exists(self.file_path)
+        return self.file_path.exists()
 
     def delete(self) -> None:
         """删除文件"""
         if self.exists():
-            os.remove(self.file_path)
+            self.file_path.unlink()
 
     def _save_table_to_workbook(self, wb: 'Workbook', table_name: str, table: 'Table') -> None:
         """保存单个表的数据到工作簿"""
@@ -261,11 +266,12 @@ class ExcelBackend(StorageBackend):
             return {}
 
         try:
-            file_size = os.path.getsize(self.file_path)
-            modified_time = os.path.getmtime(self.file_path)
+            file_stat = self.file_path.stat()
+            file_size = file_stat.st_size
+            modified_time = file_stat.st_mtime
 
             from openpyxl import load_workbook
-            wb = load_workbook(self.file_path, read_only=True)
+            wb = load_workbook(str(self.file_path), read_only=True)
 
             metadata = {
                 'engine': 'excel',

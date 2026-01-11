@@ -5,8 +5,8 @@ Pytuck SQLite存储引擎
 """
 
 import json
-import os
-from typing import Any, Dict, TYPE_CHECKING
+from pathlib import Path
+from typing import Any, Dict, Union, TYPE_CHECKING
 from datetime import datetime
 
 from .base import StorageBackend
@@ -31,7 +31,7 @@ class SQLiteBackend(StorageBackend):
     REQUIRED_DEPENDENCIES = []  # 内置 sqlite3
     FORMAT_VERSION = get_format_version('sqlite')
 
-    def __init__(self, file_path: str, options: SqliteBackendOptions):
+    def __init__(self, file_path: Union[str, Path], options: SqliteBackendOptions):
         """
         初始化 SQLite 后端
 
@@ -41,13 +41,15 @@ class SQLiteBackend(StorageBackend):
         """
         assert isinstance(options, SqliteBackendOptions), "options must be an instance of SqliteBackendOptions"
         super().__init__(file_path, options)
+        # 类型安全：将 options 转为具体的 SqliteBackendOptions 类型
+        self.options: SqliteBackendOptions = options
 
     def save(self, tables: Dict[str, 'Table']) -> None:
         """保存所有表数据到SQLite数据库"""
         try:
             # 创建连接器，使用默认选项
             connector_options = SqliteConnectorOptions()
-            connector = SQLiteConnector(self.file_path, connector_options)
+            connector = SQLiteConnector(str(self.file_path), connector_options)
             with connector:
                 # 创建元数据表
                 self._ensure_metadata_tables(connector)
@@ -79,7 +81,7 @@ class SQLiteBackend(StorageBackend):
         try:
             # 创建连接器，使用默认选项
             connector_options = SqliteConnectorOptions()
-            connector = SQLiteConnector(self.file_path, connector_options)
+            connector = SQLiteConnector(str(self.file_path), connector_options)
             with connector:
                 # 检查是否是 Pytuck 格式
                 if not connector.table_exists('_pytuck_tables'):
@@ -110,12 +112,12 @@ class SQLiteBackend(StorageBackend):
 
     def exists(self) -> bool:
         """检查数据库文件是否存在"""
-        return os.path.exists(self.file_path)
+        return self.file_path.exists()
 
     def delete(self) -> None:
         """删除数据库文件"""
         if self.exists():
-            os.remove(self.file_path)
+            self.file_path.unlink()
 
     def _ensure_metadata_tables(self, connector: SQLiteConnector) -> None:
         """确保元数据表存在"""
@@ -265,8 +267,9 @@ class SQLiteBackend(StorageBackend):
             return {}
 
         try:
-            file_size = os.path.getsize(self.file_path)
-            modified_time = os.path.getmtime(self.file_path)
+            file_stat = self.file_path.stat()
+            file_size = file_stat.st_size
+            modified_time = file_stat.st_mtime
 
             metadata: Dict[str, Any] = {
                 'engine': 'sqlite',
@@ -276,7 +279,7 @@ class SQLiteBackend(StorageBackend):
 
             # 创建连接器，使用默认选项
             connector_options = SqliteConnectorOptions()
-            connector = SQLiteConnector(self.file_path, connector_options)
+            connector = SQLiteConnector(str(self.file_path), connector_options)
             with connector:
                 try:
                     cursor = connector.execute(

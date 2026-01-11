@@ -5,7 +5,8 @@ Pytuck 存储后端抽象基类
 """
 
 from abc import ABC, abstractmethod
-from typing import Dict, Any, List, Optional, TYPE_CHECKING
+from pathlib import Path
+from typing import Dict, Any, List, Optional, Union, TYPE_CHECKING
 
 from ..common.options import BackendOptions
 
@@ -26,21 +27,22 @@ class StorageBackend(ABC):
     # 所需的外部依赖列表（用于检查可用性）
     REQUIRED_DEPENDENCIES: List[str] = []
 
-    def __init__(self, file_path: str, options: BackendOptions):
+    def __init__(self, file_path: Union[str, Path], options: BackendOptions):
         """
         初始化后端
 
         Args:
-            file_path: 数据文件路径（不同引擎解释不同）
+            file_path: 数据文件路径，接受字符串或 Path 对象（不同引擎解释不同）
                 - binary: 单个 .db 文件
                 - json: 单个 .json 文件
-                - csv: 目录路径
+                - csv: ZIP 文件路径
                 - sqlite: 单个 .sqlite 文件
                 - excel: 单个 .xlsx 文件
                 - xml: 单个 .xml 文件
             options: 强类型的后端配置选项对象
         """
-        self.file_path = file_path
+        # 输入兼容性处理：统一转为 Path 对象
+        self.file_path: Path = Path(file_path).expanduser()
         self.options = options
 
     @abstractmethod

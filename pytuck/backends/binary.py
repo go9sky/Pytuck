@@ -5,9 +5,9 @@ Pytuck 二进制存储引擎
 """
 
 import struct
-import os
 import tempfile
-from typing import Any, Dict, TYPE_CHECKING, BinaryIO
+from pathlib import Path
+from typing import Any, Dict, Union, TYPE_CHECKING, BinaryIO
 
 if TYPE_CHECKING:
     from ..core.storage import Table
@@ -32,7 +32,7 @@ class BinaryBackend(StorageBackend):
     FORMAT_VERSION = get_format_version('binary')
     FILE_HEADER_SIZE = 64
 
-    def __init__(self, file_path: str, options: BinaryBackendOptions):
+    def __init__(self, file_path: Union[str, Path], options: BinaryBackendOptions):
         """
         初始化 Binary 后端
 
@@ -42,11 +42,13 @@ class BinaryBackend(StorageBackend):
         """
         assert isinstance(options, BinaryBackendOptions), "options must be an instance of BinaryBackendOptions"
         super().__init__(file_path, options)
+        # 类型安全：将 options 转为具体的 BinaryBackendOptions 类型
+        self.options: BinaryBackendOptions = options
 
     def save(self, tables: Dict[str, 'Table']) -> None:
         """保存所有表数据到二进制文件"""
         # 原子性写入：先写临时文件，再重命名
-        temp_path = self.file_path + '.tmp'
+        temp_path = self.file_path.parent / (self.file_path.name + '.tmp')
 
         try:
             with open(temp_path, 'wb') as f:
@@ -62,14 +64,15 @@ class BinaryBackend(StorageBackend):
                     self._write_table_data(f, table)
 
             # 原子性重命名
-            if os.path.exists(self.file_path):
-                os.remove(self.file_path)
-            os.rename(temp_path, self.file_path)
+            temp_path.replace(self.file_path)
 
         except Exception as e:
             # 清理临时文件
-            if os.path.exists(temp_path):
-                os.remove(temp_path)
+            if temp_path.exists():
+                try:
+                    temp_path.unlink()
+                except FileNotFoundError:
+                    pass
             raise SerializationError(f"Failed to save binary file: {e}")
 
     def load(self) -> Dict[str, 'Table']:
@@ -101,12 +104,12 @@ class BinaryBackend(StorageBackend):
 
     def exists(self) -> bool:
         """检查文件是否存在"""
-        return os.path.exists(self.file_path)
+        return self.file_path.exists()
 
     def delete(self) -> None:
         """删除文件"""
-        if self.exists():
-            os.remove(self.file_path)
+        if self.file_path.exists():
+            self.file_path.unlink()
 
     def _write_file_header(self, f: BinaryIO, table_count: int) -> None:
         """
@@ -469,8 +472,9 @@ class BinaryBackend(StorageBackend):
         if not self.exists():
             return {}
 
-        file_size = os.path.getsize(self.file_path)
-        modified_time = os.path.getmtime(self.file_path)
+        file_stat = self.file_path.stat()
+        file_size = file_stat.st_size
+        modified_time = file_stat.st_mtime
 
         return {
             'engine': 'binary',

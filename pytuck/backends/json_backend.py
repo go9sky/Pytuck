@@ -6,7 +6,8 @@ Pytuck JSON存储引擎
 
 import json
 import os
-from typing import Any, Dict, TYPE_CHECKING
+import inspect
+from typing import Any, Dict, Callable, TYPE_CHECKING
 from datetime import datetime
 from .base import StorageBackend
 from ..common.exceptions import SerializationError
@@ -36,6 +37,99 @@ class JSONBackend(StorageBackend):
         """
         assert isinstance(options, JsonBackendOptions), "options must be an instance of JsonBackendOptions"
         super().__init__(file_path, options)
+        self._setup_json_impl()
+
+    def _setup_json_impl(self) -> None:
+        """根据用户指定的impl选择JSON实现"""
+        impl = self.options.impl
+
+        if impl == 'orjson':
+            self._setup_orjson()
+        elif impl == 'ujson':
+            self._setup_ujson()
+        elif impl == 'json' or impl is None:
+            self._setup_stdlib_json()
+        else:
+            # 调用用户自定义的JSON库处理方法
+            self._setup_custom_json(impl)
+
+        # 检验内部私有方法是否已被正确赋值
+        if not hasattr(self, '_dumps_func') or not hasattr(self, '_loads_func') or not hasattr(self, '_impl_name'):
+            raise ValueError(f"JSON implementation '{impl}' setup failed: _dumps_func, _loads_func, and _impl_name must be assigned")
+
+    def _setup_orjson(self) -> None:
+        """设置orjson实现，参数不兼容时直接舍弃"""
+        try:
+            import orjson
+        except ImportError:
+            raise ImportError(f"orjson not installed. Install with: pip install pytuck[orjson]")
+
+        def dumps_func(obj: Any) -> str:
+            # orjson不支持indent和ensure_ascii，直接舍弃这些参数
+            result = orjson.dumps(obj)
+            return result.decode('utf-8') if isinstance(result, bytes) else result
+
+        self._dumps_func = dumps_func
+        self._loads_func = orjson.loads
+        self._impl_name = 'orjson'
+
+    def _setup_ujson(self) -> None:
+        """设置ujson实现，智能适配参数"""
+        try:
+            import ujson
+        except ImportError:
+            raise ImportError(f"ujson not installed. Install with: pip install pytuck[ujson]")
+
+        def dumps_func(obj: Any) -> str:
+            # 检查ujson的dumps方法支持哪些参数，不支持的直接舍弃
+            kwargs = {}
+
+            try:
+                sig = inspect.signature(ujson.dumps)
+                if 'indent' in sig.parameters and self.options.indent:
+                    kwargs['indent'] = self.options.indent
+                if 'ensure_ascii' in sig.parameters:
+                    kwargs['ensure_ascii'] = self.options.ensure_ascii
+
+                return ujson.dumps(obj, **kwargs)
+            except Exception:
+                # 如果参数检查失败，就使用最简单的方式
+                return ujson.dumps(obj)
+
+        self._dumps_func = dumps_func
+        self._loads_func = ujson.loads
+        self._impl_name = 'ujson'
+
+    def _setup_stdlib_json(self) -> None:
+        """设置标准库json实现"""
+        import json
+
+        def dumps_func(obj: Any) -> str:
+            return json.dumps(obj,
+                            indent=self.options.indent,
+                            ensure_ascii=self.options.ensure_ascii)
+
+        self._dumps_func = dumps_func
+        self._loads_func = json.loads
+        self._impl_name = 'json'
+
+    def _setup_custom_json(self, impl: str) -> None:
+        """自定义JSON库处理方法，需要用户覆盖此方法
+
+        用户应该通过以下方式来自定义JSON实现：
+        JSONBackend._setup_custom_json = lambda self, impl: your_custom_logic
+
+        自定义方法必须设置以下三个属性：
+        - self._dumps_func: 序列化函数
+        - self._loads_func: 反序列化函数
+        - self._impl_name: 实现名称
+        """
+        raise NotImplementedError(
+            f"Unsupported JSON library '{impl}'. "
+            f"To use a custom JSON library, you must override _setup_custom_json method:\n"
+            f"JSONBackend._setup_custom_json = lambda self, impl: your_custom_logic()\n"
+            f"Your custom logic must set self._dumps_func, self._loads_func, and self._impl_name"
+        )
 
     def save(self, tables: Dict[str, 'Table']) -> None:
         """保存所有表数据到JSON文件"""
@@ -50,23 +144,23 @@ class JSONBackend(StorageBackend):
             data['tables'][table_name] = self._serialize_table(table)  # type: ignore
 
         # 写入文件（原子性）
-        temp_path = self.file_path + '.tmp'
+        temp_path = self.file_path.parent / (self.file_path.name + '.tmp')
 
         try:
             with open(temp_path, 'w', encoding='utf-8') as f:
-                # Use default values if options doesn't have the attributes
-                indent = self.options.indent
-                ensure_ascii = getattr(self.options, 'ensure_ascii', False)
-                json.dump(data, f, indent=indent, ensure_ascii=ensure_ascii)
+                # 使用动态选择的JSON实现
+                json_str = self._dumps_func(data)
+                f.write(json_str)
 
             # 原子性重命名
-            if os.path.exists(self.file_path):
-                os.remove(self.file_path)
-            os.rename(temp_path, self.file_path)
+            temp_path.replace(self.file_path)
 
         except Exception as e:
-            if os.path.exists(temp_path):
-                os.remove(temp_path)
+            if temp_path.exists():
+                try:
+                    temp_path.unlink()
+                except FileNotFoundError:
+                    pass
             raise SerializationError(f"Failed to save JSON file: {e}")
 
     def load(self) -> Dict[str, 'Table']:
@@ -76,7 +170,8 @@ class JSONBackend(StorageBackend):
 
         try:
             with open(self.file_path, 'r', encoding='utf-8') as f:
-                data = json.load(f)
+                # 使用动态选择的JSON实现
+                data = self._loads_func(f.read())
 
             tables = {}
             for table_name, table_data in data['tables'].items():
@@ -90,12 +185,12 @@ class JSONBackend(StorageBackend):
 
     def exists(self) -> bool:
         """检查文件是否存在"""
-        return os.path.exists(self.file_path)
+        return self.file_path.exists()
 
     def delete(self) -> None:
         """删除文件"""
-        if self.exists():
-            os.remove(self.file_path)
+        if self.file_path.exists():
+            self.file_path.unlink()
 
     def _serialize_table(self, table: 'Table') -> Dict[str, Any]:
         """序列化表为JSON可序列化的字典"""
@@ -208,13 +303,15 @@ class JSONBackend(StorageBackend):
         if not self.exists():
             return {}
 
-        file_size = os.path.getsize(self.file_path)
-        modified_time = os.path.getmtime(self.file_path)
+        file_stat = self.file_path.stat()
+        file_size = file_stat.st_size
+        modified_time = file_stat.st_mtime
 
         # 尝试读取版本信息
         try:
             with open(self.file_path, 'r', encoding='utf-8') as f:
-                data = json.load(f)
+                # 使用动态选择的JSON实现
+                data = self._loads_func(f.read())
                 version = data.get('version', 'unknown')
                 timestamp = data.get('timestamp', 'unknown')
                 table_count = len(data.get('tables', {}))
@@ -230,4 +327,5 @@ class JSONBackend(StorageBackend):
             'modified': modified_time,
             'timestamp': timestamp,
             'table_count': table_count,
+            'json_impl': getattr(self, '_impl_name', 'unknown'),  # 添加JSON实现信息
         }

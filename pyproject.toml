@@ -48,11 +48,13 @@ dependencies = []
 
 [project.optional-dependencies]
 json = []
+orjson = ["orjson>=3.8.0"]
+ujson = ["ujson>=5.5.0"]
 csv = []
 sqlite = []
 excel = ["openpyxl>=3.0.0"]
 xml = ["lxml>=4.9.0"]
-all = ["openpyxl>=3.0.0", "lxml>=4.9.0"]
+all = ["openpyxl>=3.0.0", "lxml>=4.9.0", "orjson>=3.8.0", "ujson>=5.5.0"]
 dev = [
     "mypy>=0.950",
     "build>=0.7.0",
@@ -61,6 +63,8 @@ dev = [
 full = [
     "openpyxl>=3.0.0",
     "lxml>=4.9.0",
+    "orjson>=3.8.0",
+    "ujson>=5.5.0",
     "mypy>=0.950",
 ]
 

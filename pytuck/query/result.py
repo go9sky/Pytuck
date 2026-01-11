@@ -95,6 +95,9 @@ class ScalarResult(Generic[T]):
             if pk_value is not None:
                 existing = self._session._get_from_identity_map(self._model_class, pk_value)
                 if existing is not None:
+                    # 修复：刷新实例属性以保持与存储同步
+                    for key, value in record.items():
+                        setattr(existing, key, value)
                     return existing
 
             # 创建新实例并注册到 identity map

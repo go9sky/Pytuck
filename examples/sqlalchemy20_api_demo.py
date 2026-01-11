@@ -123,7 +123,7 @@ print(f'   ✓ session 关闭后，user2 仍然可访问: {user2.name}, {user2.a
 # ============================================================
 print("\n4. 更新数据（execute + update）")
 
-# 更新单条
+# 更新单条（通过update）
 stmt = update(User).where(User.name == 'Alice').values(age=21)
 result = session.execute(stmt)
 session.commit()
@@ -134,6 +134,21 @@ stmt = select(User).where(User.name == 'Alice')
 result = session.execute(stmt)
 alice = result.scalars().first()
 print(f"   ✓ 验证：{alice.name} 现在 {alice.age} 岁")
+
+# 单条更新（通过模型实例）
+stmt = select(User).where(User.name == 'Bob')
+result = session.execute(stmt)
+bob = result.scalars().first()
+print(f'   ✓ 原始数据: {bob.name}, 年龄 {bob.age}')
+bob.age = 99
+session.flush()
+session.commit()
+
+# 验证更新
+stmt = select(User).where(User.name == 'Bob')
+result = session.execute(stmt)
+bob_reloaded = result.scalars().first()
+print(f"   ✓ 验证：{bob_reloaded.name} 现在 {bob_reloaded.age} 岁")
 
 # 批量更新
 stmt = update(User).where(User.age < 20).values(age=20)

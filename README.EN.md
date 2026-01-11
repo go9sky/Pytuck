@@ -897,12 +897,16 @@ Pytuck is a lightweight embedded database designed for simplicity. Here are the 
 
 ### Planned Features
 
-- [ ] JOIN support (multi-table queries)
-- [ ] OR condition support
-- [ ] Aggregate functions (COUNT, SUM, AVG, MIN, MAX)
-- [ ] Relationship lazy loading
-- [ ] Schema migration tools
-- [ ] Concurrent access support
+> 📋 For detailed development plans, please refer to [TODO.md](./TODO.md)
+
+- [ ] **Web UI Interface Support** - Provide API support for independent Web UI library
+- [ ] **ORM Event Hooks System** - Complete event system based on SQLAlchemy event pattern
+- [ ] **JOIN Support** - Multi-table relational queries
+- [ ] **OR Condition Support** - Complex logical query conditions
+- [ ] **Aggregate Functions** - COUNT, SUM, AVG, MIN, MAX, etc.
+- [ ] **Relationship Lazy Loading** - Optimize associated data loading performance
+- [ ] **Schema Migration Tools** - Database structure version management
+- [ ] **Concurrent Access Support** - Multi-process/thread-safe access
 
 ### Planned Engines
 

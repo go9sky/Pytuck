@@ -39,6 +39,7 @@ class SQLiteBackend(StorageBackend):
             file_path: SQLite 数据库文件路径
             options: SQLite 后端配置选项
         """
+        assert isinstance(options, SqliteBackendOptions), "options must be an instance of SqliteBackendOptions"
         super().__init__(file_path, options)
 
     def save(self, tables: Dict[str, 'Table']) -> None:

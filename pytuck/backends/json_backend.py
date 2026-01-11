@@ -34,6 +34,7 @@ class JSONBackend(StorageBackend):
             file_path: JSON 文件路径
             options: JSON 后端配置选项
         """
+        assert isinstance(options, JsonBackendOptions), "options must be an instance of JsonBackendOptions"
         super().__init__(file_path, options)
 
     def save(self, tables: Dict[str, 'Table']) -> None:
@@ -54,7 +55,7 @@ class JSONBackend(StorageBackend):
         try:
             with open(temp_path, 'w', encoding='utf-8') as f:
                 # Use default values if options doesn't have the attributes
-                indent = getattr(self.options, 'indent', 2)
+                indent = self.options.indent
                 ensure_ascii = getattr(self.options, 'ensure_ascii', False)
                 json.dump(data, f, indent=indent, ensure_ascii=ensure_ascii)
 

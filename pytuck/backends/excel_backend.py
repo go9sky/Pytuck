@@ -35,6 +35,7 @@ class ExcelBackend(StorageBackend):
             file_path: Excel 文件路径
             options: Excel 后端配置选项
         """
+        assert isinstance(options, ExcelBackendOptions), "options must be an instance of ExcelBackendOptions"
         super().__init__(file_path, options)
 
     def save(self, tables: Dict[str, 'Table']) -> None:

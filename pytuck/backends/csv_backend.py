@@ -38,6 +38,7 @@ class CSVBackend(StorageBackend):
             file_path: CSV ZIP 文件路径
             options: CSV 后端配置选项
         """
+        assert isinstance(options, CsvBackendOptions), "options must be an instance of CsvBackendOptions"
         super().__init__(file_path, options)
 
     def save(self, tables: Dict[str, 'Table']) -> None:
@@ -74,7 +75,7 @@ class CSVBackend(StorageBackend):
                     'table_count': len(tables),
                     'tables': tables_schema
                 }
-                zf.writestr('_metadata.json', json.dumps(metadata, indent=2))
+                zf.writestr('_metadata.json', json.dumps(metadata, indent=self.options.indent))
 
                 # 为每个表保存 CSV 数据
                 for table_name, table in tables.items():

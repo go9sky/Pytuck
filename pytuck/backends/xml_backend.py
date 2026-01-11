@@ -35,6 +35,7 @@ class XMLBackend(StorageBackend):
             file_path: XML 文件路径
             options: XML 后端配置选项
         """
+        assert isinstance(options, XmlBackendOptions), "options must be an instance of XmlBackendOptions"
         super().__init__(file_path, options)
 
     def save(self, tables: Dict[str, 'Table']) -> None:

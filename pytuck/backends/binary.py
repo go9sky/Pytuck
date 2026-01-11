@@ -40,6 +40,7 @@ class BinaryBackend(StorageBackend):
             file_path: 二进制文件路径
             options: Binary 后端配置选项
         """
+        assert isinstance(options, BinaryBackendOptions), "options must be an instance of BinaryBackendOptions"
         super().__init__(file_path, options)
 
     def save(self, tables: Dict[str, 'Table']) -> None:

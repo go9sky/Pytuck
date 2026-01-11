@@ -1,3 +1,9 @@
+## 基本要求
+
+- 始终使用中文回答
+
+---
+
 # Pytuck 项目说明
 
 ## 项目简介
@@ -180,6 +186,68 @@ user.save()  # 自动写入磁盘
 - 遵循 PEP 8 规范
 - 中文注释，英文代码
 
+### 路径操作规范（强制）
+
+**所有文件路径操作必须使用 `pathlib.Path`**，避免混合使用 `os.path` 和字符串操作：
+
+#### 统一原则
+- **内部统一使用 Path**：所有内部路径处理使用 `pathlib.Path`
+- **边界转换**：公共 API 接受路径参数时立即转换：`file_path = Path(file_path).expanduser()`
+- **兼容性处理**：调用外部 API 时根据需要转换为字符串：`str(path)`
+- **Python 3.7 兼容**：避免使用 Python 3.8+ 特有的 Path 方法参数
+
+#### 标准模式
+
+```python
+# ✅ 正确的路径操作模式
+from pathlib import Path
+
+# 接受路径参数时立即转换
+def __init__(self, file_path: str, options: BackendOptions):
+    self.file_path: Path = Path(file_path).expanduser()
+
+# 路径拼接和操作
+temp_path = self.file_path.parent / (self.file_path.name + '.tmp')
+
+# 文件操作
+if self.file_path.exists():
+    self.file_path.unlink()
+temp_path.replace(self.file_path)
+
+# 文件信息获取
+file_stat = self.file_path.stat()
+size = file_stat.st_size
+mtime = file_stat.st_mtime
+
+# Python 3.7 兼容的文件删除
+try:
+    file_path.unlink()
+except FileNotFoundError:
+    pass
+
+# 调用外部API时转换为字符串
+with zipfile.ZipFile(str(temp_path), 'w') as zf:
+    # ...
+```
+
+#### 禁止的模式
+
+```python
+# ❌ 错误的混合使用
+import os
+temp_path = self.file_path + '.tmp'  # Path + str
+if os.path.exists(self.file_path):   # 混合 os.path 和 Path
+    os.remove(self.file_path)
+
+# ❌ Python 3.8+ 特有参数
+file_path.unlink(missing_ok=True)    # 不兼容 Python 3.7
+```
+
+#### 临时文件管理
+- **示例和测试**：统一使用 `examples.common.get_project_temp_dir()` 返回 `Path` 对象
+- **测试隔离**：测试中建议使用 `tempfile.TemporaryDirectory()` 确保隔离
+- **原子操作**：使用 `Path.replace()` 进行原子性文件替换，避免 remove + rename 模式
+
 ### 类型提示规范（强制）
 - **所有函数和方法必须有完整的类型提示**
   - 入参类型：所有参数都需要类型注解
@@ -208,7 +276,8 @@ def create(cls: Type[T], **kwargs: Any) -> T:
 ```
 
 ### 测试
-- 测试文件位于 `tests/` 目录
+- 测试文件位于 `tests/` 目录，编写的新测试文件也应该放在该目录
+- 使用 `unittest` 框架编写测试用例
 - 运行测试：`python -m unittest tests.test_orm` 或 `python tests/test_orm.py`
 
 ### 模块职责规范（强制）

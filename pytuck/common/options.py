@@ -11,6 +11,7 @@ class JsonBackendOptions:
     """JSON 后端配置选项"""
     indent: int = 2  # 缩进空格数
     ensure_ascii: bool = False  # 是否强制 ASCII 编码
+    impl: Optional[str] = None  # 指定JSON库名：'orjson', 'ujson', 'json'等
 
 @dataclass
 class CsvBackendOptions:

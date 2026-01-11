@@ -81,11 +81,12 @@
   - 修复连接参数处理，支持 None 值的可选参数
   - 减少代码重复，提高可维护性
 
-- **重构存储引擎元数据结构**
-  - CSV 引擎：所有表 schema 统一存储在 `_metadata.json`
-  - Excel 引擎：所有表 schema 统一存储在 `_pytuck_tables` 工作表
-  - Binary 引擎：分离 Schema 区和数据区
-  - 遵循"不为每个表创建单独 schema"的原则
+- **重构存储引擎元数据结构**（破坏性变更）
+  - **Binary 引擎**：分离 Schema 区和数据区，所有表的 schema 统一存储
+  - **CSV 引擎**：不再为每个表创建单独的 `{table}_schema.json`，所有表 schema 统一存储在 `_metadata.json`
+  - **Excel 引擎**：不再为每个表创建单独的 `{table}_schema` 工作表，所有表 schema 统一存储在 `_pytuck_tables` 工作表
+  - 遵循"不为每个表创建单独 schema"的设计原则，提升性能和可维护性
+  - 此变更使前三个引擎（Binary/CSV/Excel）数据格式不向后兼容
 
 - **调整导出规范**
   - tools 模块不再从 `pytuck` 根包导出
@@ -99,9 +100,9 @@
   ```
 
 - **引擎格式版本升级**
-  - Binary: v2 → v3（添加 comment 支持）
-  - CSV: v2 → v3（添加 comment 支持）
-  - Excel: v2 → v3（添加 comment 支持）
+  - Binary: v1 → v2（统一元数据结构 + 添加 comment 支持）
+  - CSV: v1 → v2（统一元数据结构 + 添加 comment 支持）
+  - Excel: v1 → v2（统一元数据结构 + 添加 comment 支持）
   - JSON: v1 → v2（添加 comment 支持）
   - SQLite: v1 → v2（添加 comment 支持）
   - XML: v1 → v2（添加 comment 支持）

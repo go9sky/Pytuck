@@ -79,11 +79,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Fixed connection parameter handling, supporting None values for optional parameters
   - Reduced code duplication, improved maintainability
 
-- **Refactored Storage Engine Metadata Structure**
-  - CSV engine: All table schemas unified in `_metadata.json`
-  - Excel engine: All table schemas unified in `_pytuck_tables` worksheet
-  - Binary engine: Separated Schema section and Data section
-  - Follows "no per-table schema" principle
+- **Refactored Storage Engine Metadata Structure** (Breaking Change)
+  - **Binary Engine**: Separated Schema section and Data section, unified schema storage for all tables
+  - **CSV Engine**: No longer create separate `{table}_schema.json` for each table, all table schemas unified in `_metadata.json`
+  - **Excel Engine**: No longer create separate `{table}_schema` worksheets for each table, all table schemas unified in `_pytuck_tables` worksheet
+  - Follows "no per-table schema" design principle for improved performance and maintainability
+  - This change makes the first three engines (Binary/CSV/Excel) data format backward incompatible
 
 - **Export Policy Adjustment**
   - tools module is no longer exported from `pytuck` root package
@@ -97,9 +98,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ```
 
 - **Engine Format Version Upgrades**
-  - Binary: v2 → v3 (added comment support)
-  - CSV: v2 → v3 (added comment support)
-  - Excel: v2 → v3 (added comment support)
+  - Binary: v1 → v2 (unified metadata structure + added comment support)
+  - CSV: v1 → v2 (unified metadata structure + added comment support)
+  - Excel: v1 → v2 (unified metadata structure + added comment support)
   - JSON: v1 → v2 (added comment support)
   - SQLite: v1 → v2 (added comment support)
   - XML: v1 → v2 (added comment support)

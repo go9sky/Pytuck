@@ -241,6 +241,53 @@ class Session:
     @overload
     def execute(self, statement: Delete[T]) -> CursorResult[T]: ...
 
+    def execute(self, statement: Statement) -> Union[Result, CursorResult]:
+        """
+        执行 statement（SQLAlchemy 2.0 风格）
+
+        Args:
+            statement: Statement 对象 (Select, Insert, Update, Delete)
+
+        Returns:
+            Result 对象
+
+        用法：
+            # 查询
+            stmt = select(User).where(User.age >= 18)
+            result = session.execute(stmt)
+            users = result.scalars().all()
+
+            # 插入
+            stmt = insert(User).values(name='Alice', age=20)
+            result = session.execute(stmt)
+            session.commit()
+        """
+        from ..query.statements import Select, Insert, Update, Delete
+        from ..query.result import Result, CursorResult
+
+        # 执行 statement
+        if isinstance(statement, Select):
+            records = statement._execute(self.storage)
+            # 传递 session 引用给 Result，用于自动注册实例
+            return Result(records, statement.model_class, 'select', session=self)
+
+        elif isinstance(statement, Insert):
+            pk = statement._execute(self.storage)
+            # 标记为新对象（用于事务管理）
+            # 注意：这里不创建实例，只记录操作
+            return CursorResult(1, statement.model_class, 'insert', inserted_pk=pk)
+
+        elif isinstance(statement, Update):
+            count = statement._execute(self.storage)
+            return CursorResult(count, statement.model_class, 'update')
+
+        elif isinstance(statement, Delete):
+            count = statement._execute(self.storage)
+            return CursorResult(count, statement.model_class, 'delete')
+
+        else:
+            raise TypeError(f"Unsupported statement type: {type(statement)}")
+
     def _register_instance(self, instance: PureBaseModel) -> None:
         """
         注册实例到 identity map
@@ -339,53 +386,6 @@ class Session:
         # 数据库中也不存在，作为新对象处理
         self.add(instance)
         return instance
-
-    def execute(self, statement: Statement) -> Union[Result, CursorResult]:
-        """
-        执行 statement（SQLAlchemy 2.0 风格）
-
-        Args:
-            statement: Statement 对象 (Select, Insert, Update, Delete)
-
-        Returns:
-            Result 对象
-
-        用法：
-            # 查询
-            stmt = select(User).where(User.age >= 18)
-            result = session.execute(stmt)
-            users = result.scalars().all()
-
-            # 插入
-            stmt = insert(User).values(name='Alice', age=20)
-            result = session.execute(stmt)
-            session.commit()
-        """
-        from ..query.statements import Select, Insert, Update, Delete
-        from ..query.result import Result, CursorResult
-
-        # 执行 statement
-        if isinstance(statement, Select):
-            records = statement._execute(self.storage)
-            # 传递 session 引用给 Result，用于自动注册实例
-            return Result(records, statement.model_class, 'select', session=self)
-
-        elif isinstance(statement, Insert):
-            pk = statement._execute(self.storage)
-            # 标记为新对象（用于事务管理）
-            # 注意：这里不创建实例，只记录操作
-            return CursorResult(1, statement.model_class, 'insert', inserted_pk=pk)
-
-        elif isinstance(statement, Update):
-            count = statement._execute(self.storage)
-            return CursorResult(count, statement.model_class, 'update')
-
-        elif isinstance(statement, Delete):
-            count = statement._execute(self.storage)
-            return CursorResult(count, statement.model_class, 'delete')
-
-        else:
-            raise TypeError(f"Unsupported statement type: {type(statement)}")
 
     def query(self, model_class: Type[T]) -> Query[T]:
         """

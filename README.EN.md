@@ -97,10 +97,29 @@ adults = result.scalars().all()
 for student in adults:
     print(f"  - {student.name}")
 
+# Identity Map example (0.3.0 NEW, object uniqueness guarantee)
+student1 = session.get(Student, 1)  # Load from database
+stmt = select(Student).where(Student.id == 1)
+student2 = session.execute(stmt).scalars().first()  # Get through query
+print(f"Same object? {student1 is student2}")  # True, same instance
+
+# merge() operation example (0.3.0 NEW, merge external data)
+external_student = Student(id=1, name="Alice Updated", age=22)  # External data
+merged = session.merge(external_student)  # Intelligently merge into Session
+session.commit()  # Update takes effect
+
 # Update records
+# Method 1: Use update statement (bulk update)
 stmt = update(Student).where(Student.id == 1).values(age=21)
 session.execute(stmt)
 session.commit()
+
+# Method 2: Attribute assignment update (0.3.0 NEW, more intuitive)
+stmt = select(Student).where(Student.id == 1)
+result = session.execute(stmt)
+alice = result.scalars().first()
+alice.age = 21  # Attribute assignment auto-detected and updates database
+session.commit()  # Automatically writes changes to database
 
 # Delete records
 stmt = delete(Student).where(Student.id == 1)
@@ -148,8 +167,8 @@ students = Student.filter_by(name='Alice').all()  # Equality query
 all_students = Student.all()  # Get all
 
 # Update records
-alice.age = 21
-alice.save()
+alice.age = 21  # Active Record mode already supports attribute assignment updates
+alice.save()    # Explicitly save to database
 
 # Delete records
 alice.delete()
@@ -889,11 +908,18 @@ Pytuck is a lightweight embedded database designed for simplicity. Here are the 
 
 ### Completed
 
+- [x] **Complete SQLAlchemy 2.0 Style Object State Management** ✨NEW✨
+  - [x] Identity Map (Object Uniqueness Management)
+  - [x] Automatic Dirty Tracking (Attribute assignment auto-detected and updates database)
+  - [x] merge() Operation (Merge detached objects)
+  - [x] Query Instance Auto-Registration to Session
 - [x] Unified database connector architecture (`pytuck/connectors/` module)
 - [x] Data migration tools (`migrate_engine()`, `import_from_database()`)
 - [x] Import from external relational databases feature
 - [x] Unified engine version management (`pytuck/backends/versions.py`)
 - [x] Table and column comment support (`comment` parameter)
+- [x] Complete generic type hints system
+- [x] Strongly-typed configuration options system (dataclass replaces **kwargs)
 
 ### Planned Features
 

@@ -7,6 +7,42 @@
 
 > [English Version](./CHANGELOG.EN.md)
 
+## [0.3.0] - 2026-01-11
+
+### 新增
+
+- **完整的 SQLAlchemy 2.0 风格对象状态管理**
+  - **Identity Map（对象唯一性）**：同一 Session 中相同主键的对象保证是同一个 Python 实例
+  - **自动脏跟踪（Dirty Tracking）**：属性赋值（如 `user.name = "new"`）自动检测并在 `session.commit()` 时更新数据库
+  - **查询实例自动注册**：通过 `session.execute(select(...))` 返回的实例自动关联到 Session，支持脏跟踪
+  - **merge() 操作**：合并外部/detached 对象到 Session 中，智能处理更新现有对象或创建新对象
+  - **增强的上下文管理器**：完整的事务支持，异常时自动回滚
+
+- **核心 API 增强**
+  - `Session._register_instance()` - 统一的实例注册机制
+  - `Session._get_from_identity_map()` - 从 Identity Map 获取实例
+  - `Session._mark_dirty()` - 标记实例为需要更新状态
+  - `Session.merge()` - 合并 detached 对象到会话中
+  - 增强的 `Result`/`ScalarResult` 类，支持 Session 引用传递和自动实例注册
+
+### 修复
+
+- **属性赋值更新问题**：修复了通过属性赋值（如 `bob.age = 99`）修改模型实例后，`session.flush()/commit()` 无法将更改写入数据库的问题
+- **Identity Map 不一致问题**：修复了 `session.get()` 和 `session.execute(select(...))` 返回不同对象实例的问题
+- **实例注册缺失**：修复了查询返回的实例未正确关联到 Session 的问题
+
+### 改进
+
+- **模型基类增强**：在 `PureBaseModel` 和 `CRUDBaseModel` 中添加 `__setattr__` 脏跟踪机制
+- **Session 实例管理**：完善了 `flush()` 方法中的实例注册逻辑，确保所有实例都有正确的 Session 引用
+
+### 技术细节
+
+- 实现了完整的 SQLAlchemy 2.0 风格对象生命周期管理（persistent/detached 状态）
+- 通过 `__setattr__` 拦截 Column 属性修改，实现透明的脏跟踪
+- 增强了 `ScalarResult._create_instance()` 方法，支持 Identity Map 一致性检查
+- 修复了 `Session.flush()` 中新对象的注册逻辑，统一使用 `_register_instance()` 方法
+
 ## [0.2.0] - 2026-01-11
 
 ### 新增

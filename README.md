@@ -98,10 +98,29 @@ adults = result.scalars().all()
 for student in adults:
     print(f"  - {student.name}")
 
+# Identity Map 示例（0.3.0 新增，对象唯一性保证）
+student1 = session.get(Student, 1)  # 从数据库加载
+stmt = select(Student).where(Student.id == 1)
+student2 = session.execute(stmt).scalars().first()  # 通过查询获得
+print(f"是同一个对象？{student1 is student2}")  # True，同一个实例
+
+# merge() 操作示例（0.3.0 新增，合并外部数据）
+external_student = Student(id=1, name="Alice Updated", age=22)  # 来自外部的数据
+merged = session.merge(external_student)  # 智能合并到 Session
+session.commit()  # 更新生效
+
 # 更新记录
+# 方式1：使用 update 语句（批量更新）
 stmt = update(Student).where(Student.id == 1).values(age=21)
 session.execute(stmt)
 session.commit()
+
+# 方式2：属性赋值更新（0.3.0 新增，更直观）
+stmt = select(Student).where(Student.id == 1)
+result = session.execute(stmt)
+alice = result.scalars().first()
+alice.age = 21  # 属性赋值自动检测并更新数据库
+session.commit()  # 自动将修改写入数据库
 
 # 删除记录
 stmt = delete(Student).where(Student.id == 1)
@@ -149,8 +168,8 @@ students = Student.filter_by(name='Alice').all()  # 等值查询
 all_students = Student.all()  # 获取全部
 
 # 更新记录
-alice.age = 21
-alice.save()
+alice.age = 21  # Active Record 模式本来就支持属性赋值更新
+alice.save()    # 显式保存到数据库
 
 # 删除记录
 alice.delete()
@@ -839,11 +858,18 @@ Pytuck 是一个轻量级嵌入式数据库，设计目标是简单易用。以�
 
 ### 已完成
 
+- [x] **完整的 SQLAlchemy 2.0 风格对象状态管理** ✨NEW✨
+  - [x] Identity Map（对象唯一性管理）
+  - [x] 自动脏跟踪（属性赋值自动检测并更新数据库）
+  - [x] merge() 操作（合并 detached 对象）
+  - [x] 查询实例自动注册到 Session
 - [x] 统一数据库连接器架构（`pytuck/connectors/` 模块）
 - [x] 数据迁移工具（`migrate_engine()`, `import_from_database()`）
 - [x] 从外部关系型数据库导入功能
 - [x] 统一引擎版本管理（`pytuck/backends/versions.py`）
 - [x] 表和列备注支持（`comment` 参数）
+- [x] 完整的泛型类型提示系统
+- [x] 强类型配置选项系统（dataclass 替代 **kwargs）
 
 ### 计划中的功能
 

@@ -4,12 +4,64 @@
 
 ## 已完成
 
+### ✨ SQLAlchemy 2.0 风格对象状态管理（0.3.0）
+
+**实现日期**：2026-01-11
+**重要性**：🔥 高 - 核心 ORM 功能完善
+
+**技术实现**：
+
+1. **Identity Map（对象唯一性管理）**
+   - 同一 Session 中相同主键的对象保证是同一个 Python 实例
+   - 实现了 `Session._identity_map: Dict[Tuple[Type[PureBaseModel], Any], PureBaseModel]`
+   - 查询时先检查 identity map，避免重复对象
+   - 解决了 `session.get(User, 1)` 和 `session.execute(select(User).where(User.id == 1)).scalars().first()` 返回不同对象的问题
+
+2. **自动脏跟踪（Dirty Tracking）**
+   - 属性赋值（如 `user.name = "new"`）自动检测并在 `session.commit()` 时更新数据库
+   - 通过在模型基类中重写 `__setattr__` 方法实现透明拦截
+   - 检测 Column 属性修改，自动调用 `session._mark_dirty(instance)`
+   - 只在值真正改变时标记为 dirty，避免无意义的数据库写操作
+
+3. **查询实例自动注册**
+   - `session.execute(select(...))` 返回的实例自动关联到 Session
+   - 增强了 `ScalarResult._create_instance()` 方法，支持 identity map 查找和注册
+   - 实例自动获得 `_pytuck_session` 和 `_pytuck_state` 属性
+   - 修复了 `Session.flush()` 中的实例注册逻辑，统一使用 `_register_instance()` 方法
+
+4. **merge() 操作**
+   - 合并外部/detached 对象到 Session 中
+   - 智能处理：如果对象已存在则更新属性，否则从数据库加载或创建新对象
+   - 适用于 API 数据合并、序列化对象处理等场景
+   - 返回 Session 管理的实例（可能不是传入的同一个对象）
+
+5. **增强的上下文管理器**
+   - 完善的事务支持：`with session.begin():`
+   - 异常时自动回滚，成功时自动提交
+   - 支持嵌套的 Session 和 begin() 上下文
+
+**解决的问题**：
+- ❌ **之前**：`bob.age = 99; session.commit()` 不生效
+- ✅ **现在**：属性赋值自动检测并更新数据库
+- ❌ **之前**：`session.get()` 和 `execute(select())` 返回不同对象实例
+- ✅ **现在**：Identity Map 保证对象唯一性
+- ❌ **之前**：查询返回的实例未关联到 Session，无法脏跟踪
+- ✅ **现在**：自动注册，完整支持脏跟踪
+
+**向后兼容性**：
+- 100% 向后兼容，现有代码无需修改
+- 现有的 `update()` 语句和 CRUD 模式的 `save()` 方法继续正常工作
+- 新功能是增量增强，不破坏原有 API
+
+### 其他已完成功能
+
 - [x] 统一数据库连接器架构（`pytuck/connectors/` 模块）
 - [x] 数据迁移工具（`migrate_engine()`, `import_from_database()`）
 - [x] 从外部关系型数据库导入功能
 - [x] 统一引擎版本管理（`pytuck/backends/versions.py`）
 - [x] 表和列备注支持（`comment` 参数）
 - [x] 泛型类型提示系统，完整的 IDE 开发体验支持
+- [x] 强类型配置选项系统（dataclass 替代 **kwargs）
 
 ## 计划中的功能
 

@@ -5,6 +5,42 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-01-11
+
+### Added
+
+- **Complete SQLAlchemy 2.0 Style Object State Management**
+  - **Identity Map (Object Uniqueness)**: Objects with same primary key in the same Session are guaranteed to be the same Python instance
+  - **Automatic Dirty Tracking**: Attribute assignment (like `user.name = "new"`) automatically detected and updated to database on `session.commit()`
+  - **Query Instance Auto-Registration**: Instances returned by `session.execute(select(...))` are automatically associated with Session, supporting dirty tracking
+  - **merge() Operation**: Merge external/detached objects into Session, intelligently handling updates to existing objects or creating new ones
+  - **Enhanced Context Manager**: Complete transaction support with automatic rollback on exceptions
+
+- **Core API Enhancements**
+  - `Session._register_instance()` - Unified instance registration mechanism
+  - `Session._get_from_identity_map()` - Get instances from Identity Map
+  - `Session._mark_dirty()` - Mark instances as needing updates
+  - `Session.merge()` - Merge detached objects into session
+  - Enhanced `Result`/`ScalarResult` classes with Session reference passing and automatic instance registration
+
+### Fixed
+
+- **Attribute Assignment Update Issue**: Fixed the problem where modifying model instances through attribute assignment (like `bob.age = 99`) followed by `session.flush()/commit()` failed to write changes to database
+- **Identity Map Inconsistency**: Fixed the issue where `session.get()` and `session.execute(select(...))` returned different object instances
+- **Missing Instance Registration**: Fixed the issue where query-returned instances were not properly associated with Session
+
+### Improved
+
+- **Model Base Class Enhancement**: Added `__setattr__` dirty tracking mechanism to both `PureBaseModel` and `CRUDBaseModel`
+- **Session Instance Management**: Improved instance registration logic in `flush()` method, ensuring all instances have proper Session references
+
+### Technical Details
+
+- Implemented complete SQLAlchemy 2.0 style object lifecycle management (persistent/detached states)
+- Achieved transparent dirty tracking by intercepting Column attribute modifications through `__setattr__`
+- Enhanced `ScalarResult._create_instance()` method with Identity Map consistency checking
+- Fixed new object registration logic in `Session.flush()`, unifying the use of `_register_instance()` method
+
 ## [0.2.0] - 2026-01-11
 
 ### Added

@@ -69,7 +69,7 @@ Homepage = "https://github.com/go9sky/pytuck"
 Documentation = "https://github.com/go9sky/pytuck#readme"
 Repository = "https://github.com/go9sky/pytuck.git"
 Issues = "https://github.com/go9sky/pytuck/issues"
-Changelog = "https://github.com/go9sky/pytuck/blob/main/CHANGELOG.md"
+Changelog = "https://github.com/go9sky/pytuck/blob/master/CHANGELOG.md"
 
 [tool.setuptools]
 packages = ["pytuck", "pytuck.backends"]

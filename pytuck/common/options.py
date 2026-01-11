@@ -17,6 +17,7 @@ class CsvBackendOptions:
     """CSV 后端配置选项"""
     encoding: str = 'utf-8'  # 字符编码
     delimiter: str = ','  # 字段分隔符
+    indent: Optional[int] = None  # json元数据缩进空格数（无缩进时为 None）
 
 @dataclass
 class SqliteBackendOptions:

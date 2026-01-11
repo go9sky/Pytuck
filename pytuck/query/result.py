@@ -10,6 +10,7 @@ from ..common.types import T
 
 if TYPE_CHECKING:
     from ..core.orm import PureBaseModel
+    from ..core.session import Session
 
 
 class Row:
@@ -76,17 +77,40 @@ class ScalarResult(Generic[T]):
     Attributes:
         _records: List of record dictionaries
         _model_class: The model class to instantiate
+        _session: Session instance for identity map management
     """
 
-    def __init__(self, records: List[Dict[str, Any]], model_class: Type[T]) -> None:
+    def __init__(self, records: List[Dict[str, Any]], model_class: Type[T], session: Optional['Session'] = None) -> None:
         self._records = records
         self._model_class = model_class
+        self._session = session
+
+    def _create_instance(self, record: Dict[str, Any]) -> T:
+        """创建模型实例并处理 identity map"""
+        if self._session:
+            # 尝试从 identity map 获取现有实例
+            pk_name = getattr(self._model_class, '__primary_key__', 'id')
+            pk_value = record.get(pk_name)
+
+            if pk_value is not None:
+                existing = self._session._get_from_identity_map(self._model_class, pk_value)
+                if existing is not None:
+                    return existing
+
+            # 创建新实例并注册到 identity map
+            instance = self._model_class(**record)
+            self._session._register_instance(instance)
+            return instance
+        else:
+            # 没有 session，直接创建实例
+            instance: T = self._model_class(**record)
+            return instance
 
     def all(self) -> List[T]:
         """返回所有模型实例"""
         instances: List[T] = []
         for record in self._records:
-            instance = self._model_class(**record)
+            instance = self._create_instance(record)
             instances.append(instance)
         return instances
 
@@ -94,9 +118,7 @@ class ScalarResult(Generic[T]):
         """返回第一个模型实例"""
         if not self._records:
             return None
-        # 明确类型注解，避免 mypy 推断为 Any
-        instance: T = self._model_class(**self._records[0])
-        return instance
+        return self._create_instance(self._records[0])
 
     def one(self) -> T:
         """返回唯一的模型实例（必须恰好一条）"""
@@ -104,9 +126,7 @@ class ScalarResult(Generic[T]):
             raise ValueError("Expected one result, got 0")
         if len(self._records) > 1:
             raise ValueError(f"Expected one result, got {len(self._records)}")
-        # 明确类型注解，避免 mypy 推断为 Any
-        instance: T = self._model_class(**self._records[0])
-        return instance
+        return self._create_instance(self._records[0])
 
     def one_or_none(self) -> Optional[T]:
         """返回唯一的模型实例或 None（最多一条）"""
@@ -114,9 +134,7 @@ class ScalarResult(Generic[T]):
             return None
         if len(self._records) > 1:
             raise ValueError(f"Expected at most one result, got {len(self._records)}")
-        # 明确类型注解，避免 mypy 推断为 Any
-        instance: T = self._model_class(**self._records[0])
-        return instance
+        return self._create_instance(self._records[0])
 
 
 class Result(Generic[T]):
@@ -146,22 +164,25 @@ class Result(Generic[T]):
         _records: List of record dictionaries from query
         _model_class: The model class for this result
         _operation: Operation type ('select', 'insert', 'update', 'delete')
+        _session: Session instance for identity map management
     """
 
-    def __init__(self, records: List[Dict[str, Any]], model_class: Type[T], operation: str = 'select') -> None:
+    def __init__(self, records: List[Dict[str, Any]], model_class: Type[T], operation: str = 'select', session: Optional['Session'] = None) -> None:
         """
         Args:
             records: 查询结果（字典列表）
             model_class: 模型类
             operation: 操作类型 ('select', 'insert', 'update', 'delete')
+            session: Session 实例，用于 identity map 管理
         """
         self._records = records
         self._model_class = model_class
         self._operation = operation
+        self._session = session
 
     def scalars(self) -> ScalarResult[T]:
         """返回标量结果（模型实例）"""
-        return ScalarResult(self._records, self._model_class)
+        return ScalarResult(self._records, self._model_class, self._session)
 
     def all(self) -> List[Row]:
         """返回所有 Row 对象"""

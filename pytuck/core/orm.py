@@ -661,6 +661,32 @@ def _create_pure_base(storage: 'Storage') -> Type[PureBaseModel]:
                 else:
                     raise ValidationError(f"Missing required column '{col_name}'")
 
+        def __setattr__(self, name: str, value: Any) -> None:
+            """
+            拦截属性设置，实现脏跟踪
+
+            当设置 Column 属性时，自动将实例标记为 dirty，
+            这样 session.flush()/commit() 就能检测到修改
+            """
+            # 如果是 Column 属性且实例已关联 session，先获取旧值用于比较
+            old_value = None
+            should_mark_dirty = False
+
+            if (hasattr(self.__class__, name) and
+                isinstance(getattr(self.__class__, name), Column) and
+                hasattr(self, '_pytuck_session')):
+
+                old_value = self.__dict__.get(name)
+                session = getattr(self, '_pytuck_session')
+                should_mark_dirty = (session is not None and old_value != value)
+
+            # 设置属性值
+            super().__setattr__(name, value)
+
+            # 如果需要，标记实例为 dirty
+            if should_mark_dirty:
+                session._mark_dirty(self)
+
         def to_dict(self) -> Dict[str, Any]:
             """转换为字典"""
             data = {}
@@ -743,6 +769,32 @@ def _create_crud_base(storage: 'Storage') -> Type[CRUDBaseModel]:
                     setattr(self, col_name, None)
                 else:
                     raise ValidationError(f"Missing required column '{col_name}'")
+
+        def __setattr__(self, name: str, value: Any) -> None:
+            """
+            拦截属性设置，实现脏跟踪
+
+            当设置 Column 属性时，自动将实例标记为 dirty，
+            这样 session.flush()/commit() 就能检测到修改
+            """
+            # 如果是 Column 属性且实例已关联 session，先获取旧值用于比较
+            old_value = None
+            should_mark_dirty = False
+
+            if (hasattr(self.__class__, name) and
+                isinstance(getattr(self.__class__, name), Column) and
+                hasattr(self, '_pytuck_session')):
+
+                old_value = self.__dict__.get(name)
+                session = getattr(self, '_pytuck_session')
+                should_mark_dirty = (session is not None and old_value != value)
+
+            # 设置属性值
+            super().__setattr__(name, value)
+
+            # 如果需要，标记实例为 dirty
+            if should_mark_dirty:
+                session._mark_dirty(self)
 
         def to_dict(self) -> Dict[str, Any]:
             """转换为字典"""

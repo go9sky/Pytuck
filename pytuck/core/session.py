@@ -133,8 +133,8 @@ class Session:
             pk_name = instance.__primary_key__
             setattr(instance, pk_name, pk)
 
-            # 加入标识映射
-            self._identity_map[(instance.__class__, pk)] = instance
+            # 注册到标识映射（使用统一的方法，设置 session 引用）
+            self._register_instance(instance)
 
         # 2. 处理待更新对象
         for instance in self._dirty_objects:
@@ -206,9 +206,9 @@ class Session:
             模型实例，如果不存在返回 None
         """
         # 先从标识映射查找
-        key = (model_class, pk)
-        if key in self._identity_map:
-            return self._identity_map[key]  # type: ignore
+        instance = self._get_from_identity_map(model_class, pk)
+        if instance is not None:
+            return instance
 
         # 从数据库查询
         table_name = model_class.__tablename__
@@ -220,8 +220,8 @@ class Session:
             # 创建模型实例
             instance = model_class(**record)
 
-            # 加入标识映射
-            self._identity_map[key] = instance
+            # 注册到标识映射
+            self._register_instance(instance)
 
             return instance
         except Exception:
@@ -240,6 +240,105 @@ class Session:
 
     @overload
     def execute(self, statement: Delete[T]) -> CursorResult[T]: ...
+
+    def _register_instance(self, instance: PureBaseModel) -> None:
+        """
+        注册实例到 identity map
+
+        Args:
+            instance: 模型实例
+        """
+        pk_name = instance.__primary_key__
+        pk = getattr(instance, pk_name)
+        if pk is not None:
+            key = (instance.__class__, pk)
+            self._identity_map[key] = instance
+            # 设置实例的 session 引用，用于脏跟踪
+            setattr(instance, '_pytuck_session', self)
+            setattr(instance, '_pytuck_state', 'persistent')
+
+    def _get_from_identity_map(self, model_class: Type[T], pk: Any) -> Optional[T]:
+        """
+        从 identity map 获取实例
+
+        Args:
+            model_class: 模型类
+            pk: 主键值
+
+        Returns:
+            模型实例，如果不存在返回 None
+        """
+        key = (model_class, pk)
+        return self._identity_map.get(key)  # type: ignore
+
+    def _mark_dirty(self, instance: PureBaseModel) -> None:
+        """
+        标记实例为 dirty（需要更新）
+
+        Args:
+            instance: 模型实例
+        """
+        if instance not in self._dirty_objects and instance not in self._new_objects:
+            self._dirty_objects.append(instance)
+
+    def merge(self, instance: T) -> T:
+        """
+        合并一个 detached 实例到会话中
+
+        这个方法会检查实例是否已存在于 identity map 中：
+        - 如果存在，更新现有实例的属性并返回现有实例
+        - 如果不存在，从数据库加载或创建新实例，然后更新属性
+
+        Args:
+            instance: 要合并的模型实例
+
+        Returns:
+            会话管理的实例（可能不是传入的同一个对象）
+
+        Example:
+            # 从外部来源获得的数据
+            external_user = User(id=1, name="Updated Name", age=25)
+
+            # 合并到会话
+            managed_user = session.merge(external_user)
+            session.commit()  # 提交更新
+        """
+        model_class = instance.__class__
+        pk_name = model_class.__primary_key__
+        pk_value = getattr(instance, pk_name)
+
+        if pk_value is None:
+            # 没有主键，作为新对象处理
+            self.add(instance)
+            return instance
+
+        # 尝试从 identity map 获取现有实例
+        existing = self._get_from_identity_map(model_class, pk_value)
+
+        if existing is not None:
+            # 已存在，更新其属性
+            for col_name, column in model_class.__columns__.items():
+                if hasattr(instance, col_name):
+                    value = getattr(instance, col_name)
+                    if getattr(existing, col_name) != value:
+                        setattr(existing, col_name, value)
+            return existing
+
+        # 不存在，尝试从数据库加载
+        existing = self.get(model_class, pk_value)
+
+        if existing is not None:
+            # 从数据库加载成功，更新属性
+            for col_name, column in model_class.__columns__.items():
+                if hasattr(instance, col_name):
+                    value = getattr(instance, col_name)
+                    if getattr(existing, col_name) != value:
+                        setattr(existing, col_name, value)
+            return existing
+
+        # 数据库中也不存在，作为新对象处理
+        self.add(instance)
+        return instance
 
     def execute(self, statement: Statement) -> Union[Result, CursorResult]:
         """
@@ -268,7 +367,8 @@ class Session:
         # 执行 statement
         if isinstance(statement, Select):
             records = statement._execute(self.storage)
-            return Result(records, statement.model_class, 'select')
+            # 传递 session 引用给 Result，用于自动注册实例
+            return Result(records, statement.model_class, 'select', session=self)
 
         elif isinstance(statement, Insert):
             pk = statement._execute(self.storage)

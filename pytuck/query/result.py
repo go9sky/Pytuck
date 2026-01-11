@@ -106,8 +106,8 @@ class ScalarResult(Generic[T]):
             return instance
         else:
             # 没有 session，直接创建实例
-            instance: T = self._model_class(**record)
-            return instance
+            new_instance: T = self._model_class(**record)
+            return new_instance
 
     def all(self) -> List[T]:
         """返回所有模型实例"""

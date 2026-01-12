@@ -7,7 +7,7 @@
 [![Python Versions](https://img.shields.io/pypi/pyversions/pytuck.svg)](https://pypi.org/project/pytuck/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-[English Documentation](README.EN.md)
+中文 | [English](README.EN.md)
 
 纯Python实现的轻量级文档数据库，支持多种存储引擎，无SQL，通过对象和方法管理数据。
 

@@ -7,7 +7,7 @@
 [![Python Versions](https://img.shields.io/pypi/pyversions/pytuck.svg)](https://pypi.org/project/pytuck/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-[中文文档](README.md)
+[中文](README.md) | English
 
 A lightweight, pure Python document database with multi-engine support. No SQL required - manage your data through Python objects and methods.
 

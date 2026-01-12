@@ -5,9 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.3.0] - 2026-01-11
+> [中文版](./CHANGELOG.md)
+
+## [0.3.0] - 2026-01-13
 
 ### Added
+
+- **JSON Multi-Library Support**: Added support for high-performance JSON libraries like orjson, ujson
+  - Specify JSON implementation via `JsonBackendOptions(impl='orjson')`
+  - Support for custom JSON library extension mechanism
+  - Smart parameter handling: incompatible parameters automatically discarded without affecting functionality
+  - Performance improvements: orjson is 2-3x faster than standard library, ujson is 1.5-2x faster
+  - User-specified library takes priority, no automatic fallback, ensuring users know which implementation is used
 
 - **Complete SQLAlchemy 2.0 Style Object State Management**
   - **Identity Map (Object Uniqueness)**: Objects with same primary key in the same Session are guaranteed to be the same Python instance
@@ -23,13 +32,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `Session.merge()` - Merge detached objects into session
   - Enhanced `Result`/`ScalarResult` classes with Session reference passing and automatic instance registration
 
+### Changed
+
+- **Query Result Objectification**: `Result.all()`, `first()`, `one()` now return model instances by default
+  - `session.execute(select(Model)).all()` now directly returns `List[Model]`
+  - Aligns with object-oriented design philosophy, providing more intuitive API
+  - Reduces cognitive load of remembering `.scalars()` calls
+  - Added `Result.one_or_none()` method for SQLAlchemy API consistency
+  - Added `Result.rows()` method providing migration path for users needing Row object functionality
+  - Supports index access: `rows()[0][0]`, dictionary access: `rows()[0]['field']`
+  - Existing `.scalars().all()` calls continue to work but are no longer necessary
+  - Most code requires no changes (attribute access `row.name` → `user.name` still works)
+  - Architecture extensibility reserved for future multi-table queries (`select(Student, Teacher)`) and JOIN support
+
 ### Fixed
 
+- **Query Result Type Misuse**: Fixed incorrect usage of `row[0]` to access model instances in `examples/backend_options_demo.py`
+  - Issue: Users expected `session.execute(select(Model)).all()` to return model instances via `row[0]`
+  - Reality: `row[0]` was the first field value (like `id` value 1), not model instance
+  - Fix: Through query result objectification, `.all()` now directly returns model instance list for direct iteration
 - **Attribute Assignment Update Issue**: Fixed the problem where modifying model instances through attribute assignment (like `bob.age = 99`) followed by `session.flush()/commit()` failed to write changes to database
 - **Identity Map Inconsistency**: Fixed the issue where `session.get()` and `session.execute(select(...))` returned different object instances
 - **Missing Instance Registration**: Fixed the issue where query-returned instances were not properly associated with Session
 
 ### Improved
+
+- **Path Operations Modernization**: All internal path operations unified to use pathlib.Path
+  - Improved code consistency and maintainability
+  - Support for richer path operation methods
+  - Better cross-platform compatibility
+  - Storage backend constructors support Union[str, Path] input types
 
 - **Model Base Class Enhancement**: Added `__setattr__` dirty tracking mechanism to both `PureBaseModel` and `CRUDBaseModel`
 - **Session Instance Management**: Improved instance registration logic in `flush()` method, ensuring all instances have proper Session references

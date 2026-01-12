@@ -7,9 +7,16 @@
 
 > [English Version](./CHANGELOG.EN.md)
 
-## [0.3.0] - 2026-01-11
+## [0.3.0] - 2026-01-12
 
 ### 新增
+
+- **JSON 多库支持**：新增对 orjson、ujson 等高性能 JSON 库的支持
+  - 通过 `JsonBackendOptions(impl='orjson')` 指定 JSON 实现
+  - 支持自定义 JSON 库扩展机制
+  - 智能参数处理：不兼容参数自动舍弃，不影响功能
+  - 性能提升：orjson 比标准库快 2-3 倍，ujson 快 1.5-2 倍
+  - 用户指定库优先，不自动回退，确保用户明确知道使用的实现
 
 - **完整的 SQLAlchemy 2.0 风格对象状态管理**
   - **Identity Map（对象唯一性）**：同一 Session 中相同主键的对象保证是同一个 Python 实例
@@ -25,13 +32,36 @@
   - `Session.merge()` - 合并 detached 对象到会话中
   - 增强的 `Result`/`ScalarResult` 类，支持 Session 引用传递和自动实例注册
 
+### 变更
+
+- **查询结果对象化**：`Result.all()`, `first()`, `one()` 现在默认返回模型实例
+  - `session.execute(select(Model)).all()` 现在直接返回 `List[Model]`
+  - 符合面向对象设计理念，提供更直观的API
+  - 减少用户需要记住 `.scalars()` 调用的认知负担
+  - 新增 `Result.one_or_none()` 方法，与 SQLAlchemy API 保持一致
+  - 新增 `Result.rows()` 方法，为需要 Row 对象功能的用户提供迁移路径
+  - 支持索引访问：`rows()[0][0]`，字典访问：`rows()[0]['field']`
+  - 现有 `.scalars().all()` 调用继续工作但不再必需
+  - 大多数代码无需修改（属性访问 `row.name` → `user.name` 仍然工作）
+  - 为未来多表查询（`select(Student, Teacher)`）和 JOIN 支持预留了架构扩展空间
+
 ### 修复
 
+- **查询结果类型误用问题**：修复了 `examples/backend_options_demo.py` 中错误使用 `row[0]` 访问模型实例的问题
+  - 问题：用户期望 `session.execute(select(Model)).all()` 返回的 `row[0]` 是模型实例
+  - 实际：`row[0]` 是第一个字段值（如 `id` 的值 1），不是模型实例
+  - 修复：通过查询结果对象化，现在 `.all()` 直接返回模型实例列表，用户可以直接迭代使用
 - **属性赋值更新问题**：修复了通过属性赋值（如 `bob.age = 99`）修改模型实例后，`session.flush()/commit()` 无法将更改写入数据库的问题
 - **Identity Map 不一致问题**：修复了 `session.get()` 和 `session.execute(select(...))` 返回不同对象实例的问题
 - **实例注册缺失**：修复了查询返回的实例未正确关联到 Session 的问题
 
 ### 改进
+
+- **路径操作现代化**：所有内部路径操作统一使用 pathlib.Path
+  - 提高代码一致性和可维护性
+  - 支持更丰富的路径操作方法
+  - 改进跨平台兼容性
+  - 存储后端构造函数支持 Union[str, Path] 输入类型
 
 - **模型基类增强**：在 `PureBaseModel` 和 `CRUDBaseModel` 中添加 `__setattr__` 脏跟踪机制
 - **Session 实例管理**：完善了 `flush()` 方法中的实例注册逻辑，确保所有实例都有正确的 Session 引用

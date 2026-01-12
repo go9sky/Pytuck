@@ -144,24 +144,27 @@ class Result(Generic[T]):
     """
     Query result wrapper for SELECT operations.
 
-    Provides SQLAlchemy 2.0 style result handling with multiple access methods:
-    - scalars(): Get results as model instances
-    - all(): Get all results as Row objects
-    - first(): Get first result as Row
-    - one(): Get exactly one result (raises if 0 or >1)
-    - fetchall(): Get raw dictionary list
+    提供面向对象的查询结果处理，默认返回模型实例：
+    - all(): 返回所有结果为模型实例（推荐用法）
+    - first(): 返回第一个结果为模型实例
+    - one(): 返回唯一结果为模型实例（必须恰好一条）
+    - one_or_none(): 返回唯一结果或 None（最多一条）
+    - rows(): 返回 Row 对象（兼容旧用法）
+    - scalars(): 返回 ScalarResult（与 all() 等效，保留兼容性）
+    - fetchall(): 返回原始字典列表
 
     Example:
         result = session.execute(select(User).where(User.age >= 18))
 
-        # As model instances
-        users = result.scalars().all()
+        # 推荐用法：直接获取模型实例
+        users = result.all()          # List[User]
+        user = result.first()         # Optional[User]
 
-        # As Row objects
-        rows = result.all()
+        # 兼容旧用法：Row 对象
+        rows = result.rows()          # List[Row]
 
-        # As dictionaries
-        dicts = result.fetchall()
+        # 原始数据
+        dicts = result.fetchall()     # List[Dict[str, Any]]
 
     Attributes:
         _records: List of record dictionaries from query
@@ -187,23 +190,33 @@ class Result(Generic[T]):
         """返回标量结果（模型实例）"""
         return ScalarResult(self._records, self._model_class, self._session)
 
-    def all(self) -> List[Row]:
-        """返回所有 Row 对象"""
+    def all(self) -> List[T]:
+        """返回所有结果为模型实例（推荐用法）"""
+        if self._operation != 'select':
+            raise NotImplementedError("all() not supported for non-select operations")
+        return self.scalars().all()
+
+    def first(self) -> Optional[T]:
+        """返回第一个结果为模型实例"""
+        if self._operation != 'select':
+            raise NotImplementedError("first() not supported for non-select operations")
+        return self.scalars().first()
+
+    def one(self) -> T:
+        """返回唯一的结果为模型实例（必须恰好一条）"""
+        if self._operation != 'select':
+            raise NotImplementedError("one() not supported for non-select operations")
+        return self.scalars().one()
+
+    def one_or_none(self) -> Optional[T]:
+        """返回唯一的结果为模型实例或 None（最多一条）"""
+        if self._operation != 'select':
+            raise NotImplementedError("one_or_none() not supported for non-select operations")
+        return self.scalars().one_or_none()
+
+    def rows(self) -> List[Row]:
+        """返回 Row 对象列表（兼容旧用法）"""
         return [Row(record, self._model_class) for record in self._records]
-
-    def first(self) -> Optional[Row]:
-        """返回第一个 Row 对象"""
-        if not self._records:
-            return None
-        return Row(self._records[0], self._model_class)
-
-    def one(self) -> Row:
-        """返回唯一的 Row 对象（必须恰好一条）"""
-        if len(self._records) == 0:
-            raise ValueError("Expected one result, got 0")
-        if len(self._records) > 1:
-            raise ValueError(f"Expected one result, got {len(self._records)}")
-        return Row(self._records[0], self._model_class)
 
     def fetchall(self) -> List[Dict[str, Any]]:
         """返回字典列表"""
@@ -267,8 +280,17 @@ class CursorResult(Result[T]):
     def scalars(self) -> ScalarResult[T]:
         raise NotImplementedError(f"scalars() not supported for {self._operation} operation")
 
-    def all(self) -> List[Row]:
+    def all(self) -> List[T]:
         raise NotImplementedError(f"all() not supported for {self._operation} operation")
 
-    def first(self) -> Optional[Row]:
+    def first(self) -> Optional[T]:
         raise NotImplementedError(f"first() not supported for {self._operation} operation")
+
+    def one(self) -> T:
+        raise NotImplementedError(f"one() not supported for {self._operation} operation")
+
+    def one_or_none(self) -> Optional[T]:
+        raise NotImplementedError(f"one_or_none() not supported for {self._operation} operation")
+
+    def rows(self) -> List[Row]:
+        raise NotImplementedError(f"rows() not supported for {self._operation} operation")

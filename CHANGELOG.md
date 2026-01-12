@@ -7,9 +7,16 @@
 
 > [English Version](./CHANGELOG.EN.md)
 
-## [0.3.0] - 2026-01-12
+## [0.3.0] - 2026-01-13
 
 ### 新增
+
+- **Pytuck-View Web UI 支持**：为轻量级 Web 界面提供完整的数据查询支持
+  - 新增 `Storage.query_table_data()` 方法，专为 Web UI 设计的分页查询接口
+  - 扩展 `Storage.query()` 方法，添加 limit/offset/order_by/order_desc 参数支持
+  - 通用后端分页接口：`StorageBackend.supports_server_side_pagination()` 和 `query_with_pagination()`
+  - SQLite 后端服务端分页优化：使用数据库级 LIMIT/OFFSET 实现真正的分页，避免大表全量加载
+  - 支持动态表数据查询，无需预定义模型类，返回标准化字典格式
 
 - **JSON 多库支持**：新增对 orjson、ujson 等高性能 JSON 库的支持
   - 通过 `JsonBackendOptions(impl='orjson')` 指定 JSON 实现

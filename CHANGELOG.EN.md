@@ -11,6 +11,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Pytuck-View Web UI Support**: Complete data query support for lightweight web interfaces
+  - Added `Storage.query_table_data()` method, a pagination query interface specifically designed for Web UI
+  - Extended `Storage.query()` method with limit/offset/order_by/order_desc parameter support
+  - Generic backend pagination interface: `StorageBackend.supports_server_side_pagination()` and `query_with_pagination()`
+  - SQLite backend server-side pagination optimization: uses database-level LIMIT/OFFSET for true pagination, avoiding full table loading for large datasets
+  - Supports dynamic table data queries without predefined model classes, returns standardized dictionary format
+
 - **JSON Multi-Library Support**: Added support for high-performance JSON libraries like orjson, ujson
   - Specify JSON implementation via `JsonBackendOptions(impl='orjson')`
   - Support for custom JSON library extension mechanism

@@ -6,7 +6,7 @@ Pytuck SQLite存储引擎
 
 import json
 from pathlib import Path
-from typing import Any, Dict, Union, TYPE_CHECKING
+from typing import Any, Dict, List, Optional, Union, TYPE_CHECKING
 from datetime import datetime
 
 from .base import StorageBackend
@@ -309,3 +309,110 @@ class SQLiteBackend(StorageBackend):
 
         except Exception:
             return {}
+
+    def supports_server_side_pagination(self) -> bool:
+        """SQLite 支持服务端分页"""
+        return True
+
+    def query_with_pagination(self,
+                             table_name: str,
+                             conditions: List[Dict[str, Any]],
+                             limit: Optional[int] = None,
+                             offset: int = 0,
+                             order_by: Optional[str] = None,
+                             order_desc: bool = False) -> Dict[str, Any]:
+        """
+        使用 SQL LIMIT/OFFSET 实现后端分页
+
+        Args:
+            table_name: 表名
+            conditions: 查询条件列表 [{'field': 'name', 'operator': '=', 'value': 'Alice'}]
+            limit: 限制返回记录数
+            offset: 跳过的记录数
+            order_by: 排序字段名
+            order_desc: 是否降序排列
+
+        Returns:
+            {
+                'records': List[Dict[str, Any]],
+                'total_count': int,
+                'has_more': bool,
+            }
+        """
+        if not self.exists():
+            return {'records': [], 'total_count': 0, 'has_more': False}
+
+        try:
+            # 创建连接器
+            connector_options = SqliteConnectorOptions()
+            connector = SQLiteConnector(str(self.file_path), connector_options)
+
+            with connector:
+                # 检查表是否存在（不要添加反引号）
+                if not connector.table_exists(table_name):
+                    return {'records': [], 'total_count': 0, 'has_more': False}
+
+                # 构建 WHERE 子句
+                where_clause = ""
+                params = []
+                if conditions:
+                    where_parts = []
+                    for condition in conditions:
+                        field = condition['field']
+                        operator = condition.get('operator', '=')
+                        value = condition['value']
+
+                        if operator == '=':
+                            where_parts.append(f"`{field}` = ?")
+                            params.append(value)
+                        # 可以扩展更多操作符
+
+                    if where_parts:
+                        where_clause = "WHERE " + " AND ".join(where_parts)
+
+                # 构建 ORDER BY 子句
+                order_clause = ""
+                if order_by:
+                    direction = "DESC" if order_desc else "ASC"
+                    order_clause = f"ORDER BY `{order_by}` {direction}"
+
+                # 构建 LIMIT/OFFSET 子句
+                limit_clause = ""
+                if limit is not None:
+                    limit_clause = f"LIMIT {limit}"
+                    if offset > 0:
+                        limit_clause += f" OFFSET {offset}"
+
+                # 查询总数
+                count_sql = f"SELECT COUNT(*) FROM `{table_name}` {where_clause}"
+                cursor = connector.execute(count_sql, params)
+                total_count = cursor.fetchone()[0] if cursor else 0
+
+                # 查询数据
+                data_sql = f"SELECT * FROM `{table_name}` {where_clause} {order_clause} {limit_clause}"
+                cursor = connector.execute(data_sql, params)
+                rows = cursor.fetchall()
+                col_names = [desc[0] for desc in cursor.description] if cursor.description else []
+
+                # 转换为字典格式
+                records = []
+                for row in rows:
+                    record = {}
+                    for col_name, value in zip(col_names, row):
+                        record[col_name] = value
+                    records.append(record)
+
+                # 判断是否还有更多数据
+                has_more = False
+                if limit is not None:
+                    has_more = (offset + len(records)) < total_count
+
+                return {
+                    'records': records,
+                    'total_count': total_count,
+                    'has_more': has_more
+                }
+
+        except Exception as e:
+            # 如果出错，回退到 NotImplementedError，让 Storage 使用内存分页
+            raise NotImplementedError(f"SQLite pagination failed: {e}")

@@ -149,5 +149,50 @@ class StorageBackend(ABC):
         """
         return {}
 
+    def supports_server_side_pagination(self) -> bool:
+        """
+        检查后端是否支持服务端分页
+
+        Returns:
+            True 如果支持服务端分页，False 使用内存分页
+        """
+        return False
+
+    def query_with_pagination(self,
+                             table_name: str,
+                             conditions: List[Dict[str, Any]],
+                             limit: Optional[int] = None,
+                             offset: int = 0,
+                             order_by: Optional[str] = None,
+                             order_desc: bool = False) -> Dict[str, Any]:
+        """
+        带分页的查询（可选实现，用于数据库后端优化）
+
+        Args:
+            table_name: 表名
+            conditions: 查询条件列表（简化格式）
+            limit: 限制返回记录数
+            offset: 跳过的记录数
+            order_by: 排序字段名
+            order_desc: 是否降序排列
+
+        Returns:
+            {
+                'records': List[Dict[str, Any]],  # 查询结果
+                'total_count': int,               # 总记录数（可选）
+                'has_more': bool,                 # 是否还有更多数据（可选）
+            }
+
+        Note:
+            - 默认实现抛出 NotImplementedError
+            - 只有支持的后端才需要实现此方法
+            - SQLite、DuckDB 等数据库后端可以实现真正的服务端分页
+            - JSON、CSV 等文件后端通常不实现此方法
+        """
+        raise NotImplementedError(
+            f"{self.__class__.__name__} does not support server-side pagination. "
+            f"Use storage.query() with memory-based pagination instead."
+        )
+
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}(file_path='{self.file_path}')"

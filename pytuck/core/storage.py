@@ -458,13 +458,23 @@ class Storage:
         table = self.get_table(table_name)
         return table.get(pk)
 
-    def query(self, table_name: str, conditions: List[Condition]) -> List[Dict[str, Any]]:
+    def query(self,
+              table_name: str,
+              conditions: List[Condition],
+              limit: Optional[int] = None,
+              offset: int = 0,
+              order_by: Optional[str] = None,
+              order_desc: bool = False) -> List[Dict[str, Any]]:
         """
         查询多条记录
 
         Args:
             table_name: 表名
             conditions: 查询条件列表
+            limit: 限制返回记录数（None 表示无限制）
+            offset: 跳过的记录数
+            order_by: 排序字段名
+            order_desc: 是否降序排列
 
         Returns:
             记录字典列表
@@ -501,7 +511,132 @@ class Storage:
                 if all(cond.evaluate(record) for cond in conditions):
                     results.append(record.copy())
 
+        # 排序
+        if order_by and order_by in table.columns:
+            def sort_key(record):
+                value = record.get(order_by)
+                # 处理 None 值，将其排在最后
+                if value is None:
+                    return (1, 0) if not order_desc else (0, 0)
+                return (0, value) if not order_desc else (1, value)
+
+            try:
+                results.sort(key=sort_key, reverse=order_desc)
+            except TypeError:
+                # 如果比较失败（比如混合类型），按字符串排序
+                results.sort(key=lambda r: str(r.get(order_by, '')), reverse=order_desc)
+
+        # 分页
+        if offset > 0:
+            results = results[offset:]
+        if limit is not None and limit > 0:
+            results = results[:limit]
+
         return results
+
+    def query_table_data(self,
+                        table_name: str,
+                        limit: Optional[int] = None,
+                        offset: int = 0,
+                        order_by: Optional[str] = None,
+                        order_desc: bool = False,
+                        filters: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """
+        查询表数据（专为 Web UI 设计）
+
+        Args:
+            table_name: 表名
+            limit: 限制返回记录数
+            offset: 跳过的记录数
+            order_by: 排序字段名
+            order_desc: 是否降序排列
+            filters: 过滤条件字典 {field: value}
+
+        Returns:
+            {
+                'records': List[Dict[str, Any]],  # 实际数据行
+                'total_count': int,               # 总记录数（应用过滤后）
+                'has_more': bool,                 # 是否还有更多数据
+                'schema': List[Dict],             # 列结构信息
+            }
+        """
+        if table_name not in self.tables:
+            raise TableNotFoundError(f"Table '{table_name}' not found")
+
+        table = self.get_table(table_name)
+
+        # 尝试使用后端分页（如果支持）
+        if (self.backend and
+            hasattr(self.backend, 'supports_server_side_pagination') and
+            self.backend.supports_server_side_pagination()):
+
+            # 转换过滤条件为简化格式
+            conditions = []
+            if filters:
+                for field, value in filters.items():
+                    if field in table.columns:
+                        conditions.append({'field': field, 'operator': '=', 'value': value})
+
+            try:
+                # 使用后端分页
+                result = self.backend.query_with_pagination(
+                    table_name=table_name,
+                    conditions=conditions,
+                    limit=limit,
+                    offset=offset,
+                    order_by=order_by,
+                    order_desc=order_desc
+                )
+
+                # 获取表结构信息
+                schema = [col.to_dict() for col in table.columns.values()]
+
+                return {
+                    'records': result.get('records', []),
+                    'total_count': result.get('total_count', 0),
+                    'has_more': result.get('has_more', False),
+                    'schema': schema
+                }
+            except NotImplementedError:
+                # 后端不支持，回退到内存分页
+                pass
+
+        # 使用内存分页（默认方式）
+        # 构建查询条件
+        conditions = []
+        if filters:
+            for field, value in filters.items():
+                if field in table.columns:
+                    conditions.append(Condition(field, '=', value))
+
+        # 先查询总数（不分页）
+        total_records = self.query(table_name, conditions)
+        total_count = len(total_records)
+
+        # 再进行分页查询
+        records = self.query(
+            table_name=table_name,
+            conditions=conditions,
+            limit=limit,
+            offset=offset,
+            order_by=order_by,
+            order_desc=order_desc
+        )
+
+        # 获取表结构信息
+        schema = [col.to_dict() for col in table.columns.values()]
+
+        # 判断是否还有更多数据
+        has_more = False
+        if limit is not None:
+            has_more = (offset + len(records)) < total_count
+
+        return {
+            'records': records,
+            'total_count': total_count,
+            'has_more': has_more,
+            'schema': schema
+        }
 
     @contextmanager
     def transaction(self) -> Generator['Storage', None, None]:

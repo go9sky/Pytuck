@@ -7,9 +7,19 @@
 
 > [English Version](./CHANGELOG.EN.md)
 
-## [0.3.0] - 2026-01-13
+## [0.3.0] - 2026-01-14
 
 ### 新增
+
+- **数据库文件格式验证功能**：新增动态识别 Pytuck 数据库文件格式的完整功能
+  - `is_valid_pytuck_database(file_path)` - 检验文件是否为合法的 Pytuck 数据库并返回引擎类型
+  - `get_database_info(file_path)` - 获取数据库详细信息（引擎、版本、表数量、文件大小等）
+  - `is_valid_pytuck_database_engine(file_path, engine_name)` - 验证文件是否为指定引擎格式
+  - `get_available_engines()` - 返回结构化的引擎信息字典，替代 `print_available_engines()`
+  - **轻量级探测机制**：各引擎实现 `probe()` 方法，仅读取必要文件头部（Binary 64字节，JSON 32KB，XML 8KB等）
+  - **内容特征识别**：完全基于文件内容判断，不依赖文件扩展名（JSON内容的.db文件仍能正确识别为JSON格式）
+  - **动态引擎支持**：使用 BackendRegistry 自动发现引擎，新增引擎时无需修改验证代码
+  - **容错设计**：可选依赖缺失时仍能识别对应格式（置信度降级），完善的三级异常处理
 
 - **Pytuck-View Web UI 支持**：为轻量级 Web 界面提供完整的数据查询支持
   - 新增 `Storage.query_table_data()` 方法，专为 Web UI 设计的分页查询接口

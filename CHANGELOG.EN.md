@@ -7,9 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > [中文版](./CHANGELOG.md)
 
-## [0.3.0] - 2026-01-13
+## [0.3.0] - 2026-01-14
 
 ### Added
+
+- **Database File Format Validation Feature**: Added dynamic recognition functionality for Pytuck database file formats
+  - `is_valid_pytuck_database(file_path)` - Validate if a file is a valid Pytuck database and return engine type
+  - `get_database_info(file_path)` - Get detailed database information (engine, version, table count, file size, etc.)
+  - `is_valid_pytuck_database_engine(file_path, engine_name)` - Validate if file is of specified engine format
+  - `get_available_engines()` - Return structured engine information dictionary, replacing `print_available_engines()`
+  - **Lightweight Probing Mechanism**: Each engine implements `probe()` method, reading only necessary file headers (Binary 64 bytes, JSON 32KB, XML 8KB, etc.)
+  - **Content-Based Recognition**: Completely based on file content, not relying on file extensions (JSON content in .db files still correctly identified as JSON format)
+  - **Dynamic Engine Support**: Uses BackendRegistry for automatic engine discovery, no need to modify validation code when adding new engines
+  - **Fault-Tolerant Design**: When optional dependencies are missing, format can still be recognized (confidence level downgraded), comprehensive three-tier exception handling
 
 - **Pytuck-View Web UI Support**: Complete data query support for lightweight web interfaces
   - Added `Storage.query_table_data()` method, a pagination query interface specifically designed for Web UI

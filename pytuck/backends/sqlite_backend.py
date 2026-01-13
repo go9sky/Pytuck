@@ -6,7 +6,7 @@ Pytuck SQLite存储引擎
 
 import json
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union, TYPE_CHECKING
+from typing import Any, Dict, List, Optional, Union, TYPE_CHECKING, Tuple
 from datetime import datetime
 
 from .base import StorageBackend
@@ -416,3 +416,103 @@ class SQLiteBackend(StorageBackend):
         except Exception as e:
             # 如果出错，回退到 NotImplementedError，让 Storage 使用内存分页
             raise NotImplementedError(f"SQLite pagination failed: {e}")
+
+    @classmethod
+    def probe(cls, file_path: Union[str, Path]) -> Tuple[bool, Optional[Dict[str, Any]]]:
+        """
+        轻量探测文件是否为 SQLite 引擎格式
+
+        通过检查 SQLite 数据库是否包含 _pytuck_tables 表来识别。
+        使用只读模式连接并设置超时以确保安全和性能。
+
+        Returns:
+            Tuple[bool, Optional[Dict]]: (是否匹配, 元数据信息或None)
+        """
+        try:
+            file_path = Path(file_path).expanduser()
+            if not file_path.exists():
+                return False, {'error': 'file_not_found'}
+
+            # 获取文件信息
+            file_stat = file_path.stat()
+            file_size = file_stat.st_size
+
+            # 空文件不可能是有效的 SQLite
+            if file_size == 0:
+                return False, {'error': 'empty_file'}
+
+            # 尝试连接 SQLite 数据库（只读模式，1秒超时）
+            try:
+                import sqlite3
+
+                # 使用只读模式连接
+                conn_str = f'file:{file_path}?mode=ro'
+                conn = sqlite3.connect(conn_str, uri=True, timeout=1.0)
+                conn.row_factory = sqlite3.Row
+
+                try:
+                    # 检查是否存在 _pytuck_tables 表
+                    cursor = conn.execute(
+                        "SELECT name FROM sqlite_master WHERE type='table' AND name='_pytuck_tables'"
+                    )
+                    result = cursor.fetchone()
+
+                    if not result:
+                        return False, None  # 是有效的 SQLite，但不是 Pytuck 格式
+
+                    # 尝试获取元数据
+                    format_version = None
+                    timestamp = None
+                    table_count = 0
+
+                    try:
+                        # 获取格式版本
+                        cursor = conn.execute(
+                            "SELECT value FROM _pytuck_metadata WHERE key='format_version'"
+                        )
+                        version_result = cursor.fetchone()
+                        if version_result:
+                            format_version = version_result[0]
+
+                        # 获取时间戳
+                        cursor = conn.execute(
+                            "SELECT value FROM _pytuck_metadata WHERE key='timestamp'"
+                        )
+                        timestamp_result = cursor.fetchone()
+                        if timestamp_result:
+                            timestamp = timestamp_result[0]
+
+                        # 获取表数量
+                        cursor = conn.execute("SELECT COUNT(*) FROM _pytuck_tables")
+                        count_result = cursor.fetchone()
+                        if count_result:
+                            table_count = count_result[0]
+
+                    except sqlite3.Error:
+                        # 元数据表可能不存在或损坏，但仍然是 Pytuck 格式
+                        pass
+
+                    # 成功识别为 SQLite 格式
+                    return True, {
+                        'engine': 'sqlite',
+                        'format_version': format_version,
+                        'table_count': table_count,
+                        'file_size': file_size,
+                        'modified': file_stat.st_mtime,
+                        'timestamp': timestamp,
+                        'confidence': 'high'
+                    }
+
+                finally:
+                    conn.close()
+
+            except sqlite3.DatabaseError:
+                return False, {'error': 'invalid_sqlite_file'}
+            except sqlite3.OperationalError as e:
+                if 'database is locked' in str(e).lower():
+                    return False, {'error': 'database_locked'}
+                else:
+                    return False, {'error': f'sqlite_error: {str(e)}'}
+
+        except Exception as e:
+            return False, {'error': f'probe_exception: {str(e)}'}

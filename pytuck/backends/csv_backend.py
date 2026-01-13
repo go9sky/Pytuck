@@ -10,7 +10,7 @@ import base64
 import io
 import zipfile
 from pathlib import Path
-from typing import Any, Dict, Union, TYPE_CHECKING
+from typing import Any, Dict, Union, TYPE_CHECKING, Tuple, Optional
 from datetime import datetime
 from .base import StorageBackend
 from ..common.exceptions import SerializationError
@@ -285,3 +285,82 @@ class CSVBackend(StorageBackend):
 
         except:
             return {}
+
+    @classmethod
+    def probe(cls, file_path: Union[str, Path]) -> Tuple[bool, Optional[Dict[str, Any]]]:
+        """
+        轻量探测文件是否为 CSV 引擎格式
+
+        通过检查 ZIP 文件是否包含 _metadata.json 文件来识别。
+        只检查 ZIP 结构和关键文件存在性，非常快速。
+
+        Returns:
+            Tuple[bool, Optional[Dict]]: (是否匹配, 元数据信息或None)
+        """
+        try:
+            file_path = Path(file_path).expanduser()
+            if not file_path.exists():
+                return False, {'error': 'file_not_found'}
+
+            # 获取文件信息
+            file_stat = file_path.stat()
+            file_size = file_stat.st_size
+
+            # 空文件不可能是有效的 ZIP
+            if file_size == 0:
+                return False, {'error': 'empty_file'}
+
+            # 检查是否为有效的 ZIP 文件
+            if not zipfile.is_zipfile(file_path):
+                return False, None
+
+            # 检查 ZIP 内容
+            try:
+                with zipfile.ZipFile(str(file_path), 'r') as zf:
+                    namelist = zf.namelist()
+
+                    # 检查是否包含 _metadata.json 文件
+                    if '_metadata.json' not in namelist:
+                        return False, None
+
+                    # 尝试读取 metadata
+                    try:
+                        with zf.open('_metadata.json') as f:
+                            metadata = json.load(f)
+
+                        # 检查是否为 Pytuck CSV 格式
+                        if not isinstance(metadata, dict):
+                            return False, None
+
+                        # 检查必要的字段
+                        if 'tables' not in metadata:
+                            return False, None
+
+                        # 获取元数据信息
+                        format_version = metadata.get('format_version')
+                        table_count = len(metadata.get('tables', {}))
+                        timestamp = metadata.get('timestamp')
+
+                        # 检查是否有 CSV 文件
+                        csv_files = [name for name in namelist if name.endswith('.csv') and not name.startswith('_')]
+
+                        # 成功识别为 CSV 格式
+                        return True, {
+                            'engine': 'csv',
+                            'format_version': format_version,
+                            'table_count': table_count,
+                            'csv_file_count': len(csv_files),
+                            'file_size': file_size,
+                            'modified': file_stat.st_mtime,
+                            'timestamp': timestamp,
+                            'confidence': 'high'
+                        }
+
+                    except (json.JSONDecodeError, KeyError):
+                        return False, {'error': 'invalid_metadata_format'}
+
+            except zipfile.BadZipFile:
+                return False, {'error': 'corrupted_zip'}
+
+        except Exception as e:
+            return False, {'error': f'probe_exception: {str(e)}'}

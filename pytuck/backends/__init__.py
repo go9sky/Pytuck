@@ -4,7 +4,8 @@ Pytuck 后端注册器和工厂
 提供引擎注册、发现和实例化功能
 """
 
-from typing import Any, Dict, List, Type, Optional, TYPE_CHECKING
+from typing import Any, Dict, List, Type, Optional, TYPE_CHECKING, Tuple, Union
+from pathlib import Path
 from .base import StorageBackend
 from ..common.options import BackendOptions
 
@@ -190,34 +191,253 @@ def get_backend(engine: str, file_path: str, options: BackendOptions) -> Storage
     return backend_class(file_path, options)
 
 
-def print_available_engines():
+def _get_all_available_engines() -> List[str]:
+    """获取所有可用引擎列表，按注册顺序返回"""
+    return [name for name in BackendRegistry.list_engines()
+            if BackendRegistry.get(name).is_available()]
+
+
+def is_valid_pytuck_database(file_path: Union[str, Path]) -> Tuple[bool, Optional[str]]:
     """
-    打印所有可用引擎的信息（调试工具）
+    检验是否是合法的 Pytuck 数据库文件并识别引擎
+
+    通过调用各引擎的 probe 方法来识别数据库文件格式。
+    不依赖文件扩展名，基于文件内容特征进行判断。
+
+    Args:
+        file_path: 数据库文件路径
+
+    Returns:
+        Tuple[bool, Optional[str]]: (是否有效, 引擎名称或None)
+
+    示例:
+        >>> is_valid_pytuck_database('data.db')
+        (True, 'binary')
+        >>> is_valid_pytuck_database('invalid.txt')
+        (False, None)
+    """
+    file_path = Path(file_path).expanduser()
+
+    if not file_path.exists():
+        return False, None
+
+    # 获取所有可用引擎，不依赖文件后缀名
+    available_engines = _get_all_available_engines()
+
+    # 按注册顺序尝试各引擎
+    for engine_name in available_engines:
+        backend_class = BackendRegistry.get(engine_name)
+        if backend_class is None:
+            continue
+
+        try:
+            is_match, info = backend_class.probe(file_path)
+            if is_match:
+                return True, engine_name
+        except Exception:
+            # probe 方法应该捕获异常，但以防万一
+            continue
+
+    return False, None
+
+
+def get_database_info(file_path: Union[str, Path]) -> Optional[Dict[str, Any]]:
+    """
+    获取 Pytuck 数据库文件的详细信息
+
+    提供比 is_valid_pytuck_database 更详细的信息，包括版本、表数量等。
+
+    Args:
+        file_path: 数据库文件路径
+
+    Returns:
+        Optional[Dict]: 包含引擎名称、版本、表数量等信息，如果不是有效数据库则返回 None
+
+    返回字典结构:
+        {
+            'engine': str,                    # 引擎名称
+            'format_version': str,            # 格式版本
+            'file_size': int,                 # 文件大小
+            'modified': float,                # 修改时间戳
+            'table_count': int,               # 表数量（如果可获取）
+            'confidence': str,                # 识别可信度: 'high', 'medium', 'low'
+            'error': str                      # 错误信息（如果有）
+        }
+
+    示例:
+        >>> info = get_database_info('data.db')
+        >>> if info:
+        ...     print(f"引擎：{info['engine']}")
+        ...     print(f"表数量：{info.get('table_count', 'unknown')}")
+    """
+    file_path = Path(file_path).expanduser()
+
+    if not file_path.exists():
+        return None
+
+    # 获取所有可用引擎
+    available_engines = _get_all_available_engines()
+
+    # 尝试各引擎
+    for engine_name in available_engines:
+        backend_class = BackendRegistry.get(engine_name)
+        if backend_class is None:
+            continue
+
+        try:
+            is_match, info = backend_class.probe(file_path)
+            if is_match and info:
+                # 添加文件基本信息
+                file_stat = file_path.stat()
+                info.setdefault('file_size', file_stat.st_size)
+                info.setdefault('modified', file_stat.st_mtime)
+                return info
+        except Exception:
+            continue
+
+    return None
+
+
+def is_valid_pytuck_database_engine(file_path: Union[str, Path], engine_name: str) -> bool:
+    """
+    检验文件是否为指定引擎的 Pytuck 数据库
+
+    只检验指定的引擎，不会尝试其他引擎。
+
+    Args:
+        file_path: 数据库文件路径
+        engine_name: 引擎名称（binary, json, csv, excel, xml, sqlite）
+
+    Returns:
+        bool: 是否为指定引擎的有效数据库
+
+    Raises:
+        ValueError: 引擎名称不存在或不可用
+
+    示例:
+        >>> is_valid_pytuck_database_engine('data.json', 'json')
+        True
+        >>> is_valid_pytuck_database_engine('data.json', 'binary')
+        False
+    """
+    backend_class = BackendRegistry.get(engine_name)
+    if backend_class is None:
+        available_engines = BackendRegistry.list_engines()
+        raise ValueError(
+            f"Engine '{engine_name}' not found. "
+            f"Available engines: {available_engines}"
+        )
+
+    if not backend_class.is_available():
+        deps = ', '.join(backend_class.REQUIRED_DEPENDENCIES) if backend_class.REQUIRED_DEPENDENCIES else 'none'
+        raise ValueError(
+            f"Engine '{engine_name}' is not available. "
+            f"Required dependencies: {deps}. "
+            f"Install with: pip install pytuck[{engine_name}]"
+        )
+
+    try:
+        is_match, _ = backend_class.probe(file_path)
+        return is_match
+    except Exception:
+        return False
+
+
+def get_available_engines() -> Dict[str, Dict[str, Any]]:
+    """
+    获取所有可用引擎的详细信息
+
+    替代 print_available_engines，返回结构化数据而非直接打印。
+
+    Returns:
+        Dict[str, Dict]: 引擎名称到引擎信息的映射
+
+    返回结构:
+        {
+            'binary': {
+                'name': 'binary',
+                'available': True,
+                'dependencies': [],
+                'description': 'Binary storage engine',
+                'format_version': '1'
+            },
+            'json': {
+                'name': 'json',
+                'available': True,
+                'dependencies': [],
+                'description': 'JSON storage engine',
+                'format_version': '1'
+            },
+            'excel': {
+                'name': 'excel',
+                'available': False,  # 如果 openpyxl 缺失
+                'dependencies': ['openpyxl'],
+                'description': 'Excel storage engine',
+                'format_version': '1'
+            }
+        }
+
+    示例:
+        >>> engines = get_available_engines()
+        >>> for name, info in engines.items():
+        ...     status = "✅" if info['available'] else "❌"
+        ...     print(f"{status} {name}")
+    """
+    engines_info = {}
+
+    for engine_name in BackendRegistry.list_engines():
+        backend_class = BackendRegistry.get(engine_name)
+        if backend_class is None:
+            continue
+
+        # 提取描述
+        description = backend_class.__doc__ or f'{engine_name.title()} storage engine'
+        if description:
+            description = description.strip().split('\n')[0]  # 只取第一行
+
+        engines_info[engine_name] = {
+            'name': engine_name,
+            'available': backend_class.is_available(),
+            'dependencies': getattr(backend_class, 'REQUIRED_DEPENDENCIES', []),
+            'description': description,
+            'format_version': getattr(backend_class, 'FORMAT_VERSION', None)
+        }
+
+    return engines_info
+
+
+def print_available_engines() -> None:
+    """
+    打印所有可用引擎的信息
+
+    使用 get_available_engines() 获取数据并格式化输出。
 
     输出格式：
-        Available Storage Engines:
-        ✓ binary  - Binary format (no dependencies)
-        ✓ json    - JSON format (no dependencies)
-        ✗ excel   - Excel format (requires: openpyxl)
+        Available Pytuck Storage Engines:
+        ========================================
+        ✅ BINARY
+           Format version: 1
+
+        ❌ EXCEL
+           Missing dependencies: openpyxl
+           Format version: 1
     """
-    engines = BackendRegistry.available_engines()
+    engines_info = get_available_engines()
 
-    print("Available Storage Engines:")
-    print("-" * 50)
+    print("Available Pytuck Storage Engines:")
+    print("=" * 40)
 
-    for engine_name in sorted(engines.keys()):
-        available = engines[engine_name]
-        backend_class = BackendRegistry.get(engine_name)
+    for engine_name, info in engines_info.items():
+        status = "✅" if info['available'] else "❌"
+        print(f"{status} {engine_name.upper()}")
 
-        status = "✓" if available else "✗"
-        deps = backend_class.REQUIRED_DEPENDENCIES
+        if not info['available'] and info['dependencies']:
+            print(f"   Missing dependencies: {', '.join(info['dependencies'])}")
 
-        if deps:
-            deps_str = f" (requires: {', '.join(deps)})"
-        else:
-            deps_str = " (no dependencies)"
+        if info['format_version']:
+            print(f"   Format version: {info['format_version']}")
 
-        print(f"{status} {engine_name:10} - {backend_class.__doc__ or 'Storage backend'}{deps_str}")
+        print()  # 空行分隔
 
 
 # 导出公共接口
@@ -226,4 +446,8 @@ __all__ = [
     'BackendRegistry',
     'get_backend',
     'print_available_engines',
+    'get_available_engines',
+    'is_valid_pytuck_database',
+    'get_database_info',
+    'is_valid_pytuck_database_engine',
 ]

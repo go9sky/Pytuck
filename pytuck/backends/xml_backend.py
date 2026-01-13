@@ -7,7 +7,7 @@ Pytuck XML存储引擎
 import json
 import base64
 from pathlib import Path
-from typing import Any, Dict, Union, TYPE_CHECKING
+from typing import Any, Dict, Union, TYPE_CHECKING, Tuple, Optional
 from datetime import datetime
 from .base import StorageBackend
 from ..common.exceptions import SerializationError
@@ -267,3 +267,110 @@ class XMLBackend(StorageBackend):
 
         except:
             return {}
+
+    @classmethod
+    def probe(cls, file_path: Union[str, Path]) -> Tuple[bool, Optional[Dict[str, Any]]]:
+        """
+        轻量探测文件是否为 XML 引擎格式
+
+        通过检查 XML 文件的根元素是否为 <database> 来识别。
+        优先使用 lxml，回退到标准库的 xml.etree.ElementTree。
+        只读取前 8KB 内容以提高性能。
+
+        Returns:
+            Tuple[bool, Optional[Dict]]: (是否匹配, 元数据信息或None)
+        """
+        try:
+            file_path = Path(file_path).expanduser()
+            if not file_path.exists():
+                return False, {'error': 'file_not_found'}
+
+            # 获取文件信息
+            file_stat = file_path.stat()
+            file_size = file_stat.st_size
+
+            # 空文件不可能是有效的 XML
+            if file_size == 0:
+                return False, {'error': 'empty_file'}
+
+            # 读取前 8KB 内容进行初步检查
+            with open(file_path, 'r', encoding='utf-8') as f:
+                content = f.read(8192)  # 8KB
+
+            # 基本 XML 格式检查
+            if '<database' not in content:
+                return False, None
+
+            # 尝试使用 lxml 解析（如果可用）
+            xml_parser = None
+            if cls.is_available():
+                try:
+                    from lxml import etree
+                    xml_parser = 'lxml'
+                except ImportError:
+                    pass
+
+            # 回退到标准库
+            if xml_parser is None:
+                try:
+                    import xml.etree.ElementTree as ET
+                    xml_parser = 'stdlib'
+                except ImportError:
+                    return False, {'error': 'no_xml_parser_available'}
+
+            # 解析 XML
+            try:
+                if xml_parser == 'lxml':
+                    from lxml import etree
+                    root = etree.fromstring(content.encode('utf-8'))
+                else:
+                    import xml.etree.ElementTree as ET
+                    root = ET.fromstring(content)
+
+                # 检查根元素
+                if root.tag != 'database':
+                    return False, None
+
+                # 获取属性信息
+                format_version = root.get('format_version')
+                timestamp = root.get('timestamp')
+
+                # 如果内容不完整，尝试读取完整文件
+                table_count = len(root.findall('table'))
+                if table_count == 0 and len(content) == 8192:
+                    # 可能因为只读了部分内容，尝试完整解析
+                    try:
+                        if xml_parser == 'lxml':
+                            from lxml import etree
+                            tree = etree.parse(str(file_path))
+                            full_root = tree.getroot()
+                            table_count = len(full_root.findall('table'))
+                        else:
+                            import xml.etree.ElementTree as ET
+                            tree = ET.parse(str(file_path))
+                            full_root = tree.getroot()
+                            table_count = len(full_root.findall('table'))
+                    except Exception:
+                        # 如果完整解析失败，使用部分结果
+                        pass
+
+                # 成功识别为 XML 格式
+                return True, {
+                    'engine': 'xml',
+                    'format_version': format_version,
+                    'table_count': table_count,
+                    'file_size': file_size,
+                    'modified': file_stat.st_mtime,
+                    'timestamp': timestamp,
+                    'xml_parser': xml_parser,
+                    'confidence': 'high' if cls.is_available() else 'medium'
+                }
+
+            except Exception as parse_error:
+                # XML 解析失败
+                return False, {'error': f'xml_parse_error: {str(parse_error)}'}
+
+        except UnicodeDecodeError:
+            return False, {'error': 'not_utf8_xml'}
+        except Exception as e:
+            return False, {'error': f'probe_exception: {str(e)}'}

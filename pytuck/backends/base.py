@@ -6,7 +6,7 @@ Pytuck 存储后端抽象基类
 
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Dict, Any, List, Optional, Union, TYPE_CHECKING
+from typing import Dict, Any, List, Optional, Union, TYPE_CHECKING, Tuple
 
 from ..common.options import BackendOptions
 
@@ -196,3 +196,53 @@ class StorageBackend(ABC):
 
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}(file_path='{self.file_path}')"
+
+    @classmethod
+    def probe(cls, file_path: Union[str, Path]) -> Tuple[bool, Optional[Dict[str, Any]]]:
+        """
+        轻量探测文件是否为本引擎格式
+
+        此方法用于动态识别数据库文件格式，而不需要完整加载文件。
+        各引擎应该覆盖此方法提供特定的探测逻辑。
+
+        Args:
+            file_path: 要探测的文件路径
+
+        Returns:
+            Tuple[bool, Optional[Dict]]: (是否匹配此引擎格式, 可选的元数据信息)
+
+        返回元数据示例：
+            {
+                'engine': 'binary',
+                'format_version': '1',
+                'confidence': 'high',    # 'high', 'medium', 'low'
+                'file_size': 12345,
+                'modified': 1641234567.0,
+                'table_count': 3,        # 如果可以轻量获取
+                'error': 'error msg'     # 如果探测失败的原因
+            }
+
+        实现要点：
+            1. 只读取必要的文件头部或元数据，避免完整解析
+            2. 必须捕获所有异常，不得抛出到调用方
+            3. 基于内容特征判断，不依赖文件扩展名
+            4. 返回高置信度的识别结果或明确的拒绝
+            5. 轻量级：Binary读64字节头，JSON读32KB，XML读8KB等
+
+        注意：
+            - 默认实现返回 False（不匹配），各引擎需要覆盖
+            - 探测失败不等于文件无效，可能是其他格式
+            - 此方法为类方法，不需要实例化后端对象
+        """
+        try:
+            file_path = Path(file_path).expanduser()
+            if not file_path.exists():
+                return False, {'error': 'file_not_found'}
+
+            # 默认实现：基于 ENGINE_NAME 和文件扩展名的简单匹配
+            if cls.ENGINE_NAME and file_path.suffix.lower() in ['.db', '.json', '.xml', '.xlsx', '.zip', '.sqlite']:
+                return False, {'error': 'default_probe_not_implemented'}
+
+            return False, None
+        except Exception as e:
+            return False, {'error': f'probe_exception: {str(e)}'}

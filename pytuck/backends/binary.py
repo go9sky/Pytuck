@@ -5,9 +5,8 @@ Pytuck 二进制存储引擎
 """
 
 import struct
-import tempfile
 from pathlib import Path
-from typing import Any, Dict, Union, TYPE_CHECKING, BinaryIO
+from typing import Any, Dict, Union, TYPE_CHECKING, BinaryIO, Tuple, Optional
 
 if TYPE_CHECKING:
     from ..core.storage import Table
@@ -18,8 +17,8 @@ from ..core.types import TypeRegistry, TypeCode
 from ..core.orm import Column
 from .versions import get_format_version
 
-
 from ..common.options import BinaryBackendOptions
+
 
 class BinaryBackend(StorageBackend):
     """Binary format storage engine (default, no dependencies)"""
@@ -481,3 +480,62 @@ class BinaryBackend(StorageBackend):
             'file_size': file_size,
             'modified': modified_time,
         }
+
+    @classmethod
+    def probe(cls, file_path: Union[str, Path]) -> Tuple[bool, Optional[Dict[str, Any]]]:
+        """
+        轻量探测文件是否为 Binary 引擎格式
+
+        通过检查文件头的魔数和版本号来识别 Binary 格式文件。
+        只读取前 64 字节文件头，非常快速。
+
+        Returns:
+            Tuple[bool, Optional[Dict]]: (是否匹配, 元数据信息或None)
+        """
+        try:
+            file_path = Path(file_path).expanduser()
+            if not file_path.exists():
+                return False, {'error': 'file_not_found'}
+
+            # 检查文件大小是否足够包含文件头
+            file_stat = file_path.stat()
+            file_size = file_stat.st_size
+            if file_size < cls.FILE_HEADER_SIZE:
+                return False, {'error': 'file_too_small'}
+
+            # 读取并检查文件头
+            with open(file_path, 'rb') as f:
+                header = f.read(cls.FILE_HEADER_SIZE)
+
+            if len(header) < cls.FILE_HEADER_SIZE:
+                return False, {'error': 'header_incomplete'}
+
+            # 检查魔数
+            magic = header[0:4]
+            if magic != cls.MAGIC_NUMBER:
+                return False, None  # 不是错误，只是不匹配
+
+            # 检查版本号
+            try:
+                version = struct.unpack('<H', header[4:6])[0]
+            except struct.error:
+                return False, {'error': 'invalid_version_format'}
+
+            # 读取表数量
+            try:
+                table_count = struct.unpack('<I', header[6:10])[0]
+            except struct.error:
+                return False, {'error': 'invalid_table_count_format'}
+
+            # 成功识别为 Binary 格式
+            return True, {
+                'engine': 'binary',
+                'format_version': version,
+                'table_count': table_count,
+                'file_size': file_size,
+                'modified': file_stat.st_mtime,
+                'confidence': 'high'
+            }
+
+        except Exception as e:
+            return False, {'error': f'probe_exception: {str(e)}'}

@@ -7,7 +7,7 @@ Pytuck JSON存储引擎
 import json
 import inspect
 from pathlib import Path
-from typing import Any, Dict, Callable, Union, TYPE_CHECKING
+from typing import Any, Dict, Callable, Union, TYPE_CHECKING, Tuple, Optional
 from datetime import datetime
 from .base import StorageBackend
 from ..common.exceptions import SerializationError
@@ -331,3 +331,74 @@ class JSONBackend(StorageBackend):
             'table_count': table_count,
             'json_impl': getattr(self, '_impl_name', 'unknown'),  # 添加JSON实现信息
         }
+
+    @classmethod
+    def probe(cls, file_path: Union[str, Path]) -> Tuple[bool, Optional[Dict[str, Any]]]:
+        """
+        轻量探测文件是否为 JSON 引擎格式
+
+        通过检查 JSON 文件是否包含 Pytuck 特有的结构来识别。
+        只读取前 32KB 内容以提高性能。
+
+        Returns:
+            Tuple[bool, Optional[Dict]]: (是否匹配, 元数据信息或None)
+        """
+        try:
+            file_path = Path(file_path).expanduser()
+            if not file_path.exists():
+                return False, {'error': 'file_not_found'}
+
+            # 获取文件信息
+            file_stat = file_path.stat()
+            file_size = file_stat.st_size
+
+            # 空文件不是有效的 JSON
+            if file_size == 0:
+                return False, {'error': 'empty_file'}
+
+            # 读取前 32KB 内容（足够包含 JSON 头部信息）
+            with open(file_path, 'r', encoding='utf-8') as f:
+                content = f.read(32768)  # 32KB
+
+            # 基本 JSON 格式检查
+            if not content.strip().startswith('{'):
+                return False, None
+
+            # 尝试解析 JSON
+            try:
+                data = json.loads(content)
+            except json.JSONDecodeError:
+                # 可能文件过大，尝试读取完整文件
+                try:
+                    with open(file_path, 'r', encoding='utf-8') as f:
+                        full_content = f.read()
+                    data = json.loads(full_content)
+                except (json.JSONDecodeError, MemoryError):
+                    return False, {'error': 'invalid_json'}
+
+            # 检查是否为 Pytuck JSON 格式
+            if not isinstance(data, dict):
+                return False, None
+
+            # 必须包含 'tables' 字段
+            if 'tables' not in data:
+                return False, None
+
+            # 可选检查：format_version 字段
+            format_version = data.get('format_version')
+            table_count = len(data.get('tables', {}))
+            timestamp = data.get('timestamp')
+
+            # 成功识别为 JSON 格式
+            return True, {
+                'engine': 'json',
+                'format_version': format_version,
+                'table_count': table_count,
+                'file_size': file_size,
+                'modified': file_stat.st_mtime,
+                'timestamp': timestamp,
+                'confidence': 'high'
+            }
+
+        except Exception as e:
+            return False, {'error': f'probe_exception: {str(e)}'}

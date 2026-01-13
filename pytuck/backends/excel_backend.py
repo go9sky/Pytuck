@@ -7,7 +7,7 @@ Pytuck Excel存储引擎
 import json
 import base64
 from pathlib import Path
-from typing import Any, Dict, Union, TYPE_CHECKING
+from typing import Any, Dict, Union, TYPE_CHECKING, Tuple, Optional
 from datetime import datetime
 from .base import StorageBackend
 from ..common.exceptions import SerializationError
@@ -291,3 +291,105 @@ class ExcelBackend(StorageBackend):
 
         except:
             return {}
+
+    @classmethod
+    def probe(cls, file_path: Union[str, Path]) -> Tuple[bool, Optional[Dict[str, Any]]]:
+        """
+        轻量探测文件是否为 Excel 引擎格式
+
+        通过检查 Excel 文件（实际上是 ZIP）是否包含 _pytuck_tables 工作表来识别。
+        使用 ZIP 方式而非 openpyxl 以避免依赖问题和提高性能。
+
+        Returns:
+            Tuple[bool, Optional[Dict]]: (是否匹配, 元数据信息或None)
+        """
+        try:
+            file_path = Path(file_path).expanduser()
+            if not file_path.exists():
+                return False, {'error': 'file_not_found'}
+
+            # 获取文件信息
+            file_stat = file_path.stat()
+            file_size = file_stat.st_size
+
+            # 空文件不可能是有效的 Excel
+            if file_size == 0:
+                return False, {'error': 'empty_file'}
+
+            # Excel 文件实际上是 ZIP 格式，先检查是否为 ZIP
+            import zipfile
+            if not zipfile.is_zipfile(file_path):
+                return False, None
+
+            try:
+                with zipfile.ZipFile(str(file_path), 'r') as zf:
+                    namelist = zf.namelist()
+
+                    # 检查是否为 Excel 文件结构
+                    if 'xl/workbook.xml' not in namelist:
+                        return False, None
+
+                    # 检查是否包含 _pytuck_tables 工作表的 XML 文件
+                    # Excel 工作表在 ZIP 中存储为 xl/worksheets/sheetN.xml
+                    # 工作表名称映射在 xl/workbook.xml 中
+                    pytuck_tables_found = False
+
+                    try:
+                        # 读取 workbook.xml 来查找工作表名称
+                        with zf.open('xl/workbook.xml') as f:
+                            workbook_xml = f.read(8192).decode('utf-8')  # 只读前 8KB
+
+                        # 简单的字符串检查，查找 _pytuck_tables 工作表
+                        if '_pytuck_tables' in workbook_xml:
+                            pytuck_tables_found = True
+
+                    except (KeyError, UnicodeDecodeError):
+                        pass
+
+                    if not pytuck_tables_found:
+                        return False, None
+
+                    # 尝试获取更多元数据信息
+                    format_version = None
+                    table_count = None
+                    timestamp = None
+
+                    # 如果有 openpyxl 依赖，尝试获取更详细信息
+                    if cls.is_available():
+                        try:
+                            from openpyxl import load_workbook
+                            wb = load_workbook(str(file_path), read_only=True, data_only=True)
+
+                            # 从 _metadata 工作表读取信息
+                            if '_metadata' in wb.sheetnames:
+                                metadata_sheet = wb['_metadata']
+                                for row in metadata_sheet.iter_rows(min_row=2, values_only=True):
+                                    if row[0] and row[1]:
+                                        if row[0] == 'format_version':
+                                            format_version = row[1]
+                                        elif row[0] == 'timestamp':
+                                            timestamp = row[1]
+                                        elif row[0] == 'table_count':
+                                            table_count = row[1]
+
+                            wb.close()
+                        except Exception:
+                            # 如果 openpyxl 读取失败，仍然可以确认是 Pytuck Excel 格式
+                            pass
+
+                    # 成功识别为 Excel 格式
+                    return True, {
+                        'engine': 'excel',
+                        'format_version': format_version,
+                        'table_count': table_count,
+                        'file_size': file_size,
+                        'modified': file_stat.st_mtime,
+                        'timestamp': timestamp,
+                        'confidence': 'high' if cls.is_available() else 'medium'
+                    }
+
+            except zipfile.BadZipFile:
+                return False, {'error': 'corrupted_excel_file'}
+
+        except Exception as e:
+            return False, {'error': f'probe_exception: {str(e)}'}

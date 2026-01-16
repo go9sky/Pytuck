@@ -275,7 +275,10 @@ class XMLBackend(StorageBackend):
 
         通过检查 XML 文件的根元素是否为 <database> 来识别。
         优先使用 lxml，回退到标准库的 xml.etree.ElementTree。
-        只读取前 8KB 内容以提高性能。
+
+        实现策略：
+        1. 读取前 8KB 内容进行快速字符串检查
+        2. 如果通过初步检查，从文件直接解析完整 XML（不使用截断的内容）
 
         Returns:
             Tuple[bool, Optional[Dict]]: (是否匹配, 元数据信息或None)
@@ -293,15 +296,15 @@ class XMLBackend(StorageBackend):
             if file_size == 0:
                 return False, {'error': 'empty_file'}
 
-            # 读取前 8KB 内容进行初步检查
+            # 第一步：读取前 8KB 内容进行快速字符串检查
             with open(file_path, 'r', encoding='utf-8') as f:
-                content = f.read(8192)  # 8KB
+                preview = f.read(8192)  # 8KB
 
-            # 基本 XML 格式检查
-            if '<database' not in content:
+            # 基本 XML 格式检查（快速排除非 XML 文件）
+            if '<database' not in preview:
                 return False, None
 
-            # 尝试使用 lxml 解析（如果可用）
+            # 第二步：确定可用的 XML 解析器
             xml_parser = None
             if cls.is_available():
                 try:
@@ -318,41 +321,25 @@ class XMLBackend(StorageBackend):
                 except ImportError:
                     return False, {'error': 'no_xml_parser_available'}
 
-            # 解析 XML
+            # 第三步：从文件直接解析完整 XML（不使用截断的 preview）
             try:
                 if xml_parser == 'lxml':
                     from lxml import etree
-                    root = etree.fromstring(content.encode('utf-8'))
+                    tree = etree.parse(str(file_path))
+                    root = tree.getroot()
                 else:
                     import xml.etree.ElementTree as ET
-                    root = ET.fromstring(content)
+                    tree = ET.parse(str(file_path))
+                    root = tree.getroot()
 
                 # 检查根元素
                 if root.tag != 'database':
                     return False, None
 
-                # 获取属性信息
+                # 获取元数据信息
                 format_version = root.get('format_version')
                 timestamp = root.get('timestamp')
-
-                # 如果内容不完整，尝试读取完整文件
                 table_count = len(root.findall('table'))
-                if table_count == 0 and len(content) == 8192:
-                    # 可能因为只读了部分内容，尝试完整解析
-                    try:
-                        if xml_parser == 'lxml':
-                            from lxml import etree
-                            tree = etree.parse(str(file_path))
-                            full_root = tree.getroot()
-                            table_count = len(full_root.findall('table'))
-                        else:
-                            import xml.etree.ElementTree as ET
-                            tree = ET.parse(str(file_path))
-                            full_root = tree.getroot()
-                            table_count = len(full_root.findall('table'))
-                    except Exception:
-                        # 如果完整解析失败，使用部分结果
-                        pass
 
                 # 成功识别为 XML 格式
                 return True, {

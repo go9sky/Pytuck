@@ -27,6 +27,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from pytuck import Storage, declarative_base, Session, Column, PureBaseModel
 from pytuck import select, insert, update, delete
+from pytuck.common.options import BinaryBackendOptions
 
 
 # ============== 配置 ==============
@@ -230,6 +231,17 @@ class EngineBenchmark:
         db.close()
         return t.elapsed
 
+    def benchmark_lazy_load(self) -> Optional[float]:
+        """测试懒加载性能（仅 Binary 引擎）"""
+        if self.engine_name != 'binary':
+            return None
+
+        options = BinaryBackendOptions(lazy_load=True)
+        with Timer() as t:
+            db = Storage(file_path=self.file_path, engine='binary', backend_options=options)
+        db.close()
+        return t.elapsed
+
     def run(self, record_count: int) -> Dict[str, Any]:
         """运行此引擎的所有基准测试"""
         results = {
@@ -265,6 +277,11 @@ class EngineBenchmark:
             session.close()
             db.close()
             results['load'] = self.benchmark_load()
+
+            # 懒加载测试（仅 Binary 引擎）
+            lazy_load_time = self.benchmark_lazy_load()
+            if lazy_load_time is not None:
+                results['lazy_load'] = lazy_load_time
 
             results['success'] = True
 
@@ -322,6 +339,8 @@ def run_benchmarks(record_count: int, keep_files: bool = False) -> List[Dict[str
                 print(f"  删除 (50次):       {format_time(result['delete'])}")
                 print(f"  保存到磁盘:        {format_time(result['save'])}")
                 print(f"  从磁盘加载:        {format_time(result['load'])}")
+                if 'lazy_load' in result:
+                    print(f"  懒加载:            {format_time(result['lazy_load'])}")
                 print(f"  文件大小:          {format_size(result['file_size'])}")
             else:
                 print(f"  错误: {result.get('error', '未知错误')}")

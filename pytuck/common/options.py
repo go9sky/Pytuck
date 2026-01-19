@@ -39,8 +39,8 @@ class XmlBackendOptions:
 
 @dataclass
 class BinaryBackendOptions:
-    """Binary 后端配置选项（当前无选项，为扩展预留）"""
-    pass
+    """Binary 后端配置选项"""
+    lazy_load: bool = False  # 是否懒加载（只加载 schema 和索引，按需读取数据）
 
 # Backend 选项联合类型
 BackendOptions = Union[

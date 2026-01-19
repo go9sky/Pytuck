@@ -5,6 +5,7 @@ Pytuck 存储引擎
 """
 
 import copy
+from pathlib import Path
 from typing import Any, Dict, List, Iterator, Tuple, Optional, Generator, TYPE_CHECKING
 from contextlib import contextmanager
 
@@ -91,6 +92,12 @@ class Table:
         self.data: Dict[Any, Dict[str, Any]] = {}  # {pk: record}
         self.indexes: Dict[str, HashIndex] = {}  # {column_name: HashIndex}
         self.next_id = 1
+
+        # 懒加载支持
+        self._pk_offsets: Optional[Dict[Any, int]] = None  # {pk: file_offset}
+        self._data_file: Optional[Path] = None  # 数据文件路径
+        self._backend: Optional[Any] = None  # Binary 后端引用（用于读取记录）
+        self._lazy_loaded: bool = False  # 是否为懒加载模式
 
         # 自动为标记了index的列创建索引
         for col in columns:
@@ -212,7 +219,7 @@ class Table:
 
     def get(self, pk: Any) -> Dict[str, Any]:
         """
-        获取记录
+        获取记录（支持懒加载）
 
         Args:
             pk: 主键值
@@ -223,10 +230,42 @@ class Table:
         Raises:
             RecordNotFoundError: 记录不存在
         """
-        if pk not in self.data:
+        # 已加载的数据直接返回
+        if pk in self.data:
+            return self.data[pk].copy()
+
+        # 懒加载模式：从文件读取
+        if self._lazy_loaded and self._pk_offsets is not None:
+            if pk not in self._pk_offsets:
+                raise RecordNotFoundError(self.name, pk)
+
+            # 从文件读取记录
+            record = self._read_record_from_file(pk)
+            return record
+
+        raise RecordNotFoundError(self.name, pk)
+
+    def _read_record_from_file(self, pk: Any) -> Dict[str, Any]:
+        """
+        从文件读取单条记录（懒加载模式）
+
+        Args:
+            pk: 主键值
+
+        Returns:
+            记录字典
+        """
+        if self._backend is None or self._pk_offsets is None:
             raise RecordNotFoundError(self.name, pk)
 
-        return self.data[pk].copy()
+        offset = self._pk_offsets[pk]
+
+        with open(self._data_file, 'rb') as f:
+            f.seek(offset)
+            # 使用 backend 的 _read_record 方法读取记录
+            _, record = self._backend._read_record(f, self.columns)
+
+        return record
 
     def scan(self) -> Iterator[Tuple[Any, Dict[str, Any]]]:
         """
@@ -481,8 +520,9 @@ class Storage:
         """
         table = self.get_table(table_name)
 
-        # 优化：使用索引
+        # 优化：使用多索引联合查询（取所有匹配索引结果的交集）
         candidate_pks = None
+        remaining_conditions = []
 
         for condition in conditions:
             if condition.operator == '=' and condition.field in table.indexes:
@@ -493,22 +533,24 @@ class Storage:
                 if candidate_pks is None:
                     candidate_pks = pks
                 else:
-                    # 取交集
+                    # 取交集，缩小候选集
                     candidate_pks = candidate_pks.intersection(pks)
+            else:
+                # 无索引的条件保留后续过滤
+                remaining_conditions.append(condition)
 
-                break  # 只使用一个索引（简化实现）
-
-        # 如果没有使用索引，全表扫描
+        # 如果没有使用索引，全表扫描（需要评估所有条件）
         if candidate_pks is None:
             candidate_pks = set(table.data.keys())
+            remaining_conditions = conditions  # 没有索引时，所有条件都需要评估
 
-        # 过滤记录
+        # 过滤记录（只需评估未使用索引的条件）
         results = []
         for pk in candidate_pks:
             if pk in table.data:
                 record = table.data[pk]
-                # 评估所有条件
-                if all(cond.evaluate(record) for cond in conditions):
+                # 评估剩余条件（索引已匹配的条件无需再次评估）
+                if all(cond.evaluate(record) for cond in remaining_conditions):
                     results.append(record.copy())
 
         # 排序

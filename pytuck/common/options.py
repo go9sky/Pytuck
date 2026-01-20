@@ -33,7 +33,7 @@ class SqliteBackendOptions:
 @dataclass(slots=True)
 class ExcelBackendOptions:
     """Excel 后端配置选项"""
-    sheet_name: str = 'Sheet1'  # 工作表名称
+    read_only: bool = False  # 只读，只读情况下显著提升读取性能，但不可修改数据
 
 
 @dataclass(slots=True)

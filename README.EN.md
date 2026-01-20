@@ -257,7 +257,7 @@ db = Storage(file_path='data.sqlite', engine='sqlite', backend_options=sqlite_op
 from pytuck.common.options import ExcelBackendOptions
 
 # Configure Excel options (optional)
-excel_opts = ExcelBackendOptions(sheet_name='Sheet1')  # Use default config
+excel_opts = ExcelBackendOptions(read_only=False)  # Use default config
 db = Storage(file_path='data.xlsx', engine='excel', backend_options=excel_opts)
 ```
 

@@ -42,6 +42,8 @@ class ExcelBackend(StorageBackend):
 
     def save(self, tables: Dict[str, 'Table']) -> None:
         """保存所有表数据到Excel工作簿"""
+        if self.options.read_only:
+            raise SerializationError("Excel backend does not support read-only mode")
         try:
             from openpyxl import Workbook
         except ImportError:
@@ -108,7 +110,9 @@ class ExcelBackend(StorageBackend):
             raise SerializationError("openpyxl is required for Excel backend. Install with: pip install pytuck[excel]")
 
         try:
-            wb = load_workbook(str(self.file_path))
+            wb = load_workbook(
+                filename=str(self.file_path), read_only=self.options.read_only, data_only=True, keep_links=False
+            )
 
             # 从 _pytuck_tables 工作表读取所有表的 schema
             tables_schema: Dict[str, Dict[str, Any]] = {}

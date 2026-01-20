@@ -294,8 +294,18 @@ class EngineBenchmark:
 
 # ============== 主测试运行器 ==============
 
-def run_benchmarks(record_count: int, keep_files: bool = False) -> List[Dict[str, Any]]:
-    """运行所有引擎的基准测试"""
+def run_benchmarks(record_count: int, keep_files: bool = False, engines: List[str] = None) -> List[Dict[str, Any]]:
+    """
+    运行所有引擎的基准测试
+
+    Args:
+        record_count: 测试数量
+        keep_files: 是否保留测试文件
+        engines: 指定引擎名，不指定则运行全部
+
+    Returns:
+
+    """
     all_results = []
 
     # 创建临时目录
@@ -317,6 +327,9 @@ def run_benchmarks(record_count: int, keep_files: bool = False) -> List[Dict[str
         print()
 
         for engine_name, display_name, deps in ENGINES:
+            if engines and engine_name not in engines:
+                continue
+
             # 检查依赖
             if deps and not check_dependency(deps):
                 print(f"[跳过] {display_name}: 缺少依赖 {deps}")
@@ -422,12 +435,14 @@ def parse_args():
     parser = argparse.ArgumentParser(
         description='Pytuck 性能基准测试',
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
+        epilog=f"""
 示例:
-  python benchmark.py                 # 使用默认设置（10000条记录）
-  python benchmark.py -n 5000         # 测试5000条记录
-  python benchmark.py --keep          # 保留测试生成的文件
-  python benchmark.py -n 20000 --keep # 测试20000条记录并保留文件
+  python benchmark.py                         # 使用默认设置（{DEFAULT_RECORD_COUNT}条记录，所有引擎）
+  python benchmark.py -n 5000                 # 测试5000条记录
+  python benchmark.py --keep                  # 保留测试生成的文件
+  python benchmark.py -n 20000 --keep         # 测试20000条记录并保留文件
+  python benchmark.py -e binary json          # 只测试 binary 和 json 引擎
+  python benchmark.py -n 1000 -e sqlite csv   # 测试1000条记录，只测 sqlite 和 csv 引擎
         """
     )
     parser.add_argument(
@@ -441,6 +456,15 @@ def parse_args():
         action='store_true',
         help='保留测试生成的文件（保存到 tests/benchmark_output/）'
     )
+    engines = [e[0] for e in ENGINES]
+    parser.add_argument(
+        '-e', '--engines',
+        default=engines,  # 默认选择所有引擎
+        nargs='+',
+        choices=engines,
+        metavar='ENGINE',
+        help='指定要测试的引擎（可选多个，例如: -e binary json；默认: 所有引擎）',
+    )
     return parser.parse_args()
 
 
@@ -450,11 +474,12 @@ def main():
 
     print(f"\n启动 Pytuck 性能基准测试...")
     print(f"测试数据量: {args.count} 条记录")
+    print(f'测试引擎: {", ".join(args.engines)}')
     if args.keep:
         print("测试文件将被保留")
     print()
 
-    results = run_benchmarks(args.count, args.keep)
+    results = run_benchmarks(args.count, args.keep, args.engines)
 
     print("\n" + "=" * 60)
     print("汇总 - 可用于 README 的 Markdown 表格")

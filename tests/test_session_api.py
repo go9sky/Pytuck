@@ -11,7 +11,6 @@ Pytuck Session API 测试
 
 import os
 import sys
-import tempfile
 import unittest
 from typing import Type
 

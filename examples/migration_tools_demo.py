@@ -10,12 +10,13 @@ Pytuck - 数据迁移工具演示
 
 import os
 import sys
-import tempfile
 import sqlite3
 from typing import Type
 
 # 添加父目录到路径
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+from examples.common import get_project_temp_dir
 
 from pytuck import Storage, declarative_base, Session, Column, PureBaseModel
 from pytuck import select, insert
@@ -29,7 +30,7 @@ from pytuck.common.options import (
 
 def create_sample_database():
     """创建示例 Pytuck 数据库"""
-    temp_dir = tempfile.gettempdir()
+    temp_dir = get_project_temp_dir()
     source_file = os.path.join(temp_dir, 'source_data.db')
 
     # 清理旧文件
@@ -93,7 +94,7 @@ def demo_engine_migration():
     print("引擎间数据迁移演示")
     print("="*50)
 
-    temp_dir = tempfile.gettempdir()
+    temp_dir = get_project_temp_dir()
 
     # 创建源数据库
     source_file = create_sample_database()
@@ -164,7 +165,7 @@ def demo_engine_migration():
 
 def create_external_sqlite_database():
     """创建外部 SQLite 数据库（非 Pytuck 格式）"""
-    temp_dir = tempfile.gettempdir()
+    temp_dir = get_project_temp_dir()
     external_db = os.path.join(temp_dir, 'external_company.db')
 
     # 清理旧文件
@@ -258,7 +259,7 @@ def demo_database_import():
     print("从外部数据库导入数据演示")
     print("="*50)
 
-    temp_dir = tempfile.gettempdir()
+    temp_dir = get_project_temp_dir()
 
     # 创建外部 SQLite 数据库
     external_db = create_external_sqlite_database()

@@ -16,7 +16,6 @@ import os
 import sys
 import time
 import argparse
-import tempfile
 import shutil
 import platform
 from typing import Dict, List, Any, Optional, Tuple
@@ -24,6 +23,8 @@ from datetime import datetime
 
 # 添加父目录到路径以便导入
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from examples.common import mktemp_dir_project
 
 from pytuck import Storage, declarative_base, Session, Column, PureBaseModel
 from pytuck import select, insert, update, delete
@@ -314,7 +315,7 @@ def run_benchmarks(record_count: int, keep_files: bool = False, engines: List[st
         os.makedirs(temp_dir, exist_ok=True)
         print(f"测试文件将保存到: {temp_dir}")
     else:
-        temp_dir = tempfile.mkdtemp(prefix='pytuck_benchmark_')
+        temp_dir = mktemp_dir_project(prefix='pytuck_benchmark_')
 
     try:
         print("=" * 60)

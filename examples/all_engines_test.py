@@ -12,11 +12,12 @@ Pytuck - 所有存储引擎综合测试
 
 import os
 import sys
-import tempfile
 from datetime import datetime
 
 # 添加父目录到路径
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+from examples.common import get_project_temp_dir
 
 from pytuck import Storage, declarative_base, Session, Column
 from pytuck import select, insert, update, delete
@@ -49,7 +50,7 @@ def test_engine(engine_name: str, file_ext: str) -> bool:
         return False
 
     # 创建临时文件
-    temp_dir = tempfile.gettempdir()
+    temp_dir = get_project_temp_dir()
     db_file = os.path.join(temp_dir, f'test_{engine_name}.{file_ext}')
 
     try:

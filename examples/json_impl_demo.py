@@ -9,12 +9,13 @@ Pytuck - JSON后端实现选择演示
 
 import os
 import sys
-import tempfile
 import time
 from typing import Type
 
 # 添加父目录到路径
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+from examples.common import get_project_temp_dir
 
 from pytuck import Storage, declarative_base, Session, Column, PureBaseModel
 from pytuck import select, insert
@@ -29,7 +30,7 @@ def demo_performance_comparison():
     print("=" * 60)
 
     # 创建临时目录
-    temp_dir = tempfile.mkdtemp()
+    temp_dir = get_project_temp_dir()
 
     try:
         # 准备测试数据
@@ -163,7 +164,7 @@ def demo_parameter_handling():
     print("JSON参数处理演示")
     print("=" * 60)
 
-    temp_dir = tempfile.mkdtemp()
+    temp_dir = get_project_temp_dir()
 
     try:
         print("1. 标准库json - 完整参数支持")
@@ -238,7 +239,7 @@ def demo_custom_implementation():
     print("自定义JSON实现演示")
     print("=" * 60)
 
-    temp_dir = tempfile.mkdtemp()
+    temp_dir = get_project_temp_dir()
 
     try:
         # 保存原始方法
@@ -359,7 +360,7 @@ def demo_error_handling():
     print("错误处理演示")
     print("=" * 60)
 
-    temp_dir = tempfile.mkdtemp()
+    temp_dir = get_project_temp_dir()
 
     try:
         # 1. 测试不存在的库

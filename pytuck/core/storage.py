@@ -316,9 +316,9 @@ class Storage:
         self,
         file_path: Optional[str] = None,
         in_memory: bool = False,
-        engine: str = 'binary',  # 新增：引擎选择
-        auto_flush: bool = False,  # 新增：自动刷新
-        backend_options: Optional[BackendOptions] = None  # 新增：强类型后端选项
+        engine: str = 'binary',
+        auto_flush: bool = False,
+        backend_options: Optional[BackendOptions] = None,
     ):
         """
         初始化存储引擎
@@ -331,11 +331,10 @@ class Storage:
             backend_options: 强类型的后端配置选项对象（JsonBackendOptions, CsvBackendOptions等）
         """
         self.file_path = file_path
-        self.in_memory = in_memory or (file_path is None)
+        self.in_memory: bool = in_memory or (file_path is None)
         self.engine_name = engine
         self.auto_flush = auto_flush
         self.tables: Dict[str, Table] = {}
-        self.current_transaction = None
         self._dirty = False
 
         # 事务管理属性
@@ -344,7 +343,7 @@ class Storage:
         self._transaction_dirty_flag: bool = False
 
         # 初始化后端
-        self.backend = None
+        self.backend: Optional[StorageBackend] = None
         if not self.in_memory and file_path:
             # 如果没有提供选项，使用默认选项
             if backend_options is None:
@@ -608,9 +607,7 @@ class Storage:
         table = self.get_table(table_name)
 
         # 尝试使用后端分页（如果支持）
-        if (self.backend and
-            hasattr(self.backend, 'supports_server_side_pagination') and
-            self.backend.supports_server_side_pagination()):
+        if self.backend and self.backend.supports_server_side_pagination():
 
             # 转换过滤条件为简化格式
             conditions = []

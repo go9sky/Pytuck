@@ -144,7 +144,7 @@ class CSVBackend(StorageBackend):
 
         if len(table.data) > 0:
             fieldnames = list(table.columns.keys())
-            writer = csv.DictWriter(csv_buffer, fieldnames=fieldnames)
+            writer = csv.DictWriter(csv_buffer, fieldnames=fieldnames, delimiter=self.options.delimiter)
             writer.writeheader()
 
             for record in table.data.values():
@@ -199,7 +199,7 @@ class CSVBackend(StorageBackend):
         with zf.open(csv_file) as f:
             encoding = self.options.encoding
             text_stream = io.TextIOWrapper(f, encoding=encoding)
-            reader = csv.DictReader(text_stream)
+            reader = csv.DictReader(text_stream, delimiter=self.options.delimiter)
 
             for row_data in reader:
                 record = self._deserialize_record(row_data, table.columns)

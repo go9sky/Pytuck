@@ -8,6 +8,18 @@ from typing import Optional, Union, Dict
 
 
 @dataclass(slots=True)
+class SqliteConnectorOptions:
+    """SQLite 连接器配置选项"""
+    check_same_thread: bool = True  # 检查同一线程
+    timeout: Optional[float] = None  # 连接超时时间
+    isolation_level: Optional[str] = None  # 事务隔离级别
+
+
+# Connector 选项联合类型
+ConnectorOptions = Union[SqliteConnectorOptions]
+
+
+@dataclass(slots=True)
 class JsonBackendOptions:
     """JSON 后端配置选项"""
     indent: int = 2  # 缩进空格数
@@ -24,10 +36,8 @@ class CsvBackendOptions:
 
 
 @dataclass(slots=True)
-class SqliteBackendOptions:
+class SqliteBackendOptions(SqliteConnectorOptions):
     """SQLite 后端配置选项"""
-    check_same_thread: bool = True  # 检查同一线程
-    timeout: Optional[float] = None  # 连接超时时间
 
 
 @dataclass(slots=True)
@@ -58,18 +68,6 @@ BackendOptions = Union[
     XmlBackendOptions,
     BinaryBackendOptions
 ]
-
-
-@dataclass(slots=True)
-class SqliteConnectorOptions:
-    """SQLite 连接器配置选项"""
-    check_same_thread: bool = True  # 检查同一线程
-    timeout: Optional[float] = None  # 连接超时时间
-    isolation_level: Optional[str] = None  # 事务隔离级别
-
-
-# Connector 选项联合类型
-ConnectorOptions = Union[SqliteConnectorOptions]
 
 
 # 默认选项获取函数

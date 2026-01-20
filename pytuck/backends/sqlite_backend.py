@@ -14,7 +14,7 @@ from ..connectors.sqlite_connector import SQLiteConnector
 from ..common.exceptions import SerializationError
 from .versions import get_format_version
 
-from ..common.options import SqliteBackendOptions, SqliteConnectorOptions
+from ..common.options import SqliteBackendOptions
 
 if TYPE_CHECKING:
     from ..core.storage import Table
@@ -47,9 +47,8 @@ class SQLiteBackend(StorageBackend):
     def save(self, tables: Dict[str, 'Table']) -> None:
         """保存所有表数据到SQLite数据库"""
         try:
-            # 创建连接器，使用默认选项
-            connector_options = SqliteConnectorOptions()
-            connector = SQLiteConnector(str(self.file_path), connector_options)
+            # 创建连接器
+            connector = SQLiteConnector(str(self.file_path), self.options)
             with connector:
                 # 创建元数据表
                 self._ensure_metadata_tables(connector)
@@ -80,8 +79,7 @@ class SQLiteBackend(StorageBackend):
 
         try:
             # 创建连接器，使用默认选项
-            connector_options = SqliteConnectorOptions()
-            connector = SQLiteConnector(str(self.file_path), connector_options)
+            connector = SQLiteConnector(str(self.file_path), self.options)
             with connector:
                 # 检查是否是 Pytuck 格式
                 if not connector.table_exists('_pytuck_tables'):
@@ -278,8 +276,7 @@ class SQLiteBackend(StorageBackend):
             }
 
             # 创建连接器，使用默认选项
-            connector_options = SqliteConnectorOptions()
-            connector = SQLiteConnector(str(self.file_path), connector_options)
+            connector = SQLiteConnector(str(self.file_path), self.options)
             with connector:
                 try:
                     cursor = connector.execute(
@@ -344,8 +341,7 @@ class SQLiteBackend(StorageBackend):
 
         try:
             # 创建连接器
-            connector_options = SqliteConnectorOptions()
-            connector = SQLiteConnector(str(self.file_path), connector_options)
+            connector = SQLiteConnector(str(self.file_path), self.options)
 
             with connector:
                 # 检查表是否存在（不要添加反引号）

@@ -107,9 +107,9 @@ class JSONBackend(StorageBackend):
         import json
 
         def dumps_func(obj: Any) -> str:
-            return json.dumps(obj,
-                            indent=self.options.indent,
-                            ensure_ascii=self.options.ensure_ascii)
+            return json.dumps(
+                obj, indent=self.options.indent, ensure_ascii=self.options.ensure_ascii
+            )
 
         self._dumps_func = dumps_func
         self._loads_func = json.loads

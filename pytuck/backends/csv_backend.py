@@ -197,9 +197,7 @@ class CSVBackend(StorageBackend):
 
         # 加载 CSV 数据
         with zf.open(csv_file) as f:
-            encoding = 'utf-8'
-            if hasattr(self.options, 'encoding'):
-                encoding = self.options.encoding  # type: ignore
+            encoding = self.options.encoding
             text_stream = io.TextIOWrapper(f, encoding=encoding)
             reader = csv.DictReader(text_stream)
 

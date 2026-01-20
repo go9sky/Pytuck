@@ -51,8 +51,8 @@ class XMLBackend(StorageBackend):
         try:
             # 创建根元素
             root = etree.Element('database',
-                               format_version=str(self.FORMAT_VERSION),
-                               timestamp=datetime.now().isoformat())
+                                 format_version=str(self.FORMAT_VERSION),
+                                 timestamp=datetime.now().isoformat())
 
             # 为每个表创建 <table> 元素
             for table_name, table in tables.items():
@@ -61,9 +61,9 @@ class XMLBackend(StorageBackend):
             # 写入文件（原子性）
             tree = etree.ElementTree(root)
             tree.write(str(temp_path),
-                      pretty_print=True,
-                      xml_declaration=True,
-                      encoding='UTF-8')
+                       pretty_print=self.options.pretty_print,
+                       xml_declaration=True,
+                       encoding=self.options.encoding)
 
             if self.file_path.exists():
                 self.file_path.unlink()

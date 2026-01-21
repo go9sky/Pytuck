@@ -50,9 +50,11 @@ class XMLBackend(StorageBackend):
         temp_path = self.file_path.parent / (self.file_path.name + '.tmp')
         try:
             # 创建根元素
-            root = etree.Element('database',
-                                 format_version=str(self.FORMAT_VERSION),
-                                 timestamp=datetime.now().isoformat())
+            root = etree.Element(
+                'database',
+                format_version=str(self.FORMAT_VERSION),
+                timestamp=datetime.now().isoformat()
+            )
 
             # 为每个表创建 <table> 元素
             for table_name, table in tables.items():
@@ -60,10 +62,12 @@ class XMLBackend(StorageBackend):
 
             # 写入文件（原子性）
             tree = etree.ElementTree(root)
-            tree.write(str(temp_path),
-                       pretty_print=self.options.pretty_print,
-                       xml_declaration=True,
-                       encoding=self.options.encoding)
+            tree.write(
+                str(temp_path),
+                pretty_print=self.options.pretty_print,
+                xml_declaration=True,
+                encoding=self.options.encoding
+            )
 
             if self.file_path.exists():
                 self.file_path.unlink()
@@ -127,12 +131,14 @@ class XMLBackend(StorageBackend):
         # 列定义
         columns_elem = etree.SubElement(table_elem, 'columns')
         for col in table.columns.values():
-            col_elem = etree.SubElement(columns_elem, 'column',
-                           name=col.name,
-                           type=col.col_type.__name__,
-                           nullable=str(col.nullable).lower(),
-                           primary_key=str(col.primary_key).lower(),
-                           index=str(col.index).lower())
+            col_elem = etree.SubElement(
+                columns_elem, 'column',
+                name=col.name,
+                type=col.col_type.__name__,
+                nullable=str(col.nullable).lower(),
+                primary_key=str(col.primary_key).lower(),
+                index=str(col.index).lower()
+            )
             if col.comment:
                 col_elem.set('comment', col.comment)
 
@@ -142,9 +148,9 @@ class XMLBackend(StorageBackend):
             record_elem = etree.SubElement(records_elem, 'record')
             for col_name, value in record.items():
                 column = table.columns[col_name]
-                field_elem = etree.SubElement(record_elem, 'field',
-                                             name=col_name,
-                                             type=column.col_type.__name__)
+                field_elem = etree.SubElement(
+                    record_elem, 'field', name=col_name, type=column.col_type.__name__
+                )
 
                 # 处理值
                 if value is None:

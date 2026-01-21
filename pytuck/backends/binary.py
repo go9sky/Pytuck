@@ -29,7 +29,7 @@ class BinaryBackend(StorageBackend):
     REQUIRED_DEPENDENCIES = []
 
     # 文件格式常量
-    MAGIC_NUMBER = b'PYTK'  # Pytuck 正式名称缩写（旧版使用 LTDB）
+    MAGIC_NUMBER = b'PYTK'
     FORMAT_VERSION = get_format_version('binary')
     FILE_HEADER_SIZE = 64
 

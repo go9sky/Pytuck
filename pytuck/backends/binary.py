@@ -773,72 +773,72 @@ class BinaryBackend(StorageBackend):
         all_table_data: Dict[str, Dict[str, Any]]
     ) -> None:
         """
-        写入索引区（批量写入优化）
+        写入索引区（批量写入优化，固定宽度整数）
 
-        格式（v2，使用 varint）：
-        - Index Format Version (2 bytes): 值为 2
-        - Table Count (varint)
+        格式（v1，使用固定宽度整数）：
+        - Index Format Version (2 bytes): 值为 1
+        - Table Count (4 bytes)
         - For each table:
-            - Table Name Length (varint) + Name
-            - PK Offsets Count (varint)
-            - PK Offsets: [(pk_bytes_len varint, pk_bytes, offset varint), ...]
-            - Index Count (varint)
+            - Table Name Length (2 bytes) + Name
+            - PK Offsets Count (4 bytes)
+            - PK Offsets: [(pk_bytes_len 2 bytes, pk_bytes, offset 8 bytes), ...]
+            - Index Count (2 bytes)
             - For each index:
-                - Column Name Length (varint) + Name
-                - Entry Count (varint)
-                - Entries: [(value_bytes_len varint, value_bytes, pk_count varint, [pk_bytes...]), ...]
+                - Column Name Length (2 bytes) + Name
+                - Entry Count (4 bytes)
+                - Entries: [(value_bytes_len 2 bytes, value_bytes, pk_count 4 bytes, [pk_bytes...]), ...]
         """
         buf = bytearray()
 
-        # Index Format Version (固定 2 字节，便于快速识别版本)
-        buf += struct.pack('<H', 2)
+        # Index Format Version (固定 2 字节)
+        buf += struct.pack('<H', 1)
 
-        # Table Count (varint)
-        buf += self._pack_varint(len(all_table_data))
+        # Table Count (4 bytes)
+        buf += struct.pack('<I', len(all_table_data))
 
         for table_name, table_data in all_table_data.items():
             # Table Name
             name_bytes = table_name.encode('utf-8')
-            buf += self._pack_varint(len(name_bytes))
+            buf += struct.pack('<H', len(name_bytes))
             buf += name_bytes
 
             # PK Offsets
             pk_offsets = table_data.get('pk_offsets', {})
-            buf += self._pack_varint(len(pk_offsets))
+            buf += struct.pack('<I', len(pk_offsets))
             for pk, offset in pk_offsets.items():
                 pk_bytes = self._serialize_index_value(pk)
-                buf += self._pack_varint(len(pk_bytes))
+                buf += struct.pack('<H', len(pk_bytes))
                 buf += pk_bytes
-                buf += self._pack_varint(offset)
+                buf += struct.pack('<Q', offset)
 
             # Indexes
             indexes = table_data.get('indexes', {})
-            buf += self._pack_varint(len(indexes))
+            buf += struct.pack('<H', len(indexes))
 
             for col_name, index in indexes.items():
                 # Column Name
                 col_bytes = col_name.encode('utf-8')
-                buf += self._pack_varint(len(col_bytes))
+                buf += struct.pack('<H', len(col_bytes))
                 buf += col_bytes
 
                 # 获取索引映射（HashIndex 的 map 属性）
                 idx_map = index.map if hasattr(index, 'map') else {}
 
                 # Entry Count
-                buf += self._pack_varint(len(idx_map))
+                buf += struct.pack('<I', len(idx_map))
 
                 for value, pk_set in idx_map.items():
                     # Value
                     value_bytes = self._serialize_index_value(value)
-                    buf += self._pack_varint(len(value_bytes))
+                    buf += struct.pack('<H', len(value_bytes))
                     buf += value_bytes
 
                     # PK Set
                     pk_list = list(pk_set)
-                    buf += self._pack_varint(len(pk_list))
+                    buf += struct.pack('<I', len(pk_list))
                     for pk in pk_list:
                         pk_bytes = self._serialize_index_value(pk)
-                        buf += self._pack_varint(len(pk_bytes))
+                        buf += struct.pack('<H', len(pk_bytes))
                         buf += pk_bytes
 
         # 一次性写入
@@ -846,7 +846,7 @@ class BinaryBackend(StorageBackend):
 
     def _read_index_region(self, f: BinaryIO) -> Dict[str, Dict[str, Any]]:
         """
-        读取索引区（批量读取 + varint 编码）
+        读取索引区（批量读取 + 固定宽度整数）
 
         Returns:
             {table_name: {'pk_offsets': {...}, 'indexes': {...}}}
@@ -860,67 +860,67 @@ class BinaryBackend(StorageBackend):
 
         # Index Format Version (固定 2 字节)
         idx_version = struct.unpack('<H', data[0:2])[0]
-        if idx_version != 2:
-            # 只支持 v2 格式
+        if idx_version != 1:
+            # 只支持 v1 格式
             return {}
 
         offset = 2
 
-        # Table Count (varint)
-        table_count, consumed = self._unpack_varint(data, offset)
-        offset += consumed
+        # Table Count (4 bytes)
+        table_count = struct.unpack('<I', data[offset:offset+4])[0]
+        offset += 4
 
         for _ in range(table_count):
             # Table Name
-            name_len, consumed = self._unpack_varint(data, offset)
-            offset += consumed
+            name_len = struct.unpack('<H', data[offset:offset+2])[0]
+            offset += 2
             table_name = data[offset:offset+name_len].decode('utf-8')
             offset += name_len
 
             # PK Offsets
-            pk_count, consumed = self._unpack_varint(data, offset)
-            offset += consumed
+            pk_count = struct.unpack('<I', data[offset:offset+4])[0]
+            offset += 4
             pk_offsets: Dict[Any, int] = {}
             for _ in range(pk_count):
-                pk_len, consumed = self._unpack_varint(data, offset)
-                offset += consumed
+                pk_len = struct.unpack('<H', data[offset:offset+2])[0]
+                offset += 2
                 pk = self._deserialize_index_value(data[offset:offset+pk_len])
                 offset += pk_len
-                file_offset, consumed = self._unpack_varint(data, offset)
-                offset += consumed
+                file_offset = struct.unpack('<Q', data[offset:offset+8])[0]
+                offset += 8
                 pk_offsets[pk] = file_offset
 
             # Indexes
-            idx_count, consumed = self._unpack_varint(data, offset)
-            offset += consumed
+            idx_count = struct.unpack('<H', data[offset:offset+2])[0]
+            offset += 2
             indexes: Dict[str, Dict[Any, Set[Any]]] = {}
 
             for _ in range(idx_count):
                 # Column Name
-                col_len, consumed = self._unpack_varint(data, offset)
-                offset += consumed
+                col_len = struct.unpack('<H', data[offset:offset+2])[0]
+                offset += 2
                 col_name = data[offset:offset+col_len].decode('utf-8')
                 offset += col_len
 
                 # Entry Count
-                entry_count, consumed = self._unpack_varint(data, offset)
-                offset += consumed
+                entry_count = struct.unpack('<I', data[offset:offset+4])[0]
+                offset += 4
                 idx_map: Dict[Any, Set[Any]] = {}
 
                 for _ in range(entry_count):
                     # Value
-                    val_len, consumed = self._unpack_varint(data, offset)
-                    offset += consumed
+                    val_len = struct.unpack('<H', data[offset:offset+2])[0]
+                    offset += 2
                     value = self._deserialize_index_value(data[offset:offset+val_len])
                     offset += val_len
 
                     # PK Set
-                    pk_list_len, consumed = self._unpack_varint(data, offset)
-                    offset += consumed
+                    pk_list_len = struct.unpack('<I', data[offset:offset+4])[0]
+                    offset += 4
                     pk_set: Set[Any] = set()
                     for _ in range(pk_list_len):
-                        pk_len, consumed = self._unpack_varint(data, offset)
-                        offset += consumed
+                        pk_len = struct.unpack('<H', data[offset:offset+2])[0]
+                        offset += 2
                         pk = self._deserialize_index_value(data[offset:offset+pk_len])
                         offset += pk_len
                         pk_set.add(pk)
@@ -935,65 +935,6 @@ class BinaryBackend(StorageBackend):
             }
 
         return result
-
-    # ========== Varint 变长整数编码 ==========
-
-    # 预计算常见小整数的 varint 编码（0-255）
-    _VARINT_CACHE = [bytes([i]) if i < 128 else bytes([(i & 0x7F) | 0x80, i >> 7]) for i in range(256)]
-
-    def _pack_varint(self, n: int) -> bytes:
-        """
-        变长整数编码（类似 protobuf varint，带缓存优化）
-
-        编码规则：
-        - 每个字节使用 7 位存储数据，最高位为继续标志
-        - 最高位为 1 表示后面还有字节，为 0 表示结束
-        - 支持非负整数
-
-        Args:
-            n: 非负整数
-
-        Returns:
-            编码后的字节串
-        """
-        # 快速路径：使用预计算缓存（覆盖大多数长度字段）
-        if n < 256:
-            return self._VARINT_CACHE[n]
-
-        # 慢速路径：动态计算
-        out = bytearray()
-        while n >= 128:
-            out.append((n & 0x7F) | 0x80)
-            n >>= 7
-        out.append(n)
-        return bytes(out)
-
-    def _unpack_varint(self, data: bytes, offset: int = 0) -> Tuple[int, int]:
-        """
-        反序列化变长整数
-
-        Args:
-            data: 字节数据
-            offset: 起始偏移
-
-        Returns:
-            Tuple[int, int]: (解码的值, 消耗的字节数)
-        """
-        result = 0
-        shift = 0
-        pos = offset
-        while True:
-            if pos >= len(data):
-                raise SerializationError("Varint overflow: unexpected end of data")
-            byte = data[pos]
-            result |= (byte & 0x7F) << shift
-            pos += 1
-            if byte < 128:
-                break
-            shift += 7
-            if shift > 63:
-                raise SerializationError("Varint overflow: value too large")
-        return result, pos - offset
 
     # ========== 高效值序列化（避免 JSON 开销） ==========
 

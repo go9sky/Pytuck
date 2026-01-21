@@ -491,7 +491,7 @@ def run_benchmarks(
     return all_results
 
 
-def generate_markdown_table(results: List[Dict[str, Any]], record_count: int) -> str:
+def generate_markdown_table(results: List[Dict[str, Any]], record_count: int, extended: bool = False) -> str:
     """生成中文 Markdown 表格"""
     filtered = [r for r in results if r.get('record_count') == record_count and r.get('success')]
 
@@ -500,30 +500,69 @@ def generate_markdown_table(results: List[Dict[str, Any]], record_count: int) ->
 
     lines = []
     lines.append(f"测试数据量: {record_count} 条记录\n")
-    lines.append("| 引擎 | 插入 | 全表查询 | 索引查询 | 条件查询 | 更新 | 保存 | 加载 | 文件大小 |")
-    lines.append("|------|------|----------|----------|----------|------|------|------|----------|")
 
-    for r in filtered:
-        engine = r['engine'].capitalize()
-        if r['engine'] == 'sqlite':
-            engine = 'SQLite'
+    if extended:
+        # 扩展表格：包含索引加速比、懒加载等
+        lines.append("| 引擎 | 插入 | 索引查询 | 非索引查询 | 索引加速 | 范围查询 | 保存 | 加载 | 懒加载 | 文件大小 |")
+        lines.append("|------|------|----------|------------|----------|----------|------|------|--------|----------|")
 
-        lines.append(
-            f"| {engine} | "
-            f"{format_time(r['insert'])} | "
-            f"{format_time(r['query_all'])} | "
-            f"{format_time(r['query_indexed'])} | "
-            f"{format_time(r['query_filtered'])} | "
-            f"{format_time(r['update'])} | "
-            f"{format_time(r['save'])} | "
-            f"{format_time(r['load'])} | "
-            f"{format_size(r['file_size'])} |"
-        )
+        for r in filtered:
+            engine = r['engine'].capitalize()
+            if r['engine'] == 'sqlite':
+                engine = 'SQLite'
+
+            # 计算索引加速比
+            speedup = '-'
+            if 'query_non_indexed' in r and r['query_indexed'] > 0:
+                speedup = f"{r['query_non_indexed'] / r['query_indexed']:.0f}x"
+
+            # 懒加载时间
+            lazy = format_time(r['lazy_load']) if 'lazy_load' in r else '-'
+
+            # 非索引查询
+            non_indexed = format_time(r['query_non_indexed']) if 'query_non_indexed' in r else '-'
+
+            # 范围查询
+            range_q = format_time(r['range_query']) if 'range_query' in r else '-'
+
+            lines.append(
+                f"| {engine} | "
+                f"{format_time(r['insert'])} | "
+                f"{format_time(r['query_indexed'])} | "
+                f"{non_indexed} | "
+                f"{speedup} | "
+                f"{range_q} | "
+                f"{format_time(r['save'])} | "
+                f"{format_time(r['load'])} | "
+                f"{lazy} | "
+                f"{format_size(r['file_size'])} |"
+            )
+    else:
+        # 基础表格
+        lines.append("| 引擎 | 插入 | 全表查询 | 索引查询 | 条件查询 | 更新 | 保存 | 加载 | 文件大小 |")
+        lines.append("|------|------|----------|----------|----------|------|------|------|----------|")
+
+        for r in filtered:
+            engine = r['engine'].capitalize()
+            if r['engine'] == 'sqlite':
+                engine = 'SQLite'
+
+            lines.append(
+                f"| {engine} | "
+                f"{format_time(r['insert'])} | "
+                f"{format_time(r['query_all'])} | "
+                f"{format_time(r['query_indexed'])} | "
+                f"{format_time(r['query_filtered'])} | "
+                f"{format_time(r['update'])} | "
+                f"{format_time(r['save'])} | "
+                f"{format_time(r['load'])} | "
+                f"{format_size(r['file_size'])} |"
+            )
 
     return '\n'.join(lines)
 
 
-def generate_english_table(results: List[Dict[str, Any]], record_count: int) -> str:
+def generate_english_table(results: List[Dict[str, Any]], record_count: int, extended: bool = False) -> str:
     """生成英文 Markdown 表格"""
     filtered = [r for r in results if r.get('record_count') == record_count and r.get('success')]
 
@@ -532,25 +571,58 @@ def generate_english_table(results: List[Dict[str, Any]], record_count: int) -> 
 
     lines = []
     lines.append(f"Test data: {record_count} records\n")
-    lines.append("| Engine | Insert | Full Scan | Indexed | Filtered | Update | Save | Load | File Size |")
-    lines.append("|--------|--------|-----------|---------|----------|--------|------|------|-----------|")
 
-    for r in filtered:
-        engine = r['engine'].capitalize()
-        if r['engine'] == 'sqlite':
-            engine = 'SQLite'
+    if extended:
+        # Extended table
+        lines.append("| Engine | Insert | Indexed | Non-Indexed | Speedup | Range | Save | Load | Lazy | Size |")
+        lines.append("|--------|--------|---------|-------------|---------|-------|------|------|------|------|")
 
-        lines.append(
-            f"| {engine} | "
-            f"{format_time(r['insert'])} | "
-            f"{format_time(r['query_all'])} | "
-            f"{format_time(r['query_indexed'])} | "
-            f"{format_time(r['query_filtered'])} | "
-            f"{format_time(r['update'])} | "
-            f"{format_time(r['save'])} | "
-            f"{format_time(r['load'])} | "
-            f"{format_size(r['file_size'])} |"
-        )
+        for r in filtered:
+            engine = r['engine'].capitalize()
+            if r['engine'] == 'sqlite':
+                engine = 'SQLite'
+
+            speedup = '-'
+            if 'query_non_indexed' in r and r['query_indexed'] > 0:
+                speedup = f"{r['query_non_indexed'] / r['query_indexed']:.0f}x"
+
+            lazy = format_time(r['lazy_load']) if 'lazy_load' in r else '-'
+            non_indexed = format_time(r['query_non_indexed']) if 'query_non_indexed' in r else '-'
+            range_q = format_time(r['range_query']) if 'range_query' in r else '-'
+
+            lines.append(
+                f"| {engine} | "
+                f"{format_time(r['insert'])} | "
+                f"{format_time(r['query_indexed'])} | "
+                f"{non_indexed} | "
+                f"{speedup} | "
+                f"{range_q} | "
+                f"{format_time(r['save'])} | "
+                f"{format_time(r['load'])} | "
+                f"{lazy} | "
+                f"{format_size(r['file_size'])} |"
+            )
+    else:
+        # Basic table
+        lines.append("| Engine | Insert | Full Scan | Indexed | Filtered | Update | Save | Load | File Size |")
+        lines.append("|--------|--------|-----------|---------|----------|--------|------|------|-----------|")
+
+        for r in filtered:
+            engine = r['engine'].capitalize()
+            if r['engine'] == 'sqlite':
+                engine = 'SQLite'
+
+            lines.append(
+                f"| {engine} | "
+                f"{format_time(r['insert'])} | "
+                f"{format_time(r['query_all'])} | "
+                f"{format_time(r['query_indexed'])} | "
+                f"{format_time(r['query_filtered'])} | "
+                f"{format_time(r['update'])} | "
+                f"{format_time(r['save'])} | "
+                f"{format_time(r['load'])} | "
+                f"{format_size(r['file_size'])} |"
+            )
 
     return '\n'.join(lines)
 
@@ -618,10 +690,10 @@ def main():
     print("=" * 60)
 
     print("\n### 中文版本 (README.md):\n")
-    print(generate_markdown_table(results, args.count))
+    print(generate_markdown_table(results, args.count, args.extended))
 
     print("\n### 英文版本 (README.EN.md):\n")
-    print(generate_english_table(results, args.count))
+    print(generate_english_table(results, args.count, args.extended))
 
     print("\n" + "=" * 60)
     print("基准测试完成!")

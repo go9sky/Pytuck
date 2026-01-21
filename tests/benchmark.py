@@ -112,10 +112,11 @@ class Timer:
 class EngineBenchmark:
     """单个引擎的基准测试"""
 
-    def __init__(self, engine_name: str, temp_dir: str):
+    def __init__(self, engine_name: str, temp_dir: str, extended_tests: bool = False):
         self.engine_name = engine_name
         self.temp_dir = temp_dir
         self.results: Dict[str, Any] = {}
+        self.extended_tests = extended_tests  # 是否执行扩展测试
 
         # 根据引擎类型确定文件扩展名
         extensions = {
@@ -188,6 +189,33 @@ class EngineBenchmark:
                 record = result.scalars().first()
         return t.elapsed
 
+    def benchmark_query_non_indexed(self, session: 'Session', model_class: type, count: int) -> float:
+        """测试非索引字段查询性能（100次查询）- 用于对比索引优势"""
+        with Timer() as t:
+            for i in range(min(100, count)):
+                # email 字段没有索引，需要全表扫描
+                stmt = select(model_class).where(model_class.email == f'user{i}@example.com')
+                result = session.execute(stmt)
+                record = result.scalars().first()
+        return t.elapsed
+
+    def benchmark_range_query(self, session: 'Session', model_class: type) -> Tuple[float, int]:
+        """测试范围查询性能（如 age BETWEEN 30 AND 50）"""
+        with Timer() as t:
+            stmt = select(model_class).where(model_class.age >= 30, model_class.age <= 50)
+            result = session.execute(stmt)
+            records = result.scalars().all()
+        return t.elapsed, len(records)
+
+    def benchmark_batch_read(self, session: 'Session', model_class: type, count: int) -> float:
+        """测试批量顺序读取性能（读取前1000条记录）"""
+        batch_size = min(1000, count)
+        with Timer() as t:
+            stmt = select(model_class).limit(batch_size)
+            result = session.execute(stmt)
+            records = result.scalars().all()
+        return t.elapsed
+
     def benchmark_query_filtered(self, session: 'Session', model_class: type) -> float:
         """测试条件过滤查询性能"""
         with Timer() as t:
@@ -243,6 +271,53 @@ class EngineBenchmark:
         db.close()
         return t.elapsed
 
+    def benchmark_lazy_query(self, count: int) -> Optional[Tuple[float, float]]:
+        """
+        测试懒加载模式下的查询性能（仅 Binary 引擎）
+
+        在懒加载模式下，数据按需从磁盘读取。
+        测试：首次查询特定记录的耗时。
+
+        Returns:
+            Tuple[首次查询耗时, 后续查询耗时] 或 None（非 Binary 引擎）
+        """
+        if self.engine_name != 'binary':
+            return None
+
+        options = BinaryBackendOptions(lazy_load=True)
+        db = Storage(file_path=self.file_path, engine='binary', backend_options=options)
+        Base = declarative_base(db)
+
+        class BenchmarkUser(Base):
+            __tablename__ = 'benchmark_users'
+            id = Column('id', int, primary_key=True)
+            name = Column('name', str, nullable=False, index=True)
+            email = Column('email', str, nullable=True)
+            age = Column('age', int, nullable=True)
+            score = Column('score', float, nullable=True)
+            active = Column('active', bool, nullable=True)
+
+        session = Session(db)
+
+        # 首次查询（冷查询，需要从磁盘读取）
+        query_idx = min(count // 2, 5000)  # 查询中间位置的记录
+        with Timer() as t1:
+            stmt = select(BenchmarkUser).filter_by(name=f'User_{query_idx}')
+            result = session.execute(stmt)
+            record = result.scalars().first()
+
+        # 后续查询（热查询，可能命中缓存）
+        with Timer() as t2:
+            for i in range(10):
+                idx = (query_idx + i * 100) % count
+                stmt = select(BenchmarkUser).filter_by(name=f'User_{idx}')
+                result = session.execute(stmt)
+                record = result.scalars().first()
+
+        session.close()
+        db.close()
+        return t1.elapsed, t2.elapsed
+
     def run(self, record_count: int) -> Dict[str, Any]:
         """运行此引擎的所有基准测试"""
         results = {
@@ -261,6 +336,19 @@ class EngineBenchmark:
             results['query_all'] = self.benchmark_query_all(session, Model)
             results['query_indexed'] = self.benchmark_query_indexed(session, Model, record_count)
             results['query_filtered'] = self.benchmark_query_filtered(session, Model)
+
+            # 扩展测试（可选）
+            if self.extended_tests:
+                # 非索引查询（对比索引优势）
+                results['query_non_indexed'] = self.benchmark_query_non_indexed(session, Model, record_count)
+
+                # 范围查询
+                range_time, range_count = self.benchmark_range_query(session, Model)
+                results['range_query'] = range_time
+                results['range_query_count'] = range_count
+
+                # 批量读取
+                results['batch_read'] = self.benchmark_batch_read(session, Model, record_count)
 
             # 更新测试
             results['update'] = self.benchmark_update(session, Model, record_count)
@@ -284,6 +372,13 @@ class EngineBenchmark:
             if lazy_load_time is not None:
                 results['lazy_load'] = lazy_load_time
 
+            # 懒加载查询测试（仅 Binary 引擎，扩展测试）
+            if self.extended_tests:
+                lazy_query_result = self.benchmark_lazy_query(record_count)
+                if lazy_query_result is not None:
+                    results['lazy_query_first'] = lazy_query_result[0]
+                    results['lazy_query_batch'] = lazy_query_result[1]
+
             results['success'] = True
 
         except Exception as e:
@@ -295,7 +390,12 @@ class EngineBenchmark:
 
 # ============== 主测试运行器 ==============
 
-def run_benchmarks(record_count: int, keep_files: bool = False, engines: List[str] = None) -> List[Dict[str, Any]]:
+def run_benchmarks(
+    record_count: int,
+    keep_files: bool = False,
+    engines: List[str] = None,
+    extended: bool = False
+) -> List[Dict[str, Any]]:
     """
     运行所有引擎的基准测试
 
@@ -303,9 +403,10 @@ def run_benchmarks(record_count: int, keep_files: bool = False, engines: List[st
         record_count: 测试数量
         keep_files: 是否保留测试文件
         engines: 指定引擎名，不指定则运行全部
+        extended: 是否执行扩展测试（索引对比、范围查询等）
 
     Returns:
-
+        测试结果列表
     """
     all_results = []
 
@@ -325,6 +426,8 @@ def run_benchmarks(record_count: int, keep_files: bool = False, engines: List[st
         print(f"Python: {platform.python_version()}")
         print(f"日期: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         print(f"测试数据量: {record_count} 条记录")
+        if extended:
+            print("模式: 扩展测试（包含索引对比、范围查询、批量读取、懒加载查询）")
         print()
 
         for engine_name, display_name, deps in ENGINES:
@@ -340,7 +443,7 @@ def run_benchmarks(record_count: int, keep_files: bool = False, engines: List[st
             print(f"测试 {display_name} 引擎")
             print(f"{'─' * 50}")
 
-            benchmark = EngineBenchmark(engine_name, temp_dir)
+            benchmark = EngineBenchmark(engine_name, temp_dir, extended_tests=extended)
             result = benchmark.run(record_count)
             all_results.append(result)
 
@@ -349,12 +452,33 @@ def run_benchmarks(record_count: int, keep_files: bool = False, engines: List[st
                 print(f"  全表查询:          {format_time(result['query_all'])}")
                 print(f"  索引查询 (100次):  {format_time(result['query_indexed'])}")
                 print(f"  条件查询:          {format_time(result['query_filtered'])}")
+
+                # 扩展测试结果
+                if extended:
+                    if 'query_non_indexed' in result:
+                        print(f"  非索引查询 (100次): {format_time(result['query_non_indexed'])}")
+                        # 计算索引加速比
+                        speedup = result['query_non_indexed'] / result['query_indexed'] if result['query_indexed'] > 0 else 0
+                        print(f"    → 索引加速比: {speedup:.1f}x")
+                    if 'range_query' in result:
+                        print(f"  范围查询:          {format_time(result['range_query'])} ({result['range_query_count']}条)")
+                    if 'batch_read' in result:
+                        print(f"  批量读取 (1000条): {format_time(result['batch_read'])}")
+
                 print(f"  更新 (100次):      {format_time(result['update'])}")
                 print(f"  删除 (50次):       {format_time(result['delete'])}")
                 print(f"  保存到磁盘:        {format_time(result['save'])}")
                 print(f"  从磁盘加载:        {format_time(result['load'])}")
+
                 if 'lazy_load' in result:
                     print(f"  懒加载:            {format_time(result['lazy_load'])}")
+
+                # 懒加载查询测试（扩展测试）
+                if extended:
+                    if 'lazy_query_first' in result:
+                        print(f"  懒加载首次查询:    {format_time(result['lazy_query_first'])}")
+                        print(f"  懒加载后续查询 (10次): {format_time(result['lazy_query_batch'])}")
+
                 print(f"  文件大小:          {format_size(result['file_size'])}")
             else:
                 print(f"  错误: {result.get('error', '未知错误')}")
@@ -466,6 +590,11 @@ def parse_args():
         metavar='ENGINE',
         help='指定要测试的引擎（可选多个，例如: -e binary json；默认: 所有引擎）',
     )
+    parser.add_argument(
+        '--extended',
+        action='store_true',
+        help='执行扩展测试（索引对比、范围查询、批量读取、懒加载查询）'
+    )
     return parser.parse_args()
 
 
@@ -478,9 +607,11 @@ def main():
     print(f'测试引擎: {", ".join(args.engines)}')
     if args.keep:
         print("测试文件将被保留")
+    if args.extended:
+        print("模式: 扩展测试")
     print()
 
-    results = run_benchmarks(args.count, args.keep, args.engines)
+    results = run_benchmarks(args.count, args.keep, args.engines, args.extended)
 
     print("\n" + "=" * 60)
     print("汇总 - 可用于 README 的 Markdown 表格")

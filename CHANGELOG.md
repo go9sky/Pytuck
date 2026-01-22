@@ -7,6 +7,43 @@
 
 > [English Version](./CHANGELOG.EN.md)
 
+## [0.4.0] - 2026-01-22
+
+### 新增
+
+- **Binary 引擎 v4 格式**：全新的存储格式，优化大数据集性能
+  - **WAL（预写日志）**：写入操作先追加到 WAL，实现 O(1) 写入延迟
+  - **双 Header 机制**：HeaderA/HeaderB 交替使用，支持原子切换和崩溃恢复
+  - **Generation 计数**：递增计数器用于崩溃后选择有效 Header
+  - **CRC32 校验**：Header 和 WAL 条目完整性验证
+  - **索引区压缩**：使用 zlib 压缩索引区域，节省约 81% 空间
+  - **批量 I/O**：缓冲写入/读取，减少 I/O 操作次数
+  - **编解码器缓存**：预缓存类型编解码器，避免重复查找
+
+### 改进
+
+- **主键查询优化**（影响所有存储引擎）
+  - 检测 `WHERE pk = value` 形式的查询，使用 O(1) 直接访问替代 O(n) 全表扫描
+  - Update 和 Delete 语句均支持此优化
+  - **性能提升**：单条更新/删除从毫秒级降至微秒级（~1000x 提升）
+
+- **Binary 引擎性能提升**
+  - 保存 10 万条记录：4.18s → 0.57s（7.3x 提速）
+  - 加载 10 万条记录：2.91s → 0.85s（3.4x 提速）
+  - 文件大小：151MB → 120MB（21% 压缩）
+
+### 变更
+
+- **引擎格式版本升级**
+  - Binary: v3 → v4（WAL + 双 Header + 索引压缩）
+
+### 技术细节
+
+- 实现了完整的 WAL 写入流程：`_append_wal_entry()`, `_read_wal_entries()`, `_replay_wal()`
+- Storage 层集成 WAL：写操作自动记录到 WAL，checkpoint 时批量持久化
+- 新增 `TypeRegistry.get_codec_by_code()` 方法用于反向查找编解码器
+- `Update._execute()` 和 `Delete._execute()` 添加主键检测逻辑
+
 ## [0.3.0] - 2026-01-14
 
 ### 新增

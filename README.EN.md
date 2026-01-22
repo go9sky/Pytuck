@@ -908,7 +908,15 @@ Pytuck is a lightweight embedded database designed for simplicity. Here are the 
 
 ### Completed
 
-- [x] **Complete SQLAlchemy 2.0 Style Object State Management** ✨NEW✨
+- [x] **Binary Engine v4 Format** ✨NEW✨
+  - [x] WAL (Write-Ahead Log) for O(1) write latency
+  - [x] Dual Header mechanism for atomic switching and crash recovery
+  - [x] Index region zlib compression (saves ~81% space)
+  - [x] Batch I/O and codec caching optimizations
+- [x] **Primary Key Query Optimization** (affects ALL storage engines) ✨NEW✨
+  - [x] `WHERE pk = value` queries use O(1) direct access
+  - [x] Single update/delete performance improved ~1000x
+- [x] Complete SQLAlchemy 2.0 Style Object State Management
   - [x] Identity Map (Object Uniqueness Management)
   - [x] Automatic Dirty Tracking (Attribute assignment auto-detected and updates database)
   - [x] merge() Operation (Merge detached objects)
@@ -944,6 +952,7 @@ Pytuck is a lightweight embedded database designed for simplicity. Here are the 
 ### Planned Optimizations
 
 - [ ] Incremental save for non-binary backends (currently full rewrite on each save)
+- [ ] Binary engine Compaction (space reclaim) mechanism
 - [ ] Use `tempfile` module for safer temporary file handling
 - [ ] Streaming read/write for large datasets
 - [ ] Connection pooling for SQLite backend

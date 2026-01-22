@@ -52,15 +52,20 @@ pytuck/
 │       ├── __init__.py      # 工具导出
 │       ├── migrate.py       # 数据迁移工具
 │       └── adapters.py      # 数据库适配器（connectors 的薄包装）
-├── examples/                 # 示例代码
+├── examples/                 # 用户示例代码（仅存放演示脚本）
+│   ├── _common.py           # 示例共用工具（下划线前缀表示内部使用）
 │   ├── new_api_demo.py      # 纯模型模式示例（PureBaseModel + Session）
 │   ├── active_record_demo.py # Active Record 模式示例（CRUDBaseModel）
 │   ├── sqlalchemy20_api_demo.py # SQLAlchemy 2.0 风格 API
-│   ├── transaction_demo.py  # 事务管理示例
-│   └── all_engines_test.py  # 多引擎测试
-├── tests/                    # 测试文件
+│   └── ...                  # 其他 *_demo.py 示例文件
+├── tests/                    # 测试文件（pytest 框架）
 │   ├── __init__.py
-│   └── test_orm.py          # ORM 综合测试
+│   ├── conftest.py          # pytest 配置和共享 fixtures
+│   ├── test_*.py            # 测试用例文件（必须以 test_ 开头）
+│   └── benchmark/           # 性能基准测试（排除在 pytest 外）
+│       ├── __init__.py
+│       ├── benchmark.py     # 引擎性能基准测试
+│       └── benchmark_encryption.py  # 加密性能测试
 └── README.md                 # 项目文档
 ```
 
@@ -275,10 +280,37 @@ def create(cls: Type[T], **kwargs: Any) -> T:
     pass
 ```
 
-### 测试
-- 测试文件位于 `tests/` 目录，编写的新测试文件也应该放在该目录
-- 使用 `unittest` 框架编写测试用例
-- 运行测试：`python -m unittest tests.test_orm` 或 `python tests/test_orm.py`
+### 测试（强制）
+
+**测试框架**：使用 pytest（作为开发依赖，不影响用户安装）
+
+**一键运行所有测试**：
+```bash
+pytest tests/ -v
+```
+
+**强制要求**：
+- **每次代码改动后必须运行全部测试并确保通过**
+- 新增功能必须添加对应的测试用例
+- 测试文件命名：`test_<模块名>.py`
+- 测试类命名：`Test<功能名>`
+- 测试方法命名：`test_<场景>`
+
+**安装开发依赖**：
+```bash
+pip install -e ".[dev]"
+```
+
+**运行单个测试文件**：
+```bash
+pytest tests/test_orm.py -v
+```
+
+**运行性能基准测试**（不在 pytest 范围内）：
+```bash
+python tests/benchmark/benchmark.py -n 1000
+python tests/benchmark/benchmark_encryption.py
+```
 
 ### 模块职责规范（强制）
 
@@ -332,6 +364,61 @@ from pytuck.common.options import JsonBackendOptions
 # ❌ 错误：common 模块不应该有内部依赖
 # pytuck/common/options.py 中不应该导入 pytuck.core.* 等内部模块
 ```
+
+#### 3. tests/ 目录规范（强制）
+
+**tests/ 目录专门用于测试代码**，禁止放置示例、调试脚本或临时文件。
+
+**目录结构**：
+```
+tests/
+├── __init__.py
+├── conftest.py          # pytest 共享 fixtures（必须存在）
+├── test_*.py            # 测试用例文件（必须以 test_ 开头）
+└── benchmark/           # 性能基准测试（独立子目录）
+    ├── __init__.py
+    ├── benchmark.py
+    └── benchmark_encryption.py
+```
+
+**规则**：
+| 规则 | 说明 |
+|------|------|
+| 测试文件命名 | 必须以 `test_` 开头，如 `test_orm.py` |
+| 测试类命名 | 必须以 `Test` 开头，如 `TestColumn` |
+| 测试方法命名 | 必须以 `test_` 开头，如 `test_insert` |
+| 禁止创建 | ❌ 调试脚本、临时文件、示例代码 |
+| benchmark 目录 | 性能测试脚本，排除在 pytest 运行范围外 |
+
+**pytest 配置已在 `pyproject.toml` 中设置**：
+- `testpaths = ["tests"]`
+- `norecursedirs = ["benchmark"]`（排除 benchmark 目录）
+
+#### 4. examples/ 目录规范（强制）
+
+**examples/ 目录专门用于用户示例脚本**，展示 Pytuck 的使用方法。
+
+**目录结构**：
+```
+examples/
+├── _common.py           # 共用工具（下划线前缀表示内部使用）
+├── *_demo.py            # 示例脚本（必须以 _demo.py 结尾）
+└── README.md            # 示例说明文档（可选）
+```
+
+**规则**：
+| 规则 | 说明 |
+|------|------|
+| 示例文件命名 | 必须以 `_demo.py` 结尾，如 `new_api_demo.py` |
+| 内部工具命名 | 以下划线开头，如 `_common.py` |
+| 禁止创建 | ❌ 测试文件、调试脚本、临时文件、未完成的代码 |
+| 每个示例 | 必须是完整可运行的独立脚本 |
+
+**禁止放入 examples/ 的文件类型**：
+- `test_*.py`（测试文件应放入 tests/）
+- `debug_*.py`（调试脚本应删除或放入 .gitignore）
+- `temp*.py`、`tmp*.py`（临时文件应删除）
+- 依赖外部未发布服务的脚本
 
 ### **kwargs 使用规范（强制）
 
@@ -457,15 +544,22 @@ date +%Y-%m-%d
 ## 常用命令
 
 ```bash
-# 运行测试
-python tests/test_orm.py
+# 安装开发依赖
+pip install -e ".[dev]"
+
+# 一键运行所有测试（每次改动后必须运行）
+pytest tests/ -v
+
+# 运行单个测试文件
+pytest tests/test_orm.py -v
+
+# 运行性能基准测试
+python tests/benchmark/benchmark.py -n 1000
+python tests/benchmark/benchmark_encryption.py
 
 # 运行示例
 python examples/new_api_demo.py
 python examples/active_record_demo.py
-
-# 运行多引擎测试
-python examples/all_engines_test.py
 ```
 
 ## API 快速参考

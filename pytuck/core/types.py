@@ -163,6 +163,12 @@ class TypeRegistry:
         return cls._type_code_to_type[type_code]
 
     @classmethod
+    def get_codec_by_code(cls, type_code: TypeCode) -> tuple[TypeCode, TypeCodec]:
+        """根据类型编码获取编解码器"""
+        py_type = cls.get_type_from_code(type_code)
+        return cls.get_codec(py_type)
+
+    @classmethod
     def register(cls, py_type: Type, type_code: TypeCode, codec: TypeCodec) -> None:
         """注册自定义类型"""
         cls._codecs[py_type] = (type_code, codec)

@@ -4,10 +4,12 @@ Pytuck 二进制存储引擎
 默认的持久化引擎，使用自定义二进制格式，无外部依赖
 """
 
+import io
 import json
+import os
 import struct
 import zlib
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import IntEnum
 from pathlib import Path
 from typing import Any, Dict, List, Set, Union, TYPE_CHECKING, BinaryIO, Tuple, Optional, Iterator
@@ -16,13 +18,17 @@ if TYPE_CHECKING:
     from ..core.storage import Table
 
 from .base import StorageBackend
-from ..common.exceptions import SerializationError
+from ..common.exceptions import SerializationError, EncryptionError
 from ..core.types import TypeRegistry, TypeCode
 from ..core.orm import Column
 from ..core.index import HashIndex
 from .versions import get_format_version
 
 from ..common.options import BinaryBackendOptions
+from ..common.crypto import (
+    CryptoProvider, get_cipher, get_encryption_level_code, get_encryption_level_name,
+    ENCRYPTION_LEVELS, CipherType
+)
 
 
 # ============== v4 数据结构定义 ==============
@@ -51,10 +57,19 @@ class HeaderV4:
     checkpoint_lsn: int = 0
     flags: int = 0
     crc32: int = 0
+    # 加密元数据（存储在 reserved 区域）
+    salt: bytes = field(default_factory=lambda: b'\x00' * 16)
+    key_check: bytes = field(default_factory=lambda: b'\x00' * 4)
 
     # Header 布局常量
     HEADER_SIZE = 128
     MAGIC_V4 = b'PTK4'
+
+    # flags 位定义
+    FLAG_INDEX_COMPRESSED = 0x01    # bit 0: 索引区已压缩
+    FLAG_ENCRYPTION_ENABLED = 0x02  # bit 1: 加密已启用
+    FLAG_ENCRYPTION_LEVEL_MASK = 0x0C  # bit 2-3: 加密等级 (00=none, 01=low, 10=medium, 11=high)
+    FLAG_ENCRYPTION_LEVEL_SHIFT = 2
 
     def pack(self) -> bytes:
         """序列化为 128 字节"""
@@ -95,6 +110,13 @@ class HeaderV4:
         crc = zlib.crc32(buf[:90]) & 0xFFFFFFFF
         struct.pack_into('<I', buf, 90, crc)
 
+        # 加密元数据（reserved 区域 94-127）
+        # Salt (16B) at offset 94
+        buf[94:110] = self.salt[:16].ljust(16, b'\x00')
+        # Key check (4B) at offset 110
+        buf[110:114] = self.key_check[:4].ljust(4, b'\x00')
+        # Remaining reserved (14B) at offset 114-127 stays zero
+
         return bytes(buf)
 
     @classmethod
@@ -119,12 +141,35 @@ class HeaderV4:
         header.flags = struct.unpack('<I', data[86:90])[0]
         header.crc32 = struct.unpack('<I', data[90:94])[0]
 
+        # 加密元数据
+        header.salt = data[94:110]
+        header.key_check = data[110:114]
+
         return header
 
     def verify_crc(self, data: bytes) -> bool:
         """验证 CRC32"""
         expected = zlib.crc32(data[:90]) & 0xFFFFFFFF
         return self.crc32 == expected
+
+    def is_encrypted(self) -> bool:
+        """检查是否启用加密"""
+        return (self.flags & self.FLAG_ENCRYPTION_ENABLED) != 0
+
+    def get_encryption_level(self) -> Optional[str]:
+        """获取加密等级名称"""
+        if not self.is_encrypted():
+            return None
+        level_code = (self.flags & self.FLAG_ENCRYPTION_LEVEL_MASK) >> self.FLAG_ENCRYPTION_LEVEL_SHIFT
+        return get_encryption_level_name(level_code)
+
+    def set_encryption(self, level: str, salt: bytes, key_check: bytes) -> None:
+        """设置加密标志和元数据"""
+        level_code = get_encryption_level_code(level)
+        self.flags |= self.FLAG_ENCRYPTION_ENABLED
+        self.flags = (self.flags & ~self.FLAG_ENCRYPTION_LEVEL_MASK) | (level_code << self.FLAG_ENCRYPTION_LEVEL_SHIFT)
+        self.salt = salt
+        self.key_check = key_check
 
 
 @dataclass
@@ -285,21 +330,39 @@ class BinaryBackend(StorageBackend):
         v4 文件布局:
         - Header A (128B)
         - Header B (128B)
-        - Schema Region
-        - Data Region
-        - Index Region
+        - Schema Region（不加密）
+        - Data Region（可加密）
+        - Index Region（可加密）
         """
         temp_path = self.file_path.parent / (self.file_path.name + '.tmp')
 
         # 收集所有表的 pk_offsets 和索引数据
         all_table_index_data: Dict[str, Dict[str, Any]] = {}
 
+        # 加密设置
+        encryption_level = self.options.encryption
+        cipher: Optional[CipherType] = None
+        salt = b'\x00' * 16
+        key_check = b'\x00' * 4
+
+        if encryption_level:
+            if not self.options.password:
+                raise EncryptionError("加密需要提供密码")
+            if encryption_level not in ENCRYPTION_LEVELS:
+                raise EncryptionError(f"无效的加密等级: {encryption_level}，必须是 {ENCRYPTION_LEVELS} 之一")
+
+            # 生成随机盐并派生密钥
+            salt = os.urandom(16)
+            key = CryptoProvider.derive_key(self.options.password, salt, encryption_level)
+            key_check = CryptoProvider.compute_key_check(key)
+            cipher = get_cipher(encryption_level, key)
+
         try:
             with open(temp_path, 'wb') as f:
                 # 1. 预留双 Header 空间（256 字节）
                 f.write(b'\x00' * self.DUAL_HEADER_SIZE)
 
-                # 2. 写入 Schema 区
+                # 2. 写入 Schema 区（不加密，保持可探测性）
                 schema_offset = f.tell()
                 for table_name, table in tables.items():
                     self._write_table_schema(f, table)
@@ -307,17 +370,32 @@ class BinaryBackend(StorageBackend):
 
                 # 3. 写入数据区（记录每条记录的偏移）
                 data_offset = f.tell()
+                # 先写入到内存缓冲区
+                import io
+                data_buffer = io.BytesIO()
                 for table_name, table in tables.items():
-                    pk_offsets = self._write_table_data_v3(f, table)
+                    pk_offsets = self._write_table_data_v3(data_buffer, table)
                     all_table_index_data[table_name] = {
                         'pk_offsets': pk_offsets,
                         'indexes': table.indexes
                     }
-                data_size = f.tell() - data_offset
+                data_bytes = data_buffer.getvalue()
 
-                # 4. 写入索引区（使用压缩）
+                # 如果启用加密，加密数据区
+                if cipher:
+                    data_bytes = cipher.encrypt(data_bytes)
+
+                f.write(data_bytes)
+                data_size = len(data_bytes)
+
+                # 4. 写入索引区（使用压缩，可加密）
                 index_offset = f.tell()
                 compressed_index = self._write_index_region_compressed(all_table_index_data)
+
+                # 如果启用加密，加密索引区
+                if cipher:
+                    compressed_index = cipher.encrypt(compressed_index)
+
                 f.write(compressed_index)
                 index_size = len(compressed_index)
 
@@ -327,7 +405,7 @@ class BinaryBackend(StorageBackend):
                     new_generation = self._active_header.generation + 1
 
                 # flags: bit 0 = 索引区已压缩
-                flags = 1  # 索引区压缩标志
+                flags = HeaderV4.FLAG_INDEX_COMPRESSED
 
                 header = HeaderV4(
                     magic=self.MAGIC_V4,
@@ -344,6 +422,10 @@ class BinaryBackend(StorageBackend):
                     checkpoint_lsn=self._current_lsn,
                     flags=flags
                 )
+
+                # 如果启用加密，设置加密标志和元数据
+                if encryption_level:
+                    header.set_encryption(encryption_level, salt, key_check)
 
                 # 写入 Header A（slot 0）
                 f.seek(0)
@@ -387,6 +469,9 @@ class BinaryBackend(StorageBackend):
                     # v3 格式（向后兼容）
                     return self._load_v3(f)
 
+        except EncryptionError:
+            # 加密异常直接抛出，不包装
+            raise
         except Exception as e:
             raise SerializationError(f"Failed to load binary file: {e}")
 
@@ -425,7 +510,30 @@ class BinaryBackend(StorageBackend):
         self._active_header = header
         self._current_lsn = header.checkpoint_lsn
 
-        # 读取 Schema 区
+        # 检查加密状态
+        cipher: Optional[CipherType] = None
+        if header.is_encrypted():
+            # 文件已加密，需要密码
+            if not self.options.password:
+                raise EncryptionError("文件已加密，需要提供密码")
+
+            encryption_level = header.get_encryption_level()
+            if not encryption_level:
+                raise EncryptionError("无法识别加密等级")
+
+            # 派生密钥
+            key = CryptoProvider.derive_key(
+                self.options.password, header.salt, encryption_level
+            )
+
+            # 验证密钥
+            if not CryptoProvider.verify_key(key, header.key_check):
+                raise EncryptionError("密码错误")
+
+            # 创建解密器
+            cipher = get_cipher(encryption_level, key)
+
+        # 读取 Schema 区（不加密）
         f.seek(header.schema_offset)
         tables_schema = []
         # 需要知道表数量，从 schema 区逐个读取直到到达 data_offset
@@ -438,22 +546,40 @@ class BinaryBackend(StorageBackend):
         if header.index_offset > 0 and header.index_size > 0:
             f.seek(header.index_offset)
             # 检查 flags 判断索引区是否压缩
-            is_compressed = (header.flags & 1) != 0
-            index_data = self._read_index_region(f, compressed=is_compressed)
+            is_compressed = (header.flags & HeaderV4.FLAG_INDEX_COMPRESSED) != 0
+
+            if cipher:
+                # 读取加密的索引区数据并解密
+                encrypted_index = f.read(header.index_size)
+                decrypted_index = cipher.decrypt(encrypted_index)
+                index_data = self._parse_index_region(decrypted_index, compressed=is_compressed)
+            else:
+                index_data = self._read_index_region(f, compressed=is_compressed)
 
         tables = {}
 
-        # 懒加载模式
-        if self.options.lazy_load and index_data:
+        # 懒加载模式（加密时不支持懒加载，因为需要完整解密数据区）
+        if self.options.lazy_load and index_data and not cipher:
             for schema in tables_schema:
                 table = self._create_lazy_table(schema, index_data)
                 tables[table.name] = table
         else:
-            # 完整加载模式
-            f.seek(header.data_offset)
-            for schema in tables_schema:
-                table = self._read_table_data_v3(f, schema, index_data)
-                tables[table.name] = table
+            if cipher:
+                # 加密模式：读取并解密整个数据区
+                f.seek(header.data_offset)
+                encrypted_data = f.read(header.data_size)
+                decrypted_data = cipher.decrypt(encrypted_data)
+                data_stream = io.BytesIO(decrypted_data)
+
+                for schema in tables_schema:
+                    table = self._read_table_data_v3(data_stream, schema, index_data)
+                    tables[table.name] = table
+            else:
+                # 完整加载模式
+                f.seek(header.data_offset)
+                for schema in tables_schema:
+                    table = self._read_table_data_v3(f, schema, index_data)
+                    tables[table.name] = table
 
         return tables
 
@@ -1729,6 +1855,114 @@ class BinaryBackend(StorageBackend):
         """
         # 一次性读取整个索引区数据
         raw_data = f.read()
+        if not raw_data or len(raw_data) < 2:
+            return {}
+
+        # 如果是压缩数据，先解压
+        if compressed:
+            try:
+                data = zlib.decompress(raw_data)
+            except zlib.error:
+                # 解压失败，尝试作为未压缩数据处理
+                data = raw_data
+        else:
+            data = raw_data
+
+        result: Dict[str, Dict[str, Any]] = {}
+
+        # Index Format Version (固定 2 字节)
+        idx_version = struct.unpack('<H', data[0:2])[0]
+        if idx_version != 1:
+            # 只支持 v1 格式
+            return {}
+
+        offset = 2
+
+        # Table Count (4 bytes)
+        table_count = struct.unpack('<I', data[offset:offset+4])[0]
+        offset += 4
+
+        for _ in range(table_count):
+            # Table Name
+            name_len = struct.unpack('<H', data[offset:offset+2])[0]
+            offset += 2
+            table_name = data[offset:offset+name_len].decode('utf-8')
+            offset += name_len
+
+            # PK Offsets
+            pk_count = struct.unpack('<I', data[offset:offset+4])[0]
+            offset += 4
+            pk_offsets: Dict[Any, int] = {}
+            for _ in range(pk_count):
+                pk_len = struct.unpack('<H', data[offset:offset+2])[0]
+                offset += 2
+                pk = self._deserialize_index_value(data[offset:offset+pk_len])
+                offset += pk_len
+                file_offset = struct.unpack('<Q', data[offset:offset+8])[0]
+                offset += 8
+                pk_offsets[pk] = file_offset
+
+            # Indexes
+            idx_count = struct.unpack('<H', data[offset:offset+2])[0]
+            offset += 2
+            indexes: Dict[str, Dict[Any, Set[Any]]] = {}
+
+            for _ in range(idx_count):
+                # Column Name
+                col_len = struct.unpack('<H', data[offset:offset+2])[0]
+                offset += 2
+                col_name = data[offset:offset+col_len].decode('utf-8')
+                offset += col_len
+
+                # Entry Count
+                entry_count = struct.unpack('<I', data[offset:offset+4])[0]
+                offset += 4
+                idx_map: Dict[Any, Set[Any]] = {}
+
+                for _ in range(entry_count):
+                    # Value
+                    val_len = struct.unpack('<H', data[offset:offset+2])[0]
+                    offset += 2
+                    value = self._deserialize_index_value(data[offset:offset+val_len])
+                    offset += val_len
+
+                    # PK Set
+                    pk_list_len = struct.unpack('<I', data[offset:offset+4])[0]
+                    offset += 4
+                    pk_set: Set[Any] = set()
+                    for _ in range(pk_list_len):
+                        pk_len = struct.unpack('<H', data[offset:offset+2])[0]
+                        offset += 2
+                        pk = self._deserialize_index_value(data[offset:offset+pk_len])
+                        offset += pk_len
+                        pk_set.add(pk)
+
+                    idx_map[value] = pk_set
+
+                indexes[col_name] = idx_map
+
+            result[table_name] = {
+                'pk_offsets': pk_offsets,
+                'indexes': indexes
+            }
+
+        return result
+
+    def _parse_index_region(
+        self,
+        raw_data: bytes,
+        compressed: bool = False
+    ) -> Dict[str, Dict[str, Any]]:
+        """
+        解析索引区数据（从 bytes 解析，用于解密后的数据）
+
+        Args:
+            raw_data: 索引区原始数据（可能是压缩或加密后解密的）
+            compressed: 数据是否已压缩
+
+        Returns:
+            {table_name: {'pk_offsets': {...}, 'indexes': {...}}}
+        """
         if not raw_data or len(raw_data) < 2:
             return {}
 

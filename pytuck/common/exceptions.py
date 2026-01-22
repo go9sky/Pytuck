@@ -58,3 +58,7 @@ class PytuckIndexError(PytuckException):
 
 class MigrationError(PytuckException):
     """数据迁移异常"""
+
+
+class EncryptionError(PytuckException):
+    """加密/解密异常"""

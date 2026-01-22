@@ -75,7 +75,8 @@ from .common.exceptions import (
     RecordNotFoundError,
     DuplicateKeyError,
     TransactionError,
-    SerializationError
+    SerializationError,
+    EncryptionError
 )
 
 __version__ = '0.3.0'
@@ -117,4 +118,5 @@ __all__ = [
     'DuplicateKeyError',
     'TransactionError',
     'SerializationError',
+    'EncryptionError',
 ]

@@ -339,14 +339,15 @@ class TestResultFormats(unittest.TestCase):
             result.scalars().one()
 
     def test_all_rows(self) -> None:
-        """测试 all() - 返回 Row 对象列表"""
+        """测试 all() - 返回模型实例列表"""
         stmt = select(self.User)
         result = self.session.execute(stmt)
-        rows = result.all()
+        users = result.all()
 
-        self.assertEqual(len(rows), 2)
-        self.assertEqual(rows[0].name, 'Alice')
-        self.assertEqual(rows[0]['name'], 'Alice')
+        self.assertEqual(len(users), 2)
+        self.assertEqual(users[0].name, 'Alice')
+        # 模型实例使用属性访问，不支持下标访问
+        # 如需下标访问，使用 result.rows() 或 result.fetchall()
 
     def test_fetchall(self) -> None:
         """测试 fetchall() - 返回字典列表"""

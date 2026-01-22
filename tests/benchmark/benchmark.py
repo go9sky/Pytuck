@@ -6,10 +6,10 @@ Pytuck 性能基准测试
 运行此脚本生成 README 所需的基准测试结果。
 
 用法:
-    python tests/benchmark.py                    # 默认测试（10000条记录）
-    python tests/benchmark.py -n 5000            # 自定义记录数
-    python tests/benchmark.py --keep             # 保留测试生成的文件
-    python tests/benchmark.py -n 10000 --keep    # 组合使用
+    python tests/benchmark/benchmark.py                    # 默认测试（10000条记录）
+    python tests/benchmark/benchmark.py -n 5000            # 自定义记录数
+    python tests/benchmark/benchmark.py --keep             # 保留测试生成的文件
+    python tests/benchmark/benchmark.py -n 10000 --keep    # 组合使用
 """
 
 import gc
@@ -19,15 +19,15 @@ import time
 import argparse
 import shutil
 import platform
+import tempfile
 import multiprocessing as mp
 from concurrent.futures import ProcessPoolExecutor
 from typing import Dict, List, Any, Optional, Tuple
 from datetime import datetime
+from pathlib import Path
 
-# 添加父目录到路径以便导入
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-from examples.common import mktemp_dir_project
+# 添加项目根目录到路径以便导入
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from pytuck import Storage, declarative_base, Session, Column, PureBaseModel
 from pytuck import select, insert, update, delete
@@ -48,6 +48,21 @@ ENGINES = [
     ('excel', 'Excel', ['openpyxl']),
     ('xml', 'XML', ['lxml']),
 ]
+
+
+# ============== 临时目录工具 ==============
+
+def get_project_temp_dir() -> Path:
+    """获取项目的临时目录路径"""
+    temp_dir = Path(tempfile.gettempdir()) / 'Pytuck_Temp'
+    temp_dir.mkdir(parents=True, exist_ok=True)
+    return temp_dir
+
+
+def mktemp_dir_project(suffix: str = None, prefix: str = None) -> Path:
+    """创建项目临时目录"""
+    temp_dir = get_project_temp_dir()
+    return temp_dir / Path(tempfile.mkdtemp(suffix=suffix, prefix=prefix, dir=temp_dir))
 
 
 # ============== 内存测量工具 ==============
@@ -571,8 +586,8 @@ def _worker_run_benchmark(args: Tuple[str, str, int, bool, bool]) -> Dict[str, A
 
     # 子进程需要重新导入
     import sys
-    import os
-    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    from pathlib import Path
+    sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
     benchmark = EngineBenchmark(engine_name, temp_dir, extended_tests=extended, memtest=memtest)
     return benchmark.run(record_count)
@@ -606,11 +621,12 @@ def run_benchmarks(
 
     # 创建临时目录
     if keep_files:
-        temp_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'benchmark_output')
-        os.makedirs(temp_dir, exist_ok=True)
+        temp_dir = Path(__file__).parent / 'benchmark_output'
+        temp_dir.mkdir(exist_ok=True)
+        temp_dir = str(temp_dir)
         print(f"测试文件将保存到: {temp_dir}")
     else:
-        temp_dir = mktemp_dir_project(prefix='pytuck_benchmark_')
+        temp_dir = str(mktemp_dir_project(prefix='pytuck_benchmark_'))
 
     try:
         print("=" * 60)
@@ -927,7 +943,7 @@ def parse_args():
     parser.add_argument(
         '--keep',
         action='store_true',
-        help='保留测试生成的文件（保存到 tests/benchmark_output/）'
+        help='保留测试生成的文件（保存到 tests/benchmark/benchmark_output/）'
     )
     engines = [e[0] for e in ENGINES]
     parser.add_argument(

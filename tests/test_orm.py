@@ -16,7 +16,7 @@ from typing import Type
 # 添加项目根目录到路径
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from examples.common import mktemp_dir_project
+from examples._common import mktemp_dir_project
 from pytuck import (
     Storage, Session, Column, Relationship,
     declarative_base, PureBaseModel, CRUDBaseModel,

@@ -23,6 +23,7 @@ from ..common.exceptions import (
 
 if TYPE_CHECKING:
     from ..backends.base import StorageBackend
+    from ..backends.binary import BinaryBackend
 
 
 class TransactionSnapshot:
@@ -342,6 +343,11 @@ class Storage:
         self._transaction_snapshot: Optional[TransactionSnapshot] = None
         self._transaction_dirty_flag: bool = False
 
+        # WAL 相关属性
+        self._use_wal: bool = False  # 是否启用 WAL 模式
+        self._wal_threshold: int = 1000  # WAL 条目数阈值，超过则自动 checkpoint
+        self._wal_entry_count: int = 0  # 当前 WAL 条目数
+
         # 初始化后端
         self.backend: Optional[StorageBackend] = None
         if not self.in_memory and file_path:
@@ -357,6 +363,10 @@ class Storage:
             if self.backend.exists():
                 self.tables = self.backend.load()
                 self._dirty = False
+
+                # 对于 binary 引擎，检查是否为 v4 格式并回放 WAL
+                if engine == 'binary':
+                    self._init_wal_mode()
 
     def create_table(
         self,
@@ -445,8 +455,13 @@ class Storage:
         pk = table.insert(data)
         self._dirty = True
 
-        # 自动刷新到磁盘（如果启用）
-        if self.auto_flush:
+        # 使用 WAL 模式时，写入 WAL
+        if self._use_wal:
+            # 获取完整记录（包含自动生成的主键）
+            record = table.data.get(pk, data)
+            self._write_wal(1, table_name, pk, record, table.columns)  # 1 = INSERT
+        elif self.auto_flush:
+            # 非 WAL 模式：自动刷新到磁盘（如果启用）
             self.flush()
 
         return pk
@@ -464,7 +479,13 @@ class Storage:
         table.update(pk, data)
         self._dirty = True
 
-        if self.auto_flush:
+        # 使用 WAL 模式时，写入 WAL
+        if self._use_wal:
+            # 获取更新后的完整记录
+            record = table.data.get(pk)
+            if record:
+                self._write_wal(2, table_name, pk, record, table.columns)  # 2 = UPDATE
+        elif self.auto_flush:
             self.flush()
 
     def delete(self, table_name: str, pk: Any) -> None:
@@ -476,10 +497,17 @@ class Storage:
             pk: 主键值
         """
         table = self.get_table(table_name)
+
+        # 先记录列信息（WAL 需要）
+        columns = table.columns if self._use_wal else None
+
         table.delete(pk)
         self._dirty = True
 
-        if self.auto_flush:
+        # 使用 WAL 模式时，写入 WAL
+        if self._use_wal and columns:
+            self._write_wal(3, table_name, pk)  # 3 = DELETE
+        elif self.auto_flush:
             self.flush()
 
     def select(self, table_name: str, pk: Any) -> Dict[str, Any]:
@@ -729,11 +757,98 @@ class Storage:
             self._transaction_snapshot = None
             self._in_transaction = False
 
+    def _init_wal_mode(self) -> None:
+        """
+        初始化 WAL 模式
+
+        检查是否为 v4 格式的 binary 文件，如果是则启用 WAL 模式并回放未提交的 WAL。
+        """
+        from ..backends.binary import BinaryBackend
+
+        if not isinstance(self.backend, BinaryBackend):
+            return
+
+        backend: 'BinaryBackend' = self.backend
+
+        # 检查是否有活跃的 v4 header
+        if backend._active_header is not None:
+            self._use_wal = True
+
+            # 回放未提交的 WAL
+            if backend.has_pending_wal():
+                count = backend.replay_wal(self.tables)
+                if count > 0:
+                    self._dirty = True
+
+    def _get_binary_backend(self) -> Optional['BinaryBackend']:
+        """获取 binary 后端（如果是的话）"""
+        from ..backends.binary import BinaryBackend
+
+        if isinstance(self.backend, BinaryBackend):
+            return self.backend
+        return None
+
+    def _write_wal(
+        self,
+        op_type: int,
+        table_name: str,
+        pk: Any,
+        record: Optional[Dict[str, Any]] = None,
+        columns: Optional[Dict[str, 'Column']] = None
+    ) -> bool:
+        """
+        写入 WAL 条目
+
+        Args:
+            op_type: 操作类型 (1=INSERT, 2=UPDATE, 3=DELETE)
+            table_name: 表名
+            pk: 主键值
+            record: 记录数据
+            columns: 列定义
+
+        Returns:
+            是否成功写入 WAL
+        """
+        if not self._use_wal:
+            return False
+
+        backend = self._get_binary_backend()
+        if backend is None:
+            return False
+
+        from ..backends.binary import WALOpType
+
+        # 转换操作类型
+        wal_op = WALOpType(op_type)
+
+        # 写入 WAL
+        backend.append_wal_entry(wal_op, table_name, pk, record, columns)
+        self._wal_entry_count += 1
+
+        # 检查是否需要自动 checkpoint
+        if self._wal_entry_count >= self._wal_threshold:
+            self._checkpoint()
+
+        return True
+
+    def _checkpoint(self) -> None:
+        """执行 checkpoint，将内存数据写入磁盘并清空 WAL"""
+        if self.backend:
+            self.backend.save(self.tables)
+            self._wal_entry_count = 0
+            self._dirty = False
+
     def flush(self) -> None:
         """强制写入磁盘"""
         if self.backend and self._dirty:
             self.backend.save(self.tables)
             self._dirty = False
+            # 重置 WAL 计数器（checkpoint 会清空 WAL）
+            self._wal_entry_count = 0
+
+            # 首次保存 binary 引擎后，启用 WAL 模式
+            if self.engine_name == 'binary' and not self._use_wal:
+                self._init_wal_mode()
 
     def close(self) -> None:
         """关闭数据库"""

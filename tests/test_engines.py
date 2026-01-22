@@ -18,7 +18,7 @@ from typing import Type, Dict, Any
 # 添加项目根目录到路径
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from examples.common import get_project_temp_dir
+from examples._common import get_project_temp_dir
 from pytuck import Storage, declarative_base, Session, Column, PureBaseModel, select, insert, update, delete
 from pytuck.backends import BackendRegistry
 

@@ -4,7 +4,7 @@ Pytuck 配置选项 dataclass 定义
 该模块定义了所有后端和连接器的配置选项，替代原有的 **kwargs 参数。
 """
 from dataclasses import dataclass
-from typing import Optional, Union, Dict
+from typing import Optional, Union, Dict, Literal
 
 
 @dataclass(slots=True)
@@ -57,6 +57,10 @@ class XmlBackendOptions:
 class BinaryBackendOptions:
     """Binary 后端配置选项"""
     lazy_load: bool = False  # 是否懒加载（只加载 schema 和索引，按需读取数据）
+
+    # 加密选项（v4 新增）
+    encryption: Optional[Literal['low', 'medium', 'high']] = None  # 加密等级: 'low' | 'medium' | 'high' | None
+    password: Optional[str] = None    # 加密密码（仅 encryption 非 None 时生效）
 
 
 # Backend 选项联合类型

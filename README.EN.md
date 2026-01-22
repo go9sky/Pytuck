@@ -187,15 +187,45 @@ Pytuck supports multiple storage engines, each suited for different scenarios:
 
 ### Binary Engine (Default)
 
-**Features**: Zero dependencies, compact, high performance
+**Features**: Zero dependencies, compact, high performance, encryption support
 
 ```python
+from pytuck.common.options import BinaryBackendOptions
+
+# Basic usage
 db = Storage(file_path='data.db', engine='binary')
+
+# Enable encryption (three levels: low/medium/high)
+opts = BinaryBackendOptions(encryption='high', password='mypassword')
+db = Storage(file_path='secure.db', engine='binary', backend_options=opts)
+
+# Open encrypted database (auto-detects encryption level)
+opts = BinaryBackendOptions(password='mypassword')
+db = Storage(file_path='secure.db', engine='binary', backend_options=opts)
 ```
+
+**Encryption Levels**:
+| Level | Algorithm | Security | Use Case |
+|-------|-----------|----------|----------|
+| `low` | XOR obfuscation | Prevents casual viewing | Prevent accidental file opening |
+| `medium` | LCG stream cipher | Prevents regular users | General protection needs |
+| `high` | ChaCha20 | Cryptographically secure | Sensitive data protection |
+
+**Encryption Performance Benchmark** (1000 records, ~100 bytes each):
+| Level | Write Time | Read Time | File Size | Read Overhead |
+|-------|------------|-----------|-----------|---------------|
+| None | 41ms | 17ms | 183KB | (baseline) |
+| low | 33ms | 33ms | 183KB | +100% |
+| medium | 82ms | 86ms | 183KB | +418% |
+| high | 342ms | 335ms | 183KB | +1928% |
+
+> **Note**: Encryption uses pure Python implementation to maintain zero dependencies. For better performance, consider using `low` or `medium` levels.
+> Run `examples/benchmark_encryption.py` to test performance in your environment.
 
 **Use Cases**:
 - Production deployment
 - Embedded applications
+- Sensitive data protection
 - Minimum footprint required
 
 ### JSON Engine
@@ -722,64 +752,50 @@ user_json = json.dumps(user.to_dict())
 
 ## Performance Benchmark
 
-Here are benchmark results from different environments.
+Here are v4 version benchmark results.
 
-### Test 1: Windows 11, Python 3.12.10
+### Test Environment
 
-Test data: 10,000 records
+- **System**: Windows 11, Python 3.12.10
+- **Test Data**: 100,000 records
+- **Mode**: Extended test (including index comparison, range queries, batch reads, lazy loading)
 
-| Engine | Insert | Full Scan | Indexed | Filtered | Update | Save | Load | File Size |
-|--------|--------|-----------|---------|----------|--------|------|------|-----------|
-| Binary | 85.38ms | 42.26ms | 1.10ms | 21.12ms | 709.34ms | 94.75ms | 110.68ms | 1.09MB |
-| JSON | 84.33ms | 58.12ms | 1.15ms | 21.77ms | 702.70ms | 110.68ms | 50.76ms | 1.86MB |
-| CSV | 83.61ms | 52.88ms | 1.12ms | 20.94ms | 697.88ms | 47.22ms | 54.73ms | 73.8KB |
-| SQLite | 95.75ms | 36.41ms | 1.15ms | 27.43ms | 699.34ms | 43.35ms | 41.86ms | 700.0KB |
-| Excel | 101.41ms | 47.06ms | 1.23ms | 21.25ms | 679.85ms | 551.74ms | 738.39ms | 294.2KB |
-| XML | 84.30ms | 95.31ms | 1.10ms | 20.99ms | 686.28ms | 245.91ms | 194.11ms | 3.43MB |
+### Performance Comparison
 
-### Test 2: macOS, Python 3.13.11
-
-Test data: 100,000 records
-
-| Engine | Insert | Full Scan | Indexed | Filtered | Update | Save | Load | File Size |
-|--------|--------|-----------|---------|----------|--------|------|------|-----------|
-| Binary | 490.16ms | 198.83ms | 520.1μs | 137.22ms | 2.05s | 360.15ms | 690.97ms | 11.04MB |
-| JSON | 623.97ms | 200.42ms | 486.6μs | 84.47ms | 2.14s | 377.35ms | 534.53ms | 18.14MB |
-| CSV | 618.45ms | 209.03ms | 458.6μs | 156.90ms | 2.23s | 186.68ms | 553.73ms | 732.0KB |
-| SQLite | 707.76ms | 232.20ms | 576.1μs | 91.83ms | 2.21s | 145.68ms | 596.65ms | 6.97MB |
-| Excel | 636.64ms | 213.70ms | 443.3μs | 84.96ms | 2.16s | 2.40s | 3.83s | 2.84MB |
-| XML | 857.93ms | 229.73ms | 487.0μs | 84.69ms | 1.97s | 975.08ms | 1.27s | 34.54MB |
+| Engine | Insert | Indexed | Non-Indexed | Speedup | Range | Save | Load | Lazy | Size |
+|--------|--------|---------|-------------|---------|-------|------|------|------|------|
+| Binary | 794.57ms | 1.39ms | 7.13s | 5124x | 333.29ms | 869.68ms | 1.01s | 319.88ms | 11.73MB |
+| JSON | 844.76ms | 1.42ms | 8.95s | 6279x | 337.01ms | 845.77ms | 319.37ms | - | 18.90MB |
+| CSV | 838.89ms | 1.47ms | 7.24s | 4939x | 346.85ms | 453.50ms | 472.90ms | - | 731.9KB |
+| SQLite | 879.05ms | 1.40ms | 7.21s | 5145x | 333.84ms | 325.80ms | 393.39ms | - | 6.97MB |
+| Excel | 897.48ms | 1.41ms | 7.25s | 5150x | 340.40ms | 5.75s | 7.63s | - | 2.84MB |
+| XML | 1.23s | 1.41ms | 7.41s | 5248x | 333.87ms | 2.49s | 2.03s | - | 34.54MB |
 
 **Notes**:
-- Indexed: 100 indexed field equality lookups
-- Update: 100 record updates
-- Save/Load: Persist to disk / Load from disk
-
-**Conclusions**:
-- **Binary** fastest for insert and full scan, suitable for read-heavy workloads
-- **SQLite** fastest save (145ms), well-balanced overall performance
-- **CSV** smallest file size (732KB, ZIP compressed), excellent save speed, suitable for data exchange
-- **JSON** fast filtered queries, balances performance and readability, suitable for development/debugging
-- **Excel** slower I/O (3.83s load), suitable for scenarios requiring visual editing
-- **XML** largest file size (34.54MB), suitable for enterprise integration and standardized exchange
+- **Indexed**: 100 indexed field equality lookups (millisecond level)
+- **Non-Indexed**: 100 non-indexed field full table scans (second level)
+- **Speedup**: Index query vs non-indexed query speedup ratio
+- **Range**: Range condition queries (e.g., `age >= 20 AND age < 62`)
+- **Lazy**: Only Binary engine supports lazy loading (loads index only, not data)
 
 ### Engine Feature Comparison
 
-| Engine | Query Perf | I/O Perf | Storage Eff | Human Readable | Dependencies |
-|--------|-----------|----------|-------------|----------------|--------------|
-| Binary | ⭐⭐⭐⭐⭐ | ⭐⭐⭐ | ⭐⭐⭐ | ❌ | None |
-| JSON | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐ | ⭐⭐⭐ | ✅ | None |
-| CSV | ⭐⭐⭐⭐ | ⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ✅ | None |
-| SQLite | ⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐ | ❌ | None |
-| Excel | ⭐⭐⭐⭐ | ⭐ | ⭐⭐⭐⭐ | ✅ | openpyxl |
-| XML | ⭐⭐⭐⭐ | ⭐⭐ | ⭐ | ✅ | lxml |
+| Engine | Query Perf | I/O Perf | Storage Eff | Human Readable | Dependencies | Recommended Use |
+|--------|-----------|----------|-------------|----------------|--------------|-----------------|
+| Binary | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐ | ⭐⭐⭐ | ❌ | None | **Production First Choice** |
+| JSON | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⭐⭐⭐ | ✅ | None | Development, Config Storage |
+| CSV | ⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ✅ | None | Data Exchange, Minimum Size |
+| SQLite | ⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐ | ❌ | None | SQL Needed, ACID Guarantee |
+| Excel | ⭐⭐⭐⭐ | ⭐ | ⭐⭐⭐⭐ | ✅ | openpyxl | Visual Editing, Reports |
+| XML | ⭐⭐⭐⭐ | ⭐⭐ | ⭐ | ✅ | lxml | Enterprise Integration |
 
-**Legend**:
-- **Query Perf**: In-memory query speed (full scan, indexed lookup, filtered query)
-- **I/O Perf**: Disk read/write speed (save and load)
-- **Storage Eff**: File size efficiency (smaller is better)
-- **Human Readable**: Whether file content can be directly read/edited
-- **Dependencies**: Whether additional third-party libraries are required
+**Conclusions**:
+- **Binary** fastest insert (794ms), supports lazy loading and encryption, **production first choice**
+- **JSON** fastest load (319ms), easy debugging, suitable for development and config storage
+- **CSV** smallest file (732KB, ZIP compressed), excellent I/O, suitable for data exchange
+- **SQLite** best I/O (save 325ms), well-balanced, suitable for ACID requirements
+- **Excel** slower I/O (7.63s load), suitable for visual editing scenarios
+- **XML** largest file (34.54MB), suitable for enterprise integration
 
 ## Installation Methods
 
@@ -908,7 +924,16 @@ Pytuck is a lightweight embedded database designed for simplicity. Here are the 
 
 ### Completed
 
-- [x] **Complete SQLAlchemy 2.0 Style Object State Management** ✨NEW✨
+- [x] **Binary Engine v4 Format** ✨NEW✨
+  - [x] WAL (Write-Ahead Log) for O(1) write latency
+  - [x] Dual Header mechanism for atomic switching and crash recovery
+  - [x] Index region zlib compression (saves ~81% space)
+  - [x] Batch I/O and codec caching optimizations
+  - [x] Three-tier encryption support (low/medium/high), pure Python implementation
+- [x] **Primary Key Query Optimization** (affects ALL storage engines) ✨NEW✨
+  - [x] `WHERE pk = value` queries use O(1) direct access
+  - [x] Single update/delete performance improved ~1000x
+- [x] Complete SQLAlchemy 2.0 Style Object State Management
   - [x] Identity Map (Object Uniqueness Management)
   - [x] Automatic Dirty Tracking (Attribute assignment auto-detected and updates database)
   - [x] merge() Operation (Merge detached objects)
@@ -944,6 +969,7 @@ Pytuck is a lightweight embedded database designed for simplicity. Here are the 
 ### Planned Optimizations
 
 - [ ] Incremental save for non-binary backends (currently full rewrite on each save)
+- [ ] Binary engine Compaction (space reclaim) mechanism
 - [ ] Use `tempfile` module for safer temporary file handling
 - [ ] Streaming read/write for large datasets
 - [ ] Connection pooling for SQLite backend

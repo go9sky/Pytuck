@@ -7,6 +7,67 @@
 
 > [English Version](./CHANGELOG.EN.md)
 
+## [0.4.0] - 2026-01-23
+
+### 新增
+
+- **Binary 引擎 v4 格式**：全新的存储格式，优化大数据集性能
+  - **WAL（预写日志）**：写入操作先追加到 WAL，实现 O(1) 写入延迟
+  - **双 Header 机制**：HeaderA/HeaderB 交替使用，支持原子切换和崩溃恢复
+  - **Generation 计数**：递增计数器用于崩溃后选择有效 Header
+  - **CRC32 校验**：Header 和 WAL 条目完整性验证
+  - **索引区压缩**：使用 zlib 压缩索引区域，节省约 81% 空间
+  - **批量 I/O**：缓冲写入/读取，减少 I/O 操作次数
+  - **编解码器缓存**：预缓存类型编解码器，避免重复查找
+
+- **Binary 引擎加密支持**：三级加密/混淆功能，纯 Python 实现，零外部依赖
+  - **低级（low）**：XOR 混淆，防随手查看，读取性能税约 100%
+  - **中级（medium）**：LCG 流密码（线性同余生成器），防普通用户，读取性能税约 400%
+  - **高级（high）**：ChaCha20 纯 Python 实现，密码学安全，读取性能税约 2000%
+  - 加密范围：Data Region 和 Index Region（Schema Region 保持明文便于格式探测）
+  - 密钥派生：PBKDF 方式（SHA256 迭代），迭代次数随等级递增（1/1000/10000）
+  - 密钥校验：4 字节快速验证，避免解密垃圾数据
+  - 加密元数据存储在 Header 的 reserved 区域（salt 16 字节 + key_check 4 字节）
+  - 新增 `EncryptionError` 异常类，用于密码错误或缺失密码等情况
+  - **性能说明**：加密使用纯 Python 实现以保持零依赖，性能税较高，建议根据安全需求权衡选择
+  - 使用示例：
+    ```python
+    from pytuck import Storage
+    from pytuck.common.options import BinaryBackendOptions
+
+    # 创建加密数据库
+    opts = BinaryBackendOptions(encryption='high', password='mypassword')
+    db = Storage('data.db', engine='binary', backend_options=opts)
+
+    # 打开加密数据库（自动检测加密等级）
+    opts = BinaryBackendOptions(password='mypassword')
+    db = Storage('data.db', engine='binary', backend_options=opts)
+    ```
+
+### 改进
+
+- **主键查询优化**（影响所有存储引擎）
+  - 检测 `WHERE pk = value` 形式的查询，使用 O(1) 直接访问替代 O(n) 全表扫描
+  - Update 和 Delete 语句均支持此优化
+  - **性能提升**：单条更新/删除从毫秒级降至微秒级（~1000x 提升）
+
+- **Binary 引擎性能提升**
+  - 保存 10 万条记录：4.18s → 0.57s（7.3x 提速）
+  - 加载 10 万条记录：2.91s → 0.85s（3.4x 提速）
+  - 文件大小：151MB → 120MB（21% 压缩）
+
+### 变更
+
+- **引擎格式版本升级**
+  - Binary: v3 → v4（WAL + 双 Header + 索引压缩）
+
+### 技术细节
+
+- 实现了完整的 WAL 写入流程：`_append_wal_entry()`, `_read_wal_entries()`, `_replay_wal()`
+- Storage 层集成 WAL：写操作自动记录到 WAL，checkpoint 时批量持久化
+- 新增 `TypeRegistry.get_codec_by_code()` 方法用于反向查找编解码器
+- `Update._execute()` 和 `Delete._execute()` 添加主键检测逻辑
+
 ## [0.3.0] - 2026-01-14
 
 ### 新增

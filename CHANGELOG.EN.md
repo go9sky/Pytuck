@@ -7,6 +7,67 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > [中文版](./CHANGELOG.md)
 
+## [0.4.0] - 2026-01-23
+
+### Added
+
+- **Binary Engine v4 Format**: New storage format optimized for large dataset performance
+  - **WAL (Write-Ahead Log)**: Write operations append to WAL first, achieving O(1) write latency
+  - **Dual Header Mechanism**: HeaderA/HeaderB alternating use, supporting atomic switching and crash recovery
+  - **Generation Counter**: Incrementing counter for selecting valid Header after crash
+  - **CRC32 Checksums**: Header and WAL entry integrity verification
+  - **Index Region Compression**: Using zlib compression for index region, saving ~81% space
+  - **Batch I/O**: Buffered writes/reads, reducing I/O operation counts
+  - **Codec Caching**: Pre-cached type encoders/decoders, avoiding repeated lookups
+
+- **Binary Engine Encryption Support**: Three-tier encryption/obfuscation, pure Python implementation, zero external dependencies
+  - **Low Level (low)**: XOR obfuscation, prevents casual viewing, ~100% read performance tax
+  - **Medium Level (medium)**: LCG stream cipher (Linear Congruential Generator), prevents regular users, ~400% read performance tax
+  - **High Level (high)**: ChaCha20 pure Python implementation, cryptographically secure, ~2000% read performance tax
+  - Encryption scope: Data Region and Index Region (Schema Region remains plaintext for format probing)
+  - Key derivation: PBKDF approach (SHA256 iterations), iteration count increases with level (1/1000/10000)
+  - Key verification: 4-byte quick check, prevents decrypting garbage data
+  - Encryption metadata stored in Header's reserved area (salt 16 bytes + key_check 4 bytes)
+  - Added `EncryptionError` exception class for wrong password or missing password cases
+  - **Performance Note**: Encryption uses pure Python implementation to maintain zero dependencies, resulting in higher performance overhead. Choose based on security requirements.
+  - Usage example:
+    ```python
+    from pytuck import Storage
+    from pytuck.common.options import BinaryBackendOptions
+
+    # Create encrypted database
+    opts = BinaryBackendOptions(encryption='high', password='mypassword')
+    db = Storage('data.db', engine='binary', backend_options=opts)
+
+    # Open encrypted database (auto-detects encryption level)
+    opts = BinaryBackendOptions(password='mypassword')
+    db = Storage('data.db', engine='binary', backend_options=opts)
+    ```
+
+### Improved
+
+- **Primary Key Query Optimization** (affects ALL storage engines)
+  - Detects `WHERE pk = value` style queries, using O(1) direct access instead of O(n) full table scan
+  - Both Update and Delete statements support this optimization
+  - **Performance Boost**: Single update/delete reduced from milliseconds to microseconds (~1000x improvement)
+
+- **Binary Engine Performance Improvements**
+  - Save 100k records: 4.18s → 0.57s (7.3x faster)
+  - Load 100k records: 2.91s → 0.85s (3.4x faster)
+  - File size: 151MB → 120MB (21% reduction)
+
+### Changed
+
+- **Engine Format Version Upgrade**
+  - Binary: v3 → v4 (WAL + Dual Header + Index Compression)
+
+### Technical Details
+
+- Implemented complete WAL write workflow: `_append_wal_entry()`, `_read_wal_entries()`, `_replay_wal()`
+- Storage layer WAL integration: write operations automatically logged to WAL, batch persistence during checkpoint
+- Added `TypeRegistry.get_codec_by_code()` method for reverse codec lookup
+- `Update._execute()` and `Delete._execute()` added primary key detection logic
+
 ## [0.3.0] - 2026-01-14
 
 ### Added

@@ -12,12 +12,15 @@ Pytuck 性能基准测试
     python tests/benchmark.py -n 10000 --keep    # 组合使用
 """
 
+import gc
 import os
 import sys
 import time
 import argparse
 import shutil
 import platform
+import multiprocessing as mp
+from concurrent.futures import ProcessPoolExecutor
 from typing import Dict, List, Any, Optional, Tuple
 from datetime import datetime
 
@@ -45,6 +48,87 @@ ENGINES = [
     ('excel', 'Excel', ['openpyxl']),
     ('xml', 'XML', ['lxml']),
 ]
+
+
+# ============== 内存测量工具 ==============
+
+def _get_memory_windows() -> int:
+    """Windows: ctypes 调用 GetProcessMemoryInfo"""
+    import ctypes
+    from ctypes import wintypes
+
+    class PROCESS_MEMORY_COUNTERS(ctypes.Structure):
+        _fields_ = [
+            ("cb", wintypes.DWORD),
+            ("PageFaultCount", wintypes.DWORD),
+            ("PeakWorkingSetSize", ctypes.c_size_t),
+            ("WorkingSetSize", ctypes.c_size_t),  # RSS
+            ("QuotaPeakPagedPoolUsage", ctypes.c_size_t),
+            ("QuotaPagedPoolUsage", ctypes.c_size_t),
+            ("QuotaPeakNonPagedPoolUsage", ctypes.c_size_t),
+            ("QuotaNonPagedPoolUsage", ctypes.c_size_t),
+            ("PagefileUsage", ctypes.c_size_t),
+            ("PeakPagefileUsage", ctypes.c_size_t),
+        ]
+
+    try:
+        kernel32 = ctypes.windll.kernel32
+        psapi = ctypes.windll.psapi
+
+        # 设置正确的参数和返回类型
+        kernel32.GetCurrentProcess.restype = wintypes.HANDLE
+        psapi.GetProcessMemoryInfo.argtypes = [
+            wintypes.HANDLE,
+            ctypes.POINTER(PROCESS_MEMORY_COUNTERS),
+            wintypes.DWORD
+        ]
+        psapi.GetProcessMemoryInfo.restype = wintypes.BOOL
+
+        pmc = PROCESS_MEMORY_COUNTERS()
+        pmc.cb = ctypes.sizeof(PROCESS_MEMORY_COUNTERS)
+        handle = kernel32.GetCurrentProcess()
+
+        if psapi.GetProcessMemoryInfo(handle, ctypes.byref(pmc), pmc.cb):
+            return pmc.WorkingSetSize
+    except Exception:
+        pass
+    return 0
+
+
+def _get_memory_linux() -> int:
+    """Linux: 读取 /proc/self/status"""
+    try:
+        with open('/proc/self/status', 'r') as f:
+            for line in f:
+                if line.startswith('VmRSS:'):
+                    return int(line.split()[1]) * 1024
+    except Exception:
+        pass
+    return 0
+
+
+def _get_memory_macos() -> int:
+    """macOS: resource.getrusage"""
+    try:
+        import resource
+        return resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+    except Exception:
+        return 0
+
+
+def get_memory_rss() -> int:
+    """
+    获取当前进程 RSS 内存（字节）- 零依赖，跨平台
+
+    Returns:
+        RSS 内存大小（字节），失败返回 0
+    """
+    if sys.platform == 'win32':
+        return _get_memory_windows()
+    elif sys.platform == 'darwin':
+        return _get_memory_macos()
+    else:
+        return _get_memory_linux()
 
 
 # ============== 工具函数 ==============
@@ -112,11 +196,13 @@ class Timer:
 class EngineBenchmark:
     """单个引擎的基准测试"""
 
-    def __init__(self, engine_name: str, temp_dir: str, extended_tests: bool = False):
+    def __init__(self, engine_name: str, temp_dir: str, extended_tests: bool = False,
+                 memtest: bool = False):
         self.engine_name = engine_name
         self.temp_dir = temp_dir
         self.results: Dict[str, Any] = {}
         self.extended_tests = extended_tests  # 是否执行扩展测试
+        self.memtest = memtest  # 是否执行内存测试
 
         # 根据引擎类型确定文件扩展名
         extensions = {
@@ -318,6 +404,40 @@ class EngineBenchmark:
         db.close()
         return t1.elapsed, t2.elapsed
 
+    def benchmark_memory_usage(self, record_count: int) -> int:
+        """
+        测量加载数据后的内存增量
+
+        Args:
+            record_count: 记录数量
+
+        Returns:
+            内存增量（字节），失败返回 0
+        """
+        gc.collect()
+        mem_before = get_memory_rss()
+
+        # 创建数据库并插入数据
+        db, session, Model = self.setup_database(record_count)
+        for i in range(record_count):
+            stmt = insert(Model).values(
+                name=f'User_{i}',
+                email=f'user{i}@example.com',
+                age=20 + (i % 50),
+                score=float(i % 100) / 10.0,
+                active=(i % 2 == 0)
+            )
+            session.execute(stmt)
+        session.commit()
+
+        gc.collect()
+        mem_after = get_memory_rss()
+
+        session.close()
+        db.close()
+
+        return max(0, mem_after - mem_before)
+
     def run(self, record_count: int) -> Dict[str, Any]:
         """运行此引擎的所有基准测试"""
         results = {
@@ -379,6 +499,10 @@ class EngineBenchmark:
                     results['lazy_query_first'] = lazy_query_result[0]
                     results['lazy_query_batch'] = lazy_query_result[1]
 
+            # 内存测试（可选，在独立环境中测试）
+            if self.memtest:
+                results['memory_delta'] = self.benchmark_memory_usage(record_count)
+
             results['success'] = True
 
         except Exception as e:
@@ -390,11 +514,78 @@ class EngineBenchmark:
 
 # ============== 主测试运行器 ==============
 
+def _print_result(result: Dict[str, Any], record_count: int, extended: bool, memtest: bool) -> None:
+    """打印单个引擎的测试结果"""
+    if result['success']:
+        print(f"  插入 ({record_count}条):  {format_time(result['insert'])}")
+        print(f"  全表查询:          {format_time(result['query_all'])}")
+        print(f"  索引查询 (100次):  {format_time(result['query_indexed'])}")
+        print(f"  条件查询:          {format_time(result['query_filtered'])}")
+
+        # 扩展测试结果
+        if extended:
+            if 'query_non_indexed' in result:
+                print(f"  非索引查询 (100次): {format_time(result['query_non_indexed'])}")
+                # 计算索引加速比
+                speedup = result['query_non_indexed'] / result['query_indexed'] if result['query_indexed'] > 0 else 0
+                print(f"    → 索引加速比: {speedup:.1f}x")
+            if 'range_query' in result:
+                print(f"  范围查询:          {format_time(result['range_query'])} ({result['range_query_count']}条)")
+            if 'batch_read' in result:
+                print(f"  批量读取 (1000条): {format_time(result['batch_read'])}")
+
+        print(f"  更新 (100次):      {format_time(result['update'])}")
+        print(f"  删除 (50次):       {format_time(result['delete'])}")
+        print(f"  保存到磁盘:        {format_time(result['save'])}")
+        print(f"  从磁盘加载:        {format_time(result['load'])}")
+
+        if 'lazy_load' in result:
+            print(f"  懒加载:            {format_time(result['lazy_load'])}")
+
+        # 懒加载查询测试（扩展测试）
+        if extended:
+            if 'lazy_query_first' in result:
+                print(f"  懒加载首次查询:    {format_time(result['lazy_query_first'])}")
+                print(f"  懒加载后续查询 (10次): {format_time(result['lazy_query_batch'])}")
+
+        # 内存测试结果
+        if memtest and 'memory_delta' in result:
+            print(f"  内存增量:          {format_size(result['memory_delta'])}")
+
+        print(f"  文件大小:          {format_size(result['file_size'])}")
+    else:
+        print(f"  错误: {result.get('error', '未知错误')}")
+
+
+def _worker_run_benchmark(args: Tuple[str, str, int, bool, bool]) -> Dict[str, Any]:
+    """
+    子进程工作函数 - 运行单个引擎的基准测试
+
+    Args:
+        args: (engine_name, temp_dir, record_count, extended, memtest)
+
+    Returns:
+        测试结果字典
+    """
+    engine_name, temp_dir, record_count, extended, memtest = args
+
+    # 子进程需要重新导入
+    import sys
+    import os
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+    benchmark = EngineBenchmark(engine_name, temp_dir, extended_tests=extended, memtest=memtest)
+    return benchmark.run(record_count)
+
+
 def run_benchmarks(
     record_count: int,
     keep_files: bool = False,
     engines: List[str] = None,
-    extended: bool = False
+    extended: bool = False,
+    memtest: bool = False,
+    parallel: bool = False,
+    workers: Optional[int] = None
 ) -> List[Dict[str, Any]]:
     """
     运行所有引擎的基准测试
@@ -404,6 +595,9 @@ def run_benchmarks(
         keep_files: 是否保留测试文件
         engines: 指定引擎名，不指定则运行全部
         extended: 是否执行扩展测试（索引对比、范围查询等）
+        memtest: 是否执行内存测试
+        parallel: 是否并行执行（多进程）
+        workers: 并行工作进程数（默认: CPU核心数）
 
     Returns:
         测试结果列表
@@ -428,60 +622,56 @@ def run_benchmarks(
         print(f"测试数据量: {record_count} 条记录")
         if extended:
             print("模式: 扩展测试（包含索引对比、范围查询、批量读取、懒加载查询）")
+        if memtest:
+            print("模式: 内存测试")
+        if parallel:
+            actual_workers = workers if workers else mp.cpu_count()
+            print(f"模式: 并行执行（{actual_workers} 进程）")
         print()
 
+        # 筛选可用引擎
+        available_engines = []
         for engine_name, display_name, deps in ENGINES:
             if engines and engine_name not in engines:
                 continue
-
-            # 检查依赖
             if deps and not check_dependency(deps):
                 print(f"[跳过] {display_name}: 缺少依赖 {deps}")
                 continue
+            available_engines.append((engine_name, display_name, deps))
 
-            print(f"\n{'─' * 50}")
-            print(f"测试 {display_name} 引擎")
-            print(f"{'─' * 50}")
+        if parallel and len(available_engines) > 1:
+            # 并行模式 - 使用 ProcessPoolExecutor
+            print(f"\n[并行] 启动 {len(available_engines)} 个引擎测试...")
+            ctx = mp.get_context('spawn')
+            actual_workers = workers if workers else min(len(available_engines), mp.cpu_count())
 
-            benchmark = EngineBenchmark(engine_name, temp_dir, extended_tests=extended)
-            result = benchmark.run(record_count)
-            all_results.append(result)
+            tasks = [
+                (engine_name, temp_dir, record_count, extended, memtest)
+                for engine_name, display_name, deps in available_engines
+            ]
 
-            if result['success']:
-                print(f"  插入 ({record_count}条):  {format_time(result['insert'])}")
-                print(f"  全表查询:          {format_time(result['query_all'])}")
-                print(f"  索引查询 (100次):  {format_time(result['query_indexed'])}")
-                print(f"  条件查询:          {format_time(result['query_filtered'])}")
+            with ProcessPoolExecutor(max_workers=actual_workers, mp_context=ctx) as executor:
+                all_results = list(executor.map(_worker_run_benchmark, tasks))
 
-                # 扩展测试结果
-                if extended:
-                    if 'query_non_indexed' in result:
-                        print(f"  非索引查询 (100次): {format_time(result['query_non_indexed'])}")
-                        # 计算索引加速比
-                        speedup = result['query_non_indexed'] / result['query_indexed'] if result['query_indexed'] > 0 else 0
-                        print(f"    → 索引加速比: {speedup:.1f}x")
-                    if 'range_query' in result:
-                        print(f"  范围查询:          {format_time(result['range_query'])} ({result['range_query_count']}条)")
-                    if 'batch_read' in result:
-                        print(f"  批量读取 (1000条): {format_time(result['batch_read'])}")
+            # 打印结果
+            for result, (engine_name, display_name, _) in zip(all_results, available_engines):
+                print(f"\n{'─' * 50}")
+                print(f"测试 {display_name} 引擎")
+                print(f"{'─' * 50}")
+                _print_result(result, record_count, extended, memtest)
+        else:
+            # 顺序模式
+            for engine_name, display_name, deps in available_engines:
+                print(f"\n{'─' * 50}")
+                print(f"测试 {display_name} 引擎")
+                print(f"{'─' * 50}")
 
-                print(f"  更新 (100次):      {format_time(result['update'])}")
-                print(f"  删除 (50次):       {format_time(result['delete'])}")
-                print(f"  保存到磁盘:        {format_time(result['save'])}")
-                print(f"  从磁盘加载:        {format_time(result['load'])}")
+                benchmark = EngineBenchmark(engine_name, temp_dir, extended_tests=extended,
+                                            memtest=memtest)
+                result = benchmark.run(record_count)
+                all_results.append(result)
 
-                if 'lazy_load' in result:
-                    print(f"  懒加载:            {format_time(result['lazy_load'])}")
-
-                # 懒加载查询测试（扩展测试）
-                if extended:
-                    if 'lazy_query_first' in result:
-                        print(f"  懒加载首次查询:    {format_time(result['lazy_query_first'])}")
-                        print(f"  懒加载后续查询 (10次): {format_time(result['lazy_query_batch'])}")
-
-                print(f"  文件大小:          {format_size(result['file_size'])}")
-            else:
-                print(f"  错误: {result.get('error', '未知错误')}")
+                _print_result(result, record_count, extended, memtest)
 
     finally:
         # 清理临时文件（如果不保留）
@@ -491,7 +681,8 @@ def run_benchmarks(
     return all_results
 
 
-def generate_markdown_table(results: List[Dict[str, Any]], record_count: int, extended: bool = False) -> str:
+def generate_markdown_table(results: List[Dict[str, Any]], record_count: int,
+                            extended: bool = False, memtest: bool = False) -> str:
     """生成中文 Markdown 表格"""
     filtered = [r for r in results if r.get('record_count') == record_count and r.get('success')]
 
@@ -503,8 +694,12 @@ def generate_markdown_table(results: List[Dict[str, Any]], record_count: int, ex
 
     if extended:
         # 扩展表格：包含索引加速比、懒加载等
-        lines.append("| 引擎 | 插入 | 索引查询 | 非索引查询 | 索引加速 | 范围查询 | 保存 | 加载 | 懒加载 | 文件大小 |")
-        lines.append("|------|------|----------|------------|----------|----------|------|------|--------|----------|")
+        if memtest:
+            lines.append("| 引擎 | 插入 | 索引查询 | 非索引查询 | 索引加速 | 保存 | 加载 | 懒加载 | 内存占用 | 文件大小 |")
+            lines.append("|------|------|----------|------------|----------|------|------|--------|----------|----------|")
+        else:
+            lines.append("| 引擎 | 插入 | 索引查询 | 非索引查询 | 索引加速 | 范围查询 | 保存 | 加载 | 懒加载 | 文件大小 |")
+            lines.append("|------|------|----------|------------|----------|----------|------|------|--------|----------|")
 
         for r in filtered:
             engine = r['engine'].capitalize()
@@ -525,44 +720,83 @@ def generate_markdown_table(results: List[Dict[str, Any]], record_count: int, ex
             # 范围查询
             range_q = format_time(r['range_query']) if 'range_query' in r else '-'
 
-            lines.append(
-                f"| {engine} | "
-                f"{format_time(r['insert'])} | "
-                f"{format_time(r['query_indexed'])} | "
-                f"{non_indexed} | "
-                f"{speedup} | "
-                f"{range_q} | "
-                f"{format_time(r['save'])} | "
-                f"{format_time(r['load'])} | "
-                f"{lazy} | "
-                f"{format_size(r['file_size'])} |"
-            )
+            # 内存占用
+            memory = format_size(r['memory_delta']) if 'memory_delta' in r else '-'
+
+            if memtest:
+                lines.append(
+                    f"| {engine} | "
+                    f"{format_time(r['insert'])} | "
+                    f"{format_time(r['query_indexed'])} | "
+                    f"{non_indexed} | "
+                    f"{speedup} | "
+                    f"{format_time(r['save'])} | "
+                    f"{format_time(r['load'])} | "
+                    f"{lazy} | "
+                    f"{memory} | "
+                    f"{format_size(r['file_size'])} |"
+                )
+            else:
+                lines.append(
+                    f"| {engine} | "
+                    f"{format_time(r['insert'])} | "
+                    f"{format_time(r['query_indexed'])} | "
+                    f"{non_indexed} | "
+                    f"{speedup} | "
+                    f"{range_q} | "
+                    f"{format_time(r['save'])} | "
+                    f"{format_time(r['load'])} | "
+                    f"{lazy} | "
+                    f"{format_size(r['file_size'])} |"
+                )
     else:
         # 基础表格
-        lines.append("| 引擎 | 插入 | 全表查询 | 索引查询 | 条件查询 | 更新 | 保存 | 加载 | 文件大小 |")
-        lines.append("|------|------|----------|----------|----------|------|------|------|----------|")
+        if memtest:
+            lines.append("| 引擎 | 插入 | 全表查询 | 索引查询 | 条件查询 | 更新 | 保存 | 加载 | 内存占用 | 文件大小 |")
+            lines.append("|------|------|----------|----------|----------|------|------|------|----------|----------|")
+        else:
+            lines.append("| 引擎 | 插入 | 全表查询 | 索引查询 | 条件查询 | 更新 | 保存 | 加载 | 文件大小 |")
+            lines.append("|------|------|----------|----------|----------|------|------|------|----------|")
 
         for r in filtered:
             engine = r['engine'].capitalize()
             if r['engine'] == 'sqlite':
                 engine = 'SQLite'
 
-            lines.append(
-                f"| {engine} | "
-                f"{format_time(r['insert'])} | "
-                f"{format_time(r['query_all'])} | "
-                f"{format_time(r['query_indexed'])} | "
-                f"{format_time(r['query_filtered'])} | "
-                f"{format_time(r['update'])} | "
-                f"{format_time(r['save'])} | "
-                f"{format_time(r['load'])} | "
-                f"{format_size(r['file_size'])} |"
-            )
+            # 内存占用
+            memory = format_size(r['memory_delta']) if 'memory_delta' in r else '-'
+
+            if memtest:
+                lines.append(
+                    f"| {engine} | "
+                    f"{format_time(r['insert'])} | "
+                    f"{format_time(r['query_all'])} | "
+                    f"{format_time(r['query_indexed'])} | "
+                    f"{format_time(r['query_filtered'])} | "
+                    f"{format_time(r['update'])} | "
+                    f"{format_time(r['save'])} | "
+                    f"{format_time(r['load'])} | "
+                    f"{memory} | "
+                    f"{format_size(r['file_size'])} |"
+                )
+            else:
+                lines.append(
+                    f"| {engine} | "
+                    f"{format_time(r['insert'])} | "
+                    f"{format_time(r['query_all'])} | "
+                    f"{format_time(r['query_indexed'])} | "
+                    f"{format_time(r['query_filtered'])} | "
+                    f"{format_time(r['update'])} | "
+                    f"{format_time(r['save'])} | "
+                    f"{format_time(r['load'])} | "
+                    f"{format_size(r['file_size'])} |"
+                )
 
     return '\n'.join(lines)
 
 
-def generate_english_table(results: List[Dict[str, Any]], record_count: int, extended: bool = False) -> str:
+def generate_english_table(results: List[Dict[str, Any]], record_count: int,
+                           extended: bool = False, memtest: bool = False) -> str:
     """生成英文 Markdown 表格"""
     filtered = [r for r in results if r.get('record_count') == record_count and r.get('success')]
 
@@ -574,8 +808,12 @@ def generate_english_table(results: List[Dict[str, Any]], record_count: int, ext
 
     if extended:
         # Extended table
-        lines.append("| Engine | Insert | Indexed | Non-Indexed | Speedup | Range | Save | Load | Lazy | Size |")
-        lines.append("|--------|--------|---------|-------------|---------|-------|------|------|------|------|")
+        if memtest:
+            lines.append("| Engine | Insert | Indexed | Non-Indexed | Speedup | Save | Load | Lazy | Memory | Size |")
+            lines.append("|--------|--------|---------|-------------|---------|------|------|------|--------|------|")
+        else:
+            lines.append("| Engine | Insert | Indexed | Non-Indexed | Speedup | Range | Save | Load | Lazy | Size |")
+            lines.append("|--------|--------|---------|-------------|---------|-------|------|------|------|------|")
 
         for r in filtered:
             engine = r['engine'].capitalize()
@@ -589,40 +827,75 @@ def generate_english_table(results: List[Dict[str, Any]], record_count: int, ext
             lazy = format_time(r['lazy_load']) if 'lazy_load' in r else '-'
             non_indexed = format_time(r['query_non_indexed']) if 'query_non_indexed' in r else '-'
             range_q = format_time(r['range_query']) if 'range_query' in r else '-'
+            memory = format_size(r['memory_delta']) if 'memory_delta' in r else '-'
 
-            lines.append(
-                f"| {engine} | "
-                f"{format_time(r['insert'])} | "
-                f"{format_time(r['query_indexed'])} | "
-                f"{non_indexed} | "
-                f"{speedup} | "
-                f"{range_q} | "
-                f"{format_time(r['save'])} | "
-                f"{format_time(r['load'])} | "
-                f"{lazy} | "
-                f"{format_size(r['file_size'])} |"
-            )
+            if memtest:
+                lines.append(
+                    f"| {engine} | "
+                    f"{format_time(r['insert'])} | "
+                    f"{format_time(r['query_indexed'])} | "
+                    f"{non_indexed} | "
+                    f"{speedup} | "
+                    f"{format_time(r['save'])} | "
+                    f"{format_time(r['load'])} | "
+                    f"{lazy} | "
+                    f"{memory} | "
+                    f"{format_size(r['file_size'])} |"
+                )
+            else:
+                lines.append(
+                    f"| {engine} | "
+                    f"{format_time(r['insert'])} | "
+                    f"{format_time(r['query_indexed'])} | "
+                    f"{non_indexed} | "
+                    f"{speedup} | "
+                    f"{range_q} | "
+                    f"{format_time(r['save'])} | "
+                    f"{format_time(r['load'])} | "
+                    f"{lazy} | "
+                    f"{format_size(r['file_size'])} |"
+                )
     else:
         # Basic table
-        lines.append("| Engine | Insert | Full Scan | Indexed | Filtered | Update | Save | Load | File Size |")
-        lines.append("|--------|--------|-----------|---------|----------|--------|------|------|-----------|")
+        if memtest:
+            lines.append("| Engine | Insert | Full Scan | Indexed | Filtered | Update | Save | Load | Memory | Size |")
+            lines.append("|--------|--------|-----------|---------|----------|--------|------|------|--------|------|")
+        else:
+            lines.append("| Engine | Insert | Full Scan | Indexed | Filtered | Update | Save | Load | File Size |")
+            lines.append("|--------|--------|-----------|---------|----------|--------|------|------|-----------|")
 
         for r in filtered:
             engine = r['engine'].capitalize()
             if r['engine'] == 'sqlite':
                 engine = 'SQLite'
 
-            lines.append(
-                f"| {engine} | "
-                f"{format_time(r['insert'])} | "
-                f"{format_time(r['query_all'])} | "
-                f"{format_time(r['query_indexed'])} | "
-                f"{format_time(r['query_filtered'])} | "
-                f"{format_time(r['update'])} | "
-                f"{format_time(r['save'])} | "
-                f"{format_time(r['load'])} | "
-                f"{format_size(r['file_size'])} |"
-            )
+            memory = format_size(r['memory_delta']) if 'memory_delta' in r else '-'
+
+            if memtest:
+                lines.append(
+                    f"| {engine} | "
+                    f"{format_time(r['insert'])} | "
+                    f"{format_time(r['query_all'])} | "
+                    f"{format_time(r['query_indexed'])} | "
+                    f"{format_time(r['query_filtered'])} | "
+                    f"{format_time(r['update'])} | "
+                    f"{format_time(r['save'])} | "
+                    f"{format_time(r['load'])} | "
+                    f"{memory} | "
+                    f"{format_size(r['file_size'])} |"
+                )
+            else:
+                lines.append(
+                    f"| {engine} | "
+                    f"{format_time(r['insert'])} | "
+                    f"{format_time(r['query_all'])} | "
+                    f"{format_time(r['query_indexed'])} | "
+                    f"{format_time(r['query_filtered'])} | "
+                    f"{format_time(r['update'])} | "
+                    f"{format_time(r['save'])} | "
+                    f"{format_time(r['load'])} | "
+                    f"{format_size(r['file_size'])} |"
+                )
 
     return '\n'.join(lines)
 
@@ -640,6 +913,9 @@ def parse_args():
   python benchmark.py -n 20000 --keep         # 测试20000条记录并保留文件
   python benchmark.py -e binary json          # 只测试 binary 和 json 引擎
   python benchmark.py -n 1000 -e sqlite csv   # 测试1000条记录，只测 sqlite 和 csv 引擎
+  python benchmark.py --memtest               # 启用内存测试
+  python benchmark.py --parallel              # 并行执行
+  python benchmark.py --parallel --workers 4  # 使用4个工作进程
         """
     )
     parser.add_argument(
@@ -667,6 +943,22 @@ def parse_args():
         action='store_true',
         help='执行扩展测试（索引对比、范围查询、批量读取、懒加载查询）'
     )
+    parser.add_argument(
+        '--memtest',
+        action='store_true',
+        help='启用内存占用测试'
+    )
+    parser.add_argument(
+        '--parallel',
+        action='store_true',
+        help='启用并行执行模式（多进程）'
+    )
+    parser.add_argument(
+        '--workers',
+        type=int,
+        default=None,
+        help='并行工作进程数（默认: CPU核心数）'
+    )
     return parser.parse_args()
 
 
@@ -681,19 +973,31 @@ def main():
         print("测试文件将被保留")
     if args.extended:
         print("模式: 扩展测试")
+    if args.memtest:
+        print("模式: 内存测试")
+    if args.parallel:
+        print(f"模式: 并行执行")
     print()
 
-    results = run_benchmarks(args.count, args.keep, args.engines, args.extended)
+    results = run_benchmarks(
+        args.count,
+        args.keep,
+        args.engines,
+        args.extended,
+        args.memtest,
+        args.parallel,
+        args.workers
+    )
 
     print("\n" + "=" * 60)
     print("汇总 - 可用于 README 的 Markdown 表格")
     print("=" * 60)
 
     print("\n### 中文版本 (README.md):\n")
-    print(generate_markdown_table(results, args.count, args.extended))
+    print(generate_markdown_table(results, args.count, args.extended, args.memtest))
 
     print("\n### 英文版本 (README.EN.md):\n")
-    print(generate_english_table(results, args.count, args.extended))
+    print(generate_english_table(results, args.count, args.extended, args.memtest))
 
     print("\n" + "=" * 60)
     print("基准测试完成!")

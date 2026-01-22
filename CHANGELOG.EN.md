@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > [中文版](./CHANGELOG.md)
 
-## [0.4.0] - 2026-01-22
+## [0.4.0] - 2026-01-23
 
 ### Added
 
@@ -19,6 +19,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **Index Region Compression**: Using zlib compression for index region, saving ~81% space
   - **Batch I/O**: Buffered writes/reads, reducing I/O operation counts
   - **Codec Caching**: Pre-cached type encoders/decoders, avoiding repeated lookups
+
+- **Binary Engine Encryption Support**: Three-tier encryption/obfuscation, pure Python implementation, zero external dependencies
+  - **Low Level (low)**: XOR obfuscation, prevents casual viewing, ~100% read performance tax
+  - **Medium Level (medium)**: LCG stream cipher (Linear Congruential Generator), prevents regular users, ~400% read performance tax
+  - **High Level (high)**: ChaCha20 pure Python implementation, cryptographically secure, ~2000% read performance tax
+  - Encryption scope: Data Region and Index Region (Schema Region remains plaintext for format probing)
+  - Key derivation: PBKDF approach (SHA256 iterations), iteration count increases with level (1/1000/10000)
+  - Key verification: 4-byte quick check, prevents decrypting garbage data
+  - Encryption metadata stored in Header's reserved area (salt 16 bytes + key_check 4 bytes)
+  - Added `EncryptionError` exception class for wrong password or missing password cases
+  - **Performance Note**: Encryption uses pure Python implementation to maintain zero dependencies, resulting in higher performance overhead. Choose based on security requirements.
+  - Usage example:
+    ```python
+    from pytuck import Storage
+    from pytuck.common.options import BinaryBackendOptions
+
+    # Create encrypted database
+    opts = BinaryBackendOptions(encryption='high', password='mypassword')
+    db = Storage('data.db', engine='binary', backend_options=opts)
+
+    # Open encrypted database (auto-detects encryption level)
+    opts = BinaryBackendOptions(password='mypassword')
+    db = Storage('data.db', engine='binary', backend_options=opts)
+    ```
 
 ### Improved
 

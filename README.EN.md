@@ -25,7 +25,7 @@ A lightweight, pure Python document database with multi-engine support. No SQL r
 - **Generic Type Hints** - Complete generic support with precise IDE type inference (`List[User]` instead of `List[PureBaseModel]`)
 - **Pythonic Query Syntax** - Use native Python operators (`User.age >= 18`)
 - **Index Optimization** - Hash indexes for accelerated queries
-- **Type Safety** - Automatic type validation and conversion (loose/strict modes)
+- **Type Safety** - Automatic type validation and conversion (loose/strict modes), supports 10 field types
 - **Relationships** - Supports one-to-many and many-to-one with lazy loading + auto caching
 - **Independent Data Models** - Accessible after session close, usable like Pydantic
 - **Persistence** - Automatic or manual data persistence to disk
@@ -721,6 +721,11 @@ user = StrictUser(age='25')  # ❌ ValidationError
 | str | str(value) | 123 → '123' |
 | bool | Special rules* | '1', 'true', 1 → True |
 | bytes | encode() if str | 'hello' → b'hello' |
+| datetime | ISO 8601 parse | '2024-01-15T10:30:00' → datetime |
+| date | ISO 8601 parse | '2024-01-15' → date |
+| timedelta | Total seconds | 3600.0 → timedelta(hours=1) |
+| list | JSON parse | '[1,2,3]' → [1, 2, 3] |
+| dict | JSON parse | '{"a":1}' → {'a': 1} |
 | None | Allowed if nullable=True | None → None |
 
 *bool conversion rules:
@@ -924,6 +929,10 @@ Pytuck is a lightweight embedded database designed for simplicity. Here are the 
 
 ### Completed
 
+- [x] **Extended Field Type Support** ✨NEW✨
+  - [x] Added `datetime`, `date`, `timedelta`, `list`, `dict` five new types
+  - [x] Unified TypeRegistry codec, all backends use consistent serialization interface
+  - [x] JSON backend format optimization, removed redundant `_type`/`_value` wrapper
 - [x] **Binary Engine v4 Format** ✨NEW✨
   - [x] WAL (Write-Ahead Log) for O(1) write latency
   - [x] Dual Header mechanism for atomic switching and crash recovery

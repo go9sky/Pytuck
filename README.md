@@ -25,7 +25,7 @@
 - **泛型类型提示** - 完整的泛型支持，IDE智能提示精确到具体模型类型（`List[User]` 而非 `List[PureBaseModel]`）
 - **Pythonic 查询语法** - 使用原生 Python 运算符构建查询（`User.age >= 18`）
 - **索引优化** - 哈希索引加速查询
-- **类型安全** - 自动类型验证和转换（宽松/严格模式）
+- **类型安全** - 自动类型验证和转换（宽松/严格模式），支持 10 种字段类型
 - **关联关系** - 支持一对多和多对一关联，延迟加载+自动缓存
 - **独立数据模型** - Session 关闭后仍可访问，像 Pydantic 一样使用
 - **持久化** - 数据自动或手动持久化到磁盘
@@ -722,6 +722,11 @@ user = StrictUser(age='25')  # ❌ ValidationError
 | str | str(value) | 123 → '123' |
 | bool | 特殊规则* | '1', 'true', 1 → True |
 | bytes | encode() 如果是 str | 'hello' → b'hello' |
+| datetime | ISO 8601 解析 | '2024-01-15T10:30:00' → datetime |
+| date | ISO 8601 解析 | '2024-01-15' → date |
+| timedelta | 总秒数 | 3600.0 → timedelta(hours=1) |
+| list | JSON 解析 | '[1,2,3]' → [1, 2, 3] |
+| dict | JSON 解析 | '{"a":1}' → {'a': 1} |
 | None | nullable=True 允许 | None → None |
 
 *bool 转换规则：
@@ -874,6 +879,10 @@ Pytuck 是一个轻量级嵌入式数据库，设计目标是简单易用。以�
 
 ### 已完成
 
+- [x] **扩展字段类型支持** ✨NEW✨
+  - [x] 新增 `datetime`, `date`, `timedelta`, `list`, `dict` 五种类型
+  - [x] 统一 TypeRegistry 编解码，所有后端使用一致的序列化接口
+  - [x] JSON 后端格式优化，移除冗余的 `_type`/`_value` 包装
 - [x] **Binary 引擎 v4 格式** ✨NEW✨
   - [x] WAL（预写日志）支持 O(1) 写入延迟
   - [x] 双 Header 机制实现原子切换和崩溃恢复

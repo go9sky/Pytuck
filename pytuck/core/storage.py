@@ -391,10 +391,17 @@ class Storage:
 
         # 查找主键
         primary_key = 'id'
+        has_pk_column = False
         for col in columns:
             if col.primary_key:
                 primary_key = col.name
+                has_pk_column = True
                 break
+
+        # 如果没有定义主键列，自动添加默认的 id 列
+        if not has_pk_column:
+            id_column = Column('id', int, primary_key=True)
+            columns = [id_column] + list(columns)
 
         table = Table(name, columns, primary_key, comment)
         self.tables[name] = table

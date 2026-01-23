@@ -349,3 +349,151 @@ class TypeRegistry:
         """注册自定义类型"""
         cls._codecs[py_type] = (type_code, codec)
         cls._type_code_to_type[type_code] = py_type
+
+    # ========== 文本格式序列化支持 ==========
+
+    # 类型名称映射（用于文本格式存储）
+    _type_names = {
+        int: 'int',
+        str: 'str',
+        float: 'float',
+        bool: 'bool',
+        bytes: 'bytes',
+        datetime: 'datetime',
+        date: 'date',
+        timedelta: 'timedelta',
+        list: 'list',
+        dict: 'dict',
+    }
+
+    # 名称到类型的反向映射
+    _name_to_type = {v: k for k, v in _type_names.items()}
+
+    @classmethod
+    def get_type_name(cls, col_type: Type) -> str:
+        """获取类型的字符串名称
+
+        Args:
+            col_type: Python 类型
+
+        Returns:
+            类型名称字符串，未知类型返回 'str'
+        """
+        return cls._type_names.get(col_type, 'str')
+
+    @classmethod
+    def get_type_by_name(cls, name: str) -> Type:
+        """根据名称获取类型
+
+        Args:
+            name: 类型名称字符串
+
+        Returns:
+            Python 类型，未知名称返回 str
+        """
+        return cls._name_to_type.get(name, str)
+
+    @classmethod
+    def serialize_for_text(cls, value: Any, col_type: Type) -> Any:
+        """序列化值为文本格式存储
+
+        将 Python 值转换为适合文本格式（JSON、CSV、Excel、XML）存储的形式。
+
+        Args:
+            value: 要序列化的值
+            col_type: 列的类型
+
+        Returns:
+            序列化后的值（可能是字符串、数字或 None）
+        """
+        import base64
+
+        if value is None:
+            return None
+
+        if col_type == bytes:
+            return base64.b64encode(value).decode('ascii')
+        elif col_type == datetime:
+            return value.isoformat()
+        elif col_type == date:
+            return value.isoformat()
+        elif col_type == timedelta:
+            return value.total_seconds()
+        elif col_type == list:
+            return json.dumps(value, ensure_ascii=False)
+        elif col_type == dict:
+            return json.dumps(value, ensure_ascii=False)
+        else:
+            # int, str, float, bool 保持原样
+            return value
+
+    @classmethod
+    def deserialize_from_text(cls, value: Any, col_type: Type) -> Any:
+        """从文本格式反序列化值
+
+        将文本格式存储的值转换回 Python 类型。
+
+        Args:
+            value: 存储的值
+            col_type: 目标类型
+
+        Returns:
+            反序列化后的 Python 值
+        """
+        import base64
+
+        if value is None or value == '':
+            return None
+
+        if col_type == bytes:
+            if isinstance(value, bytes):
+                return value
+            return base64.b64decode(value)
+
+        elif col_type == datetime:
+            if isinstance(value, datetime):
+                return value
+            return datetime.fromisoformat(value)
+
+        elif col_type == date:
+            if isinstance(value, date) and not isinstance(value, datetime):
+                return value
+            if isinstance(value, datetime):
+                return value.date()
+            return date.fromisoformat(value)
+
+        elif col_type == timedelta:
+            if isinstance(value, timedelta):
+                return value
+            return timedelta(seconds=float(value))
+
+        elif col_type == list:
+            if isinstance(value, list):
+                return value
+            return json.loads(value)
+
+        elif col_type == dict:
+            if isinstance(value, dict):
+                return value
+            return json.loads(value)
+
+        elif col_type == bool:
+            if isinstance(value, bool):
+                return value
+            if isinstance(value, str):
+                return value.lower() in ('true', '1', 'yes')
+            return bool(value)
+
+        elif col_type == int:
+            if isinstance(value, int) and not isinstance(value, bool):
+                return value
+            return int(value)
+
+        elif col_type == float:
+            if isinstance(value, float):
+                return value
+            return float(value)
+
+        else:
+            # str 或其他类型
+            return value

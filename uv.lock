@@ -2087,22 +2087,6 @@ dev = [
     { name = "build", version = "1.1.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.8'" },
     { name = "build", version = "1.2.2.post1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.8.*'" },
     { name = "build", version = "1.4.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.9'" },
-    { name = "mypy", version = "1.4.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.8'" },
-    { name = "mypy", version = "1.14.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.8.*'" },
-    { name = "mypy", version = "1.19.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.9'" },
-    { name = "pytest", version = "7.4.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.8'" },
-    { name = "pytest", version = "8.3.5", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.8.*'" },
-    { name = "pytest", version = "8.4.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.9.*'" },
-    { name = "pytest", version = "9.0.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.10'" },
-    { name = "twine", version = "4.0.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.8'" },
-    { name = "twine", version = "6.1.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.8.*'" },
-    { name = "twine", version = "6.2.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.9'" },
-]
-excel = [
-    { name = "openpyxl", version = "3.1.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.8'" },
-    { name = "openpyxl", version = "3.1.5", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.8'" },
-]
-full = [
     { name = "lxml", version = "5.4.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.8'" },
     { name = "lxml", version = "6.0.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.8'" },
     { name = "mypy", version = "1.4.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.8'" },
@@ -2113,9 +2097,20 @@ full = [
     { name = "orjson", version = "3.9.7", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.8'" },
     { name = "orjson", version = "3.10.15", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.8.*'" },
     { name = "orjson", version = "3.11.5", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.9'" },
+    { name = "pytest", version = "7.4.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.8'" },
+    { name = "pytest", version = "8.3.5", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.8.*'" },
+    { name = "pytest", version = "8.4.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.9.*'" },
+    { name = "pytest", version = "9.0.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.10'" },
+    { name = "twine", version = "4.0.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.8'" },
+    { name = "twine", version = "6.1.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.8.*'" },
+    { name = "twine", version = "6.2.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.9'" },
     { name = "ujson", version = "5.7.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.8'" },
     { name = "ujson", version = "5.10.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.8.*'" },
     { name = "ujson", version = "5.11.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.9'" },
+]
+excel = [
+    { name = "openpyxl", version = "3.1.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.8'" },
+    { name = "openpyxl", version = "3.1.5", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.8'" },
 ]
 orjson = [
     { name = "orjson", version = "3.9.7", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.8'" },
@@ -2136,23 +2131,22 @@ xml = [
 requires-dist = [
     { name = "build", marker = "extra == 'dev'", specifier = ">=0.7.0" },
     { name = "lxml", marker = "extra == 'all'", specifier = ">=4.9.0" },
-    { name = "lxml", marker = "extra == 'full'", specifier = ">=4.9.0" },
+    { name = "lxml", marker = "extra == 'dev'", specifier = ">=4.9.0" },
     { name = "lxml", marker = "extra == 'xml'", specifier = ">=4.9.0" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=0.950" },
-    { name = "mypy", marker = "extra == 'full'", specifier = ">=0.950" },
     { name = "openpyxl", marker = "extra == 'all'", specifier = ">=3.0.0" },
+    { name = "openpyxl", marker = "extra == 'dev'", specifier = ">=3.0.0" },
     { name = "openpyxl", marker = "extra == 'excel'", specifier = ">=3.0.0" },
-    { name = "openpyxl", marker = "extra == 'full'", specifier = ">=3.0.0" },
     { name = "orjson", marker = "extra == 'all'", specifier = ">=3.8.0" },
-    { name = "orjson", marker = "extra == 'full'", specifier = ">=3.8.0" },
+    { name = "orjson", marker = "extra == 'dev'", specifier = ">=3.8.0" },
     { name = "orjson", marker = "extra == 'orjson'", specifier = ">=3.8.0" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=7.0.0" },
     { name = "twine", marker = "extra == 'dev'", specifier = ">=4.0.0" },
     { name = "ujson", marker = "extra == 'all'", specifier = ">=5.5.0" },
-    { name = "ujson", marker = "extra == 'full'", specifier = ">=5.5.0" },
+    { name = "ujson", marker = "extra == 'dev'", specifier = ">=5.5.0" },
     { name = "ujson", marker = "extra == 'ujson'", specifier = ">=5.5.0" },
 ]
-provides-extras = ["json", "orjson", "ujson", "csv", "sqlite", "excel", "xml", "all", "dev", "full"]
+provides-extras = ["json", "orjson", "ujson", "csv", "sqlite", "excel", "xml", "all", "dev"]
 
 [[package]]
 name = "pywin32-ctypes"

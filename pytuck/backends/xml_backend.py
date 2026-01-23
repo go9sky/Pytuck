@@ -8,7 +8,7 @@ import json
 import base64
 from pathlib import Path
 from typing import Any, Dict, Union, TYPE_CHECKING, Tuple, Optional
-from datetime import datetime
+from datetime import datetime, date, timedelta
 from .base import StorageBackend
 from ..common.exceptions import SerializationError
 from .versions import get_format_version
@@ -161,6 +161,19 @@ class XMLBackend(StorageBackend):
                     field_elem.text = base64.b64encode(value).decode('ascii')
                 elif isinstance(value, bool):
                     field_elem.text = str(value).lower()
+                elif isinstance(value, datetime):
+                    # datetime 转 ISO 格式字符串（保留时区）
+                    field_elem.text = value.isoformat()
+                elif isinstance(value, date):
+                    # date 转 ISO 格式字符串
+                    field_elem.text = value.isoformat()
+                elif isinstance(value, timedelta):
+                    # timedelta 转总秒数
+                    field_elem.text = str(value.total_seconds())
+                elif isinstance(value, (list, dict)):
+                    # list/dict 转 JSON 字符串
+                    field_elem.set('encoding', 'json')
+                    field_elem.text = json.dumps(value, ensure_ascii=False)
                 else:
                     field_elem.text = str(value)
 
@@ -183,7 +196,12 @@ class XMLBackend(StorageBackend):
                 'str': str,
                 'float': float,
                 'bool': bool,
-                'bytes': bytes
+                'bytes': bytes,
+                'datetime': datetime,
+                'date': date,
+                'timedelta': timedelta,
+                'list': list,
+                'dict': dict,
             }
             col_type = type_map.get(col_elem.get('type'), str)
 
@@ -229,6 +247,22 @@ class XMLBackend(StorageBackend):
                                 value = base64.b64decode(text)
                             else:
                                 value = text.encode('utf-8')
+                        elif col_type_name == 'datetime':
+                            value = datetime.fromisoformat(text) if text else None
+                        elif col_type_name == 'date':
+                            value = date.fromisoformat(text) if text else None
+                        elif col_type_name == 'timedelta':
+                            value = timedelta(seconds=float(text)) if text else None
+                        elif col_type_name == 'list':
+                            if field_elem.get('encoding') == 'json':
+                                value = json.loads(text) if text else []
+                            else:
+                                value = []
+                        elif col_type_name == 'dict':
+                            if field_elem.get('encoding') == 'json':
+                                value = json.loads(text) if text else {}
+                            else:
+                                value = {}
                         else:  # str
                             value = text
 

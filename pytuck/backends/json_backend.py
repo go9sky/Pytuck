@@ -221,6 +221,7 @@ class JSONBackend(StorageBackend):
         """反序列化表"""
         from ..core.storage import Table
         from ..core.orm import Column
+        from datetime import datetime, date, timedelta
 
         # 重建列定义
         columns = []
@@ -232,6 +233,11 @@ class JSONBackend(StorageBackend):
                 'float': float,
                 'bool': bool,
                 'bytes': bytes,
+                'datetime': datetime,
+                'date': date,
+                'timedelta': timedelta,
+                'list': list,
+                'dict': dict,
             }
             col_type = type_map.get(col_data['type'], str)
 
@@ -272,28 +278,57 @@ class JSONBackend(StorageBackend):
 
     def _serialize_record(self, record: Dict[str, Any]) -> Dict[str, Any]:
         """序列化记录（处理特殊类型）"""
+        from datetime import datetime, date, timedelta
+        import base64
+
         result = {}
         for key, value in record.items():
             if isinstance(value, bytes):
                 # bytes 转 base64
-                import base64
                 result[key] = {
                     '_type': 'bytes',
                     '_value': base64.b64encode(value).decode('ascii')
                 }
+            elif isinstance(value, datetime):
+                # datetime 转 ISO 格式字符串（保留时区）
+                result[key] = {
+                    '_type': 'datetime',
+                    '_value': value.isoformat()
+                }
+            elif isinstance(value, date):
+                # date 转 ISO 格式字符串
+                result[key] = {
+                    '_type': 'date',
+                    '_value': value.isoformat()
+                }
+            elif isinstance(value, timedelta):
+                # timedelta 转总秒数
+                result[key] = {
+                    '_type': 'timedelta',
+                    '_value': value.total_seconds()
+                }
             else:
+                # list 和 dict 直接 JSON 兼容
                 result[key] = value
         return result
 
     def _deserialize_record(self, record_data: Dict[str, Any], columns: Dict[str, 'Column']) -> Dict[str, Any]:
         """反序列化记录"""
+        from datetime import datetime, date, timedelta
+        import base64
+
         result = {}
         for key, value in record_data.items():
             if isinstance(value, dict) and '_type' in value:
                 # 特殊类型
                 if value['_type'] == 'bytes':
-                    import base64
                     result[key] = base64.b64decode(value['_value'])
+                elif value['_type'] == 'datetime':
+                    result[key] = datetime.fromisoformat(value['_value'])
+                elif value['_type'] == 'date':
+                    result[key] = date.fromisoformat(value['_value'])
+                elif value['_type'] == 'timedelta':
+                    result[key] = timedelta(seconds=value['_value'])
                 else:
                     result[key] = value['_value']
             else:

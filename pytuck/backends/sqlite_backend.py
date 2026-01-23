@@ -188,8 +188,40 @@ class SQLiteBackend(StorageBackend):
         # 插入数据
         if len(table.data) > 0:
             columns = list(table.columns.keys())
-            records = list(table.data.values())
-            connector.insert_records(table_name, columns, records)
+            # 序列化记录中的特殊类型
+            serialized_records = []
+            for record in table.data.values():
+                serialized_record = self._serialize_record_for_sqlite(record, table.columns)
+                serialized_records.append(serialized_record)
+            connector.insert_records(table_name, columns, serialized_records)
+
+    def _serialize_record_for_sqlite(
+        self,
+        record: Dict[str, Any],
+        columns: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """序列化记录以适应 SQLite 存储"""
+        from datetime import datetime, date, timedelta
+
+        result: Dict[str, Any] = {}
+        for key, value in record.items():
+            if value is None:
+                result[key] = None
+            elif isinstance(value, timedelta):
+                # timedelta 转总秒数
+                result[key] = value.total_seconds()
+            elif isinstance(value, (list, dict)):
+                # list/dict 转 JSON 字符串
+                result[key] = json.dumps(value, ensure_ascii=False)
+            elif isinstance(value, datetime):
+                # datetime 转 ISO 格式字符串
+                result[key] = value.isoformat()
+            elif isinstance(value, date):
+                # date 转 ISO 格式字符串
+                result[key] = value.isoformat()
+            else:
+                result[key] = value
+        return result
 
     def _load_table(
         self,
@@ -203,6 +235,7 @@ class SQLiteBackend(StorageBackend):
         """加载单个表"""
         from ..core.storage import Table
         from ..core.orm import Column
+        from datetime import datetime, date, timedelta
 
         # 重建列定义
         columns_data = json.loads(columns_json)
@@ -214,6 +247,11 @@ class SQLiteBackend(StorageBackend):
             'float': float,
             'bool': bool,
             'bytes': bytes,
+            'datetime': datetime,
+            'date': date,
+            'timedelta': timedelta,
+            'list': list,
+            'dict': dict,
         }
 
         for col_data in columns_data:
@@ -241,10 +279,24 @@ class SQLiteBackend(StorageBackend):
         for row in rows:
             record = {}
             for col_name, value in zip(col_names, row):
-                # 处理 int -> bool
+                # 处理类型转换
                 column = table.columns[col_name]
-                if column.col_type == bool and isinstance(value, int):
-                    value = bool(value)
+                if value is not None:
+                    if column.col_type == bool and isinstance(value, int):
+                        value = bool(value)
+                    elif column.col_type == datetime and isinstance(value, str):
+                        value = datetime.fromisoformat(value)
+                    elif column.col_type == date and isinstance(value, str):
+                        value = date.fromisoformat(value)
+                    elif column.col_type == timedelta:
+                        if isinstance(value, (int, float)):
+                            value = timedelta(seconds=float(value))
+                        elif isinstance(value, str):
+                            value = timedelta(seconds=float(value))
+                    elif column.col_type == list and isinstance(value, str):
+                        value = json.loads(value)
+                    elif column.col_type == dict and isinstance(value, str):
+                        value = json.loads(value)
                 record[col_name] = value
 
             pk = record[primary_key]

@@ -157,11 +157,16 @@ class ExcelBackend(StorageBackend):
 
     def _save_table_to_workbook(self, wb: 'Workbook', table_name: str, table: 'Table') -> None:
         """保存单个表的数据到工作簿"""
+        from datetime import datetime, date, timedelta
+
         # 数据工作表
         data_sheet = wb.create_sheet(table_name)
 
         # 写入表头
         columns = list(table.columns.keys())
+        # 确保主键列在列表中
+        if table.primary_key not in columns:
+            columns.insert(0, table.primary_key)
         data_sheet.append(columns)
 
         # 写入数据行
@@ -177,6 +182,18 @@ class ExcelBackend(StorageBackend):
                 elif isinstance(value, bool):
                     # Excel会将bool自动转换，这里用字符串明确表示
                     value = 'TRUE' if value else 'FALSE'
+                elif isinstance(value, datetime):
+                    # datetime 转 ISO 格式字符串
+                    value = value.isoformat()
+                elif isinstance(value, date):
+                    # date 转 ISO 格式字符串
+                    value = value.isoformat()
+                elif isinstance(value, timedelta):
+                    # timedelta 转总秒数
+                    value = value.total_seconds()
+                elif isinstance(value, (list, dict)):
+                    # list/dict 转 JSON 字符串
+                    value = json.dumps(value, ensure_ascii=False)
                 row.append(value)
             data_sheet.append(row)
 
@@ -186,6 +203,7 @@ class ExcelBackend(StorageBackend):
         """从工作簿加载单个表"""
         from ..core.storage import Table
         from ..core.orm import Column
+        from datetime import datetime, date, timedelta
 
         primary_key = schema.get('primary_key', 'id')
         next_id = schema.get('next_id', 1)
@@ -199,7 +217,12 @@ class ExcelBackend(StorageBackend):
             'str': str,
             'float': float,
             'bool': bool,
-            'bytes': bytes
+            'bytes': bytes,
+            'datetime': datetime,
+            'date': date,
+            'timedelta': timedelta,
+            'list': list,
+            'dict': dict,
         }
 
         for col_data in columns_data:
@@ -249,6 +272,29 @@ class ExcelBackend(StorageBackend):
                         value = int(value)
                     elif column.col_type == float and value is not None:
                         value = float(value)
+                    elif column.col_type == datetime and value is not None:
+                        if isinstance(value, datetime):
+                            pass
+                        elif isinstance(value, str):
+                            value = datetime.fromisoformat(value)
+                    elif column.col_type == date and value is not None:
+                        if isinstance(value, date):
+                            pass
+                        elif isinstance(value, str):
+                            value = date.fromisoformat(value)
+                    elif column.col_type == timedelta and value is not None:
+                        if isinstance(value, timedelta):
+                            pass
+                        elif isinstance(value, (int, float)):
+                            value = timedelta(seconds=float(value))
+                        elif isinstance(value, str):
+                            value = timedelta(seconds=float(value))
+                    elif column.col_type == list and value is not None:
+                        if isinstance(value, str):
+                            value = json.loads(value)
+                    elif column.col_type == dict and value is not None:
+                        if isinstance(value, str):
+                            value = json.loads(value)
 
                     record[col_name] = value
 

@@ -12,6 +12,7 @@ from datetime import datetime
 from .base import StorageBackend
 from ..common.exceptions import SerializationError
 from .versions import get_format_version
+from ..core.types import TypeRegistry
 
 from ..common.options import JsonBackendOptions
 
@@ -221,25 +222,12 @@ class JSONBackend(StorageBackend):
         """反序列化表"""
         from ..core.storage import Table
         from ..core.orm import Column
-        from datetime import datetime, date, timedelta
 
         # 重建列定义
         columns = []
         for col_data in table_data['columns']:
-            # 类型名转类型
-            type_map = {
-                'int': int,
-                'str': str,
-                'float': float,
-                'bool': bool,
-                'bytes': bytes,
-                'datetime': datetime,
-                'date': date,
-                'timedelta': timedelta,
-                'list': list,
-                'dict': dict,
-            }
-            col_type = type_map.get(col_data['type'], str)
+            # 使用 TypeRegistry 进行类型名到类型的转换
+            col_type = TypeRegistry.get_type_by_name(col_data['type'])
 
             column = Column(
                 col_data['name'],
@@ -277,60 +265,37 @@ class JSONBackend(StorageBackend):
         return table
 
     def _serialize_record(self, record: Dict[str, Any]) -> Dict[str, Any]:
-        """序列化记录（处理特殊类型）"""
+        """序列化记录（处理特殊类型）
+
+        与其他后端保持一致，直接存储序列化值，反序列化时根据 schema 恢复类型。
+        """
         from datetime import datetime, date, timedelta
-        import base64
 
         result = {}
         for key, value in record.items():
-            if isinstance(value, bytes):
-                # bytes 转 base64
-                result[key] = {
-                    '_type': 'bytes',
-                    '_value': base64.b64encode(value).decode('ascii')
-                }
-            elif isinstance(value, datetime):
-                # datetime 转 ISO 格式字符串（保留时区）
-                result[key] = {
-                    '_type': 'datetime',
-                    '_value': value.isoformat()
-                }
-            elif isinstance(value, date):
-                # date 转 ISO 格式字符串
-                result[key] = {
-                    '_type': 'date',
-                    '_value': value.isoformat()
-                }
-            elif isinstance(value, timedelta):
-                # timedelta 转总秒数
-                result[key] = {
-                    '_type': 'timedelta',
-                    '_value': value.total_seconds()
-                }
+            if value is None:
+                result[key] = None
+            elif isinstance(value, (bytes, datetime, date, timedelta)):
+                # 直接存储序列化值，无需 _type/_value 包装
+                result[key] = TypeRegistry.serialize_for_text(value, type(value))
             else:
-                # list 和 dict 直接 JSON 兼容
+                # int, str, float, bool, list, dict 直接 JSON 兼容
                 result[key] = value
         return result
 
     def _deserialize_record(self, record_data: Dict[str, Any], columns: Dict[str, 'Column']) -> Dict[str, Any]:
-        """反序列化记录"""
+        """反序列化记录
+
+        根据 columns schema 中的类型信息恢复特殊类型。
+        """
         from datetime import datetime, date, timedelta
-        import base64
 
         result = {}
         for key, value in record_data.items():
-            if isinstance(value, dict) and '_type' in value:
-                # 特殊类型
-                if value['_type'] == 'bytes':
-                    result[key] = base64.b64decode(value['_value'])
-                elif value['_type'] == 'datetime':
-                    result[key] = datetime.fromisoformat(value['_value'])
-                elif value['_type'] == 'date':
-                    result[key] = date.fromisoformat(value['_value'])
-                elif value['_type'] == 'timedelta':
-                    result[key] = timedelta(seconds=value['_value'])
-                else:
-                    result[key] = value['_value']
+            column = columns.get(key)
+            if column and value is not None and column.col_type in (bytes, datetime, date, timedelta):
+                # 根据 schema 类型反序列化
+                result[key] = TypeRegistry.deserialize_from_text(value, column.col_type)
             else:
                 result[key] = value
         return result

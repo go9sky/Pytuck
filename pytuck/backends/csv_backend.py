@@ -6,7 +6,6 @@ Pytuck CSV存储引擎
 
 import csv
 import json
-import base64
 import io
 import zipfile
 from pathlib import Path
@@ -15,6 +14,7 @@ from datetime import datetime
 from .base import StorageBackend
 from ..common.exceptions import SerializationError
 from .versions import get_format_version
+from ..core.types import TypeRegistry
 
 from ..common.options import CsvBackendOptions
 
@@ -161,27 +161,14 @@ class CSVBackend(StorageBackend):
         """从ZIP加载单个表"""
         from ..core.storage import Table
         from ..core.orm import Column
-        from datetime import datetime, date, timedelta
 
         csv_file = f'{table_name}.csv'
 
         # 重建列定义
         columns = []
-        type_map = {
-            'int': int,
-            'str': str,
-            'float': float,
-            'bool': bool,
-            'bytes': bytes,
-            'datetime': datetime,
-            'date': date,
-            'timedelta': timedelta,
-            'list': list,
-            'dict': dict,
-        }
 
         for col_data in schema.get('columns', []):
-            col_type = type_map.get(col_data['type'], str)
+            col_type = TypeRegistry.get_type_by_name(col_data['type'])
             column = Column(
                 col_data['name'],
                 col_type,
@@ -223,40 +210,26 @@ class CSVBackend(StorageBackend):
 
     def _serialize_record(self, record: Dict[str, Any], columns: Dict[str, 'Column']) -> Dict[str, str]:
         """序列化记录（处理特殊类型）"""
-        from datetime import datetime, date, timedelta
-        import json as json_module
-
         result = {}
         for key, value in record.items():
+            if key not in columns:
+                result[key] = str(value) if value is not None else ''
+                continue
+
+            column = columns[key]
             if value is None:
                 result[key] = ''
-            elif isinstance(value, bytes):
-                # bytes 转 base64
-                result[key] = base64.b64encode(value).decode('ascii')
-            elif isinstance(value, bool):
-                # bool 转字符串
+            elif column.col_type == bool:
+                # bool 转字符串（CSV 特殊处理）
                 result[key] = 'true' if value else 'false'
-            elif isinstance(value, datetime):
-                # datetime 转 ISO 格式字符串
-                result[key] = value.isoformat()
-            elif isinstance(value, date):
-                # date 转 ISO 格式字符串
-                result[key] = value.isoformat()
-            elif isinstance(value, timedelta):
-                # timedelta 转总秒数字符串
-                result[key] = str(value.total_seconds())
-            elif isinstance(value, (list, dict)):
-                # list/dict 转 JSON 字符串
-                result[key] = json_module.dumps(value, ensure_ascii=False)
             else:
-                result[key] = str(value) if value is not None else ''
+                # 使用 TypeRegistry 统一序列化
+                serialized = TypeRegistry.serialize_for_text(value, column.col_type)
+                result[key] = str(serialized) if serialized is not None else ''
         return result
 
     def _deserialize_record(self, record_data: Dict[str, str], columns: Dict[str, 'Column']) -> Dict[str, Any]:
         """反序列化记录"""
-        from datetime import datetime, date, timedelta
-        import json as json_module
-
         result: Dict[str, Any] = {}
         for key, value in record_data.items():
             if key not in columns:
@@ -267,28 +240,9 @@ class CSVBackend(StorageBackend):
             # 处理空值
             if value == '' or value is None:
                 result[key] = None
-            # 根据类型转换
-            elif column.col_type == int:
-                result[key] = int(value)
-            elif column.col_type == float:
-                result[key] = float(value)
-            elif column.col_type == bool:
-                result[key] = (value.lower() == 'true')
-            elif column.col_type == bytes:
-                # base64 解码
-                result[key] = base64.b64decode(value)
-            elif column.col_type == datetime:
-                result[key] = datetime.fromisoformat(value)
-            elif column.col_type == date:
-                result[key] = date.fromisoformat(value)
-            elif column.col_type == timedelta:
-                result[key] = timedelta(seconds=float(value))
-            elif column.col_type == list:
-                result[key] = json_module.loads(value)
-            elif column.col_type == dict:
-                result[key] = json_module.loads(value)
-            else:  # str
-                result[key] = value
+            else:
+                # 使用 TypeRegistry 统一反序列化
+                result[key] = TypeRegistry.deserialize_from_text(value, column.col_type)
 
         return result
 

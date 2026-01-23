@@ -12,6 +12,7 @@ from datetime import datetime, date, timedelta
 from .base import StorageBackend
 from ..common.exceptions import SerializationError
 from .versions import get_format_version
+from ..core.types import TypeRegistry
 
 from ..common.options import XmlBackendOptions
 
@@ -191,19 +192,7 @@ class XMLBackend(StorageBackend):
         columns = []
         columns_elem = table_elem.find('columns')
         for col_elem in columns_elem.findall('column'):
-            type_map = {
-                'int': int,
-                'str': str,
-                'float': float,
-                'bool': bool,
-                'bytes': bytes,
-                'datetime': datetime,
-                'date': date,
-                'timedelta': timedelta,
-                'list': list,
-                'dict': dict,
-            }
-            col_type = type_map.get(col_elem.get('type'), str)
+            col_type = TypeRegistry.get_type_by_name(col_elem.get('type'))
 
             column = Column(
                 col_elem.get('name'),
@@ -227,6 +216,7 @@ class XMLBackend(StorageBackend):
                 for field_elem in record_elem.findall('field'):
                     col_name = field_elem.get('name')
                     col_type_name = field_elem.get('type')
+                    col_type = TypeRegistry.get_type_by_name(col_type_name)
 
                     value: Any
                     # 处理 NULL
@@ -235,36 +225,34 @@ class XMLBackend(StorageBackend):
                     else:
                         text = field_elem.text or ''
 
-                        # 根据类型转换
-                        if col_type_name == 'int':
-                            value = int(text) if text else 0
-                        elif col_type_name == 'float':
-                            value = float(text) if text else 0.0
-                        elif col_type_name == 'bool':
-                            value = (text.lower() == 'true')
-                        elif col_type_name == 'bytes':
+                        # bytes 需要特殊处理（检查 encoding 属性）
+                        if col_type == bytes:
                             if field_elem.get('encoding') == 'base64':
                                 value = base64.b64decode(text)
                             else:
                                 value = text.encode('utf-8')
-                        elif col_type_name == 'datetime':
-                            value = datetime.fromisoformat(text) if text else None
-                        elif col_type_name == 'date':
-                            value = date.fromisoformat(text) if text else None
-                        elif col_type_name == 'timedelta':
-                            value = timedelta(seconds=float(text)) if text else None
-                        elif col_type_name == 'list':
+                        # list/dict 需要检查 encoding 属性
+                        elif col_type == list:
                             if field_elem.get('encoding') == 'json':
                                 value = json.loads(text) if text else []
                             else:
                                 value = []
-                        elif col_type_name == 'dict':
+                        elif col_type == dict:
                             if field_elem.get('encoding') == 'json':
                                 value = json.loads(text) if text else {}
                             else:
                                 value = {}
-                        else:  # str
-                            value = text
+                        elif text:
+                            # 使用 TypeRegistry 统一反序列化
+                            value = TypeRegistry.deserialize_from_text(text, col_type)
+                        else:
+                            # 空文本的默认值
+                            if col_type == int:
+                                value = 0
+                            elif col_type == float:
+                                value = 0.0
+                            else:
+                                value = None
 
                     record[col_name] = value
 

@@ -12,6 +12,7 @@ from datetime import datetime
 from .base import StorageBackend
 from ..common.exceptions import SerializationError
 from .versions import get_format_version
+from ..core.types import TypeRegistry
 
 from ..common.options import ExcelBackendOptions
 
@@ -157,8 +158,6 @@ class ExcelBackend(StorageBackend):
 
     def _save_table_to_workbook(self, wb: 'Workbook', table_name: str, table: 'Table') -> None:
         """保存单个表的数据到工作簿"""
-        from datetime import datetime, date, timedelta
-
         # 数据工作表
         data_sheet = wb.create_sheet(table_name)
 
@@ -174,27 +173,18 @@ class ExcelBackend(StorageBackend):
             row = []
             for col_name in columns:
                 value = record.get(col_name)
-                # 处理特殊类型
-                if isinstance(value, bytes):
-                    value = base64.b64encode(value).decode('ascii')
-                elif value is None:
-                    value = ''
-                elif isinstance(value, bool):
-                    # Excel会将bool自动转换，这里用字符串明确表示
-                    value = 'TRUE' if value else 'FALSE'
-                elif isinstance(value, datetime):
-                    # datetime 转 ISO 格式字符串
-                    value = value.isoformat()
-                elif isinstance(value, date):
-                    # date 转 ISO 格式字符串
-                    value = value.isoformat()
-                elif isinstance(value, timedelta):
-                    # timedelta 转总秒数
-                    value = value.total_seconds()
-                elif isinstance(value, (list, dict)):
-                    # list/dict 转 JSON 字符串
-                    value = json.dumps(value, ensure_ascii=False)
-                row.append(value)
+                column = table.columns.get(col_name)
+
+                if value is None:
+                    row.append('')
+                elif column and column.col_type == bool:
+                    # Excel 特殊处理：bool 转字符串 'TRUE'/'FALSE'
+                    row.append('TRUE' if value else 'FALSE')
+                elif column:
+                    # 使用 TypeRegistry 统一序列化
+                    row.append(TypeRegistry.serialize_for_text(value, column.col_type))
+                else:
+                    row.append(value)
             data_sheet.append(row)
 
     def _load_table_from_workbook(
@@ -212,21 +202,9 @@ class ExcelBackend(StorageBackend):
 
         # 重建列
         columns = []
-        type_map = {
-            'int': int,
-            'str': str,
-            'float': float,
-            'bool': bool,
-            'bytes': bytes,
-            'datetime': datetime,
-            'date': date,
-            'timedelta': timedelta,
-            'list': list,
-            'dict': dict,
-        }
 
         for col_data in columns_data:
-            col_type = type_map.get(col_data['type'], str)
+            col_type = TypeRegistry.get_type_by_name(col_data['type'])
             column = Column(
                 col_data['name'],
                 col_type,
@@ -253,48 +231,26 @@ class ExcelBackend(StorageBackend):
                     if col_name not in table.columns:
                         continue
 
-                    # 反序列化特殊类型
                     column = table.columns[col_name]
 
+                    # 处理空值
                     if value == '' or value is None:
                         value = None
-                    elif column.col_type == bytes and value:
-                        value = base64.b64decode(value)
                     elif column.col_type == bool:
-                        # 处理Excel的bool值
+                        # Excel 的 bool 特殊处理
                         if isinstance(value, bool):
                             pass  # 保持原样
                         elif isinstance(value, str):
                             value = (value.upper() == 'TRUE')
                         else:
                             value = bool(value)
-                    elif column.col_type == int and value is not None:
-                        value = int(value)
-                    elif column.col_type == float and value is not None:
-                        value = float(value)
-                    elif column.col_type == datetime and value is not None:
-                        if isinstance(value, datetime):
-                            pass
-                        elif isinstance(value, str):
-                            value = datetime.fromisoformat(value)
-                    elif column.col_type == date and value is not None:
-                        if isinstance(value, date):
-                            pass
-                        elif isinstance(value, str):
-                            value = date.fromisoformat(value)
-                    elif column.col_type == timedelta and value is not None:
-                        if isinstance(value, timedelta):
-                            pass
-                        elif isinstance(value, (int, float)):
-                            value = timedelta(seconds=float(value))
-                        elif isinstance(value, str):
-                            value = timedelta(seconds=float(value))
-                    elif column.col_type == list and value is not None:
-                        if isinstance(value, str):
-                            value = json.loads(value)
-                    elif column.col_type == dict and value is not None:
-                        if isinstance(value, str):
-                            value = json.loads(value)
+                    elif column.col_type == bytes:
+                        # bytes 需要特殊处理（base64 解码）
+                        if value:
+                            value = base64.b64decode(value)
+                    elif column.col_type in (datetime, date, timedelta, list, dict, int, float):
+                        # 使用 TypeRegistry 统一反序列化
+                        value = TypeRegistry.deserialize_from_text(value, column.col_type)
 
                     record[col_name] = value
 

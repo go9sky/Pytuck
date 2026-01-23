@@ -13,6 +13,7 @@ from .base import StorageBackend
 from ..connectors.sqlite_connector import SQLiteConnector
 from ..common.exceptions import SerializationError
 from .versions import get_format_version
+from ..core.types import TypeRegistry
 
 from ..common.options import SqliteBackendOptions
 
@@ -200,25 +201,26 @@ class SQLiteBackend(StorageBackend):
         record: Dict[str, Any],
         columns: Dict[str, Any]
     ) -> Dict[str, Any]:
-        """序列化记录以适应 SQLite 存储"""
+        """序列化记录以适应 SQLite 存储
+
+        注意：SQLite 原生支持 bytes (BLOB)，所以不需要 base64 编码
+        """
         from datetime import datetime, date, timedelta
 
         result: Dict[str, Any] = {}
         for key, value in record.items():
             if value is None:
                 result[key] = None
-            elif isinstance(value, timedelta):
-                # timedelta 转总秒数
-                result[key] = value.total_seconds()
-            elif isinstance(value, (list, dict)):
-                # list/dict 转 JSON 字符串
-                result[key] = json.dumps(value, ensure_ascii=False)
-            elif isinstance(value, datetime):
-                # datetime 转 ISO 格式字符串
-                result[key] = value.isoformat()
-            elif isinstance(value, date):
-                # date 转 ISO 格式字符串
-                result[key] = value.isoformat()
+            elif key in columns:
+                col_type = columns[key].col_type
+                if col_type == bytes:
+                    # SQLite 原生支持 BLOB，不需要编码
+                    result[key] = value
+                elif col_type in (datetime, date, timedelta, list, dict):
+                    # 使用 TypeRegistry 统一序列化
+                    result[key] = TypeRegistry.serialize_for_text(value, col_type)
+                else:
+                    result[key] = value
             else:
                 result[key] = value
         return result
@@ -241,21 +243,8 @@ class SQLiteBackend(StorageBackend):
         columns_data = json.loads(columns_json)
         columns = []
 
-        type_map = {
-            'int': int,
-            'str': str,
-            'float': float,
-            'bool': bool,
-            'bytes': bytes,
-            'datetime': datetime,
-            'date': date,
-            'timedelta': timedelta,
-            'list': list,
-            'dict': dict,
-        }
-
         for col_data in columns_data:
-            col_type = type_map.get(col_data['type'], str)
+            col_type = TypeRegistry.get_type_by_name(col_data['type'])
 
             column = Column(
                 col_data['name'],
@@ -284,19 +273,12 @@ class SQLiteBackend(StorageBackend):
                 if value is not None:
                     if column.col_type == bool and isinstance(value, int):
                         value = bool(value)
-                    elif column.col_type == datetime and isinstance(value, str):
-                        value = datetime.fromisoformat(value)
-                    elif column.col_type == date and isinstance(value, str):
-                        value = date.fromisoformat(value)
-                    elif column.col_type == timedelta:
-                        if isinstance(value, (int, float)):
-                            value = timedelta(seconds=float(value))
-                        elif isinstance(value, str):
-                            value = timedelta(seconds=float(value))
-                    elif column.col_type == list and isinstance(value, str):
-                        value = json.loads(value)
-                    elif column.col_type == dict and isinstance(value, str):
-                        value = json.loads(value)
+                    elif column.col_type == bytes:
+                        # SQLite 原生支持 BLOB，直接返回
+                        pass
+                    elif column.col_type in (datetime, date, timedelta, list, dict):
+                        # 使用 TypeRegistry 统一反序列化
+                        value = TypeRegistry.deserialize_from_text(value, column.col_type)
                 record[col_name] = value
 
             pk = record[primary_key]

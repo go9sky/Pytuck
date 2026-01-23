@@ -12,6 +12,7 @@ Pytuck - 所有存储引擎综合测试
 
 import sys
 import tempfile
+from datetime import datetime, date, timedelta, timezone
 from pathlib import Path
 from typing import Type
 
@@ -305,6 +306,141 @@ class TestAllEngines:
 
         session.close()
         db.close()
+
+    @pytest.mark.parametrize("engine_name,file_ext", ALL_ENGINES)
+    def test_engine_new_types_persistence(self, engine_name: str, file_ext: str, tmp_path: Path) -> None:
+        """
+        测试引擎的新类型（datetime, date, timedelta, list, dict）持久化
+
+        Args:
+            engine_name: 引擎名称
+            file_ext: 文件扩展名
+            tmp_path: pytest 提供的临时目录
+        """
+        if not is_engine_available(engine_name):
+            pytest.skip(get_skip_reason(engine_name))
+
+        db_file = tmp_path / f'test_newtypes_{engine_name}.{file_ext}'
+
+        # 1. 创建数据库
+        db = Storage(file_path=str(db_file), engine=engine_name)
+        Base: Type[PureBaseModel] = declarative_base(db)
+
+        class Task(Base):
+            __tablename__ = 'tasks'
+            id = Column('id', int, primary_key=True)
+            title = Column('title', str)
+            created_at = Column('created_at', datetime, nullable=True)
+            due_date = Column('due_date', date, nullable=True)
+            duration = Column('duration', timedelta, nullable=True)
+            tags = Column('tags', list, nullable=True)
+            options = Column('options', dict, nullable=True)
+
+        session = Session(db)
+
+        # 2. 准备测试数据
+        now = datetime(2024, 1, 15, 10, 30, 45, 123456)
+        today = date(2024, 1, 20)
+        duration = timedelta(hours=2, minutes=30, seconds=15)
+        tags = ['important', 'urgent', 'review']
+        options = {'priority': 1, 'notify': True, 'assignees': ['Alice', 'Bob']}
+
+        # 插入数据
+        stmt = insert(Task).values(
+            title='Test Task',
+            created_at=now,
+            due_date=today,
+            duration=duration,
+            tags=tags,
+            options=options
+        )
+        session.execute(stmt)
+
+        # 插入带 NULL 值的数据
+        stmt = insert(Task).values(
+            title='Empty Task',
+            created_at=None,
+            due_date=None,
+            duration=None,
+            tags=None,
+            options=None
+        )
+        session.execute(stmt)
+        session.commit()
+
+        # 3. 持久化
+        session.close()
+        db.close()
+
+        # 验证文件已创建
+        assert db_file.exists()
+
+        # 4. 重新加载测试
+        db2 = Storage(file_path=str(db_file), engine=engine_name)
+        Base2: Type[PureBaseModel] = declarative_base(db2)
+
+        class Task2(Base2):
+            __tablename__ = 'tasks'
+            id = Column('id', int, primary_key=True)
+            title = Column('title', str)
+            created_at = Column('created_at', datetime, nullable=True)
+            due_date = Column('due_date', date, nullable=True)
+            duration = Column('duration', timedelta, nullable=True)
+            tags = Column('tags', list, nullable=True)
+            options = Column('options', dict, nullable=True)
+
+        session2 = Session(db2)
+
+        # 5. 验证加载的数据
+        stmt = select(Task2).where(Task2.id == 1)
+        task1 = session2.execute(stmt).scalars().first()
+
+        assert task1 is not None
+        assert task1.title == 'Test Task'
+
+        # 验证 datetime
+        assert task1.created_at is not None
+        assert isinstance(task1.created_at, datetime)
+        assert task1.created_at.year == 2024
+        assert task1.created_at.month == 1
+        assert task1.created_at.day == 15
+        assert task1.created_at.hour == 10
+        assert task1.created_at.minute == 30
+
+        # 验证 date
+        assert task1.due_date is not None
+        assert isinstance(task1.due_date, date)
+        assert task1.due_date == today
+
+        # 验证 timedelta
+        assert task1.duration is not None
+        assert isinstance(task1.duration, timedelta)
+        assert task1.duration.total_seconds() == duration.total_seconds()
+
+        # 验证 list
+        assert task1.tags is not None
+        assert isinstance(task1.tags, list)
+        assert task1.tags == tags
+
+        # 验证 dict
+        assert task1.options is not None
+        assert isinstance(task1.options, dict)
+        assert task1.options == options
+
+        # 6. 验证 NULL 值
+        stmt = select(Task2).where(Task2.id == 2)
+        task2 = session2.execute(stmt).scalars().first()
+
+        assert task2 is not None
+        assert task2.title == 'Empty Task'
+        assert task2.created_at is None
+        assert task2.due_date is None
+        assert task2.duration is None
+        assert task2.tags is None
+        assert task2.options is None
+
+        session2.close()
+        db2.close()
 
 
 # 允许直接运行测试

@@ -13,8 +13,9 @@ from .base import StorageBackend
 from ..connectors.sqlite_connector import SQLiteConnector
 from ..common.exceptions import SerializationError
 from .versions import get_format_version
+from ..core.types import TypeRegistry
 
-from ..common.options import SqliteBackendOptions, SqliteConnectorOptions
+from ..common.options import SqliteBackendOptions
 
 if TYPE_CHECKING:
     from ..core.storage import Table
@@ -47,9 +48,8 @@ class SQLiteBackend(StorageBackend):
     def save(self, tables: Dict[str, 'Table']) -> None:
         """保存所有表数据到SQLite数据库"""
         try:
-            # 创建连接器，使用默认选项
-            connector_options = SqliteConnectorOptions()
-            connector = SQLiteConnector(str(self.file_path), connector_options)
+            # 创建连接器
+            connector = SQLiteConnector(str(self.file_path), self.options)
             with connector:
                 # 创建元数据表
                 self._ensure_metadata_tables(connector)
@@ -80,8 +80,7 @@ class SQLiteBackend(StorageBackend):
 
         try:
             # 创建连接器，使用默认选项
-            connector_options = SqliteConnectorOptions()
-            connector = SQLiteConnector(str(self.file_path), connector_options)
+            connector = SQLiteConnector(str(self.file_path), self.options)
             with connector:
                 # 检查是否是 Pytuck 格式
                 if not connector.table_exists('_pytuck_tables'):
@@ -190,8 +189,41 @@ class SQLiteBackend(StorageBackend):
         # 插入数据
         if len(table.data) > 0:
             columns = list(table.columns.keys())
-            records = list(table.data.values())
-            connector.insert_records(table_name, columns, records)
+            # 序列化记录中的特殊类型
+            serialized_records = []
+            for record in table.data.values():
+                serialized_record = self._serialize_record_for_sqlite(record, table.columns)
+                serialized_records.append(serialized_record)
+            connector.insert_records(table_name, columns, serialized_records)
+
+    def _serialize_record_for_sqlite(
+        self,
+        record: Dict[str, Any],
+        columns: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """序列化记录以适应 SQLite 存储
+
+        注意：SQLite 原生支持 bytes (BLOB)，所以不需要 base64 编码
+        """
+        from datetime import datetime, date, timedelta
+
+        result: Dict[str, Any] = {}
+        for key, value in record.items():
+            if value is None:
+                result[key] = None
+            elif key in columns:
+                col_type = columns[key].col_type
+                if col_type == bytes:
+                    # SQLite 原生支持 BLOB，不需要编码
+                    result[key] = value
+                elif col_type in (datetime, date, timedelta, list, dict):
+                    # 使用 TypeRegistry 统一序列化
+                    result[key] = TypeRegistry.serialize_for_text(value, col_type)
+                else:
+                    result[key] = value
+            else:
+                result[key] = value
+        return result
 
     def _load_table(
         self,
@@ -205,21 +237,14 @@ class SQLiteBackend(StorageBackend):
         """加载单个表"""
         from ..core.storage import Table
         from ..core.orm import Column
+        from datetime import datetime, date, timedelta
 
         # 重建列定义
         columns_data = json.loads(columns_json)
         columns = []
 
-        type_map = {
-            'int': int,
-            'str': str,
-            'float': float,
-            'bool': bool,
-            'bytes': bytes,
-        }
-
         for col_data in columns_data:
-            col_type = type_map.get(col_data['type'], str)
+            col_type = TypeRegistry.get_type_by_name(col_data['type'])
 
             column = Column(
                 col_data['name'],
@@ -243,10 +268,17 @@ class SQLiteBackend(StorageBackend):
         for row in rows:
             record = {}
             for col_name, value in zip(col_names, row):
-                # 处理 int -> bool
+                # 处理类型转换
                 column = table.columns[col_name]
-                if column.col_type == bool and isinstance(value, int):
-                    value = bool(value)
+                if value is not None:
+                    if column.col_type == bool and isinstance(value, int):
+                        value = bool(value)
+                    elif column.col_type == bytes:
+                        # SQLite 原生支持 BLOB，直接返回
+                        pass
+                    elif column.col_type in (datetime, date, timedelta, list, dict):
+                        # 使用 TypeRegistry 统一反序列化
+                        value = TypeRegistry.deserialize_from_text(value, column.col_type)
                 record[col_name] = value
 
             pk = record[primary_key]
@@ -278,8 +310,7 @@ class SQLiteBackend(StorageBackend):
             }
 
             # 创建连接器，使用默认选项
-            connector_options = SqliteConnectorOptions()
-            connector = SQLiteConnector(str(self.file_path), connector_options)
+            connector = SQLiteConnector(str(self.file_path), self.options)
             with connector:
                 try:
                     cursor = connector.execute(
@@ -344,8 +375,7 @@ class SQLiteBackend(StorageBackend):
 
         try:
             # 创建连接器
-            connector_options = SqliteConnectorOptions()
-            connector = SQLiteConnector(str(self.file_path), connector_options)
+            connector = SQLiteConnector(str(self.file_path), self.options)
 
             with connector:
                 # 检查表是否存在（不要添加反引号）

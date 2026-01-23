@@ -3,6 +3,7 @@ Pytuck 类型验证测试
 
 测试类型验证和转换功能：
 - 基本类型验证（int, str, float, bool, bytes）
+- 扩展类型验证（datetime, date, timedelta, list, dict）
 - 自动类型转换（宽松模式）
 - 严格模式（strict=True）
 - None 值处理
@@ -12,6 +13,7 @@ Pytuck 类型验证测试
 import os
 import sys
 import unittest
+from datetime import datetime, date, timedelta, timezone
 from typing import Type
 
 # 添加项目根目录到路径
@@ -360,6 +362,232 @@ class TestIntBoolSeparation(unittest.TestCase):
         data = self.Data(count=42, flag=True)
         self.assertTrue(data.flag)
         self.assertIsInstance(data.flag, bool)
+
+
+class TestDatetimeTypes(unittest.TestCase):
+    """datetime, date, timedelta 类型测试"""
+
+    def setUp(self) -> None:
+        """测试前设置"""
+        self.db = Storage(in_memory=True)
+        Base: Type[PureBaseModel] = declarative_base(self.db)
+
+        class Event(Base):
+            __tablename__ = 'events'
+            id = Column('id', int, primary_key=True)
+            created_at = Column('created_at', datetime, nullable=True)
+            event_date = Column('event_date', date, nullable=True)
+            duration = Column('duration', timedelta, nullable=True)
+
+        self.Event = Event
+        self.session = Session(self.db)
+
+    def tearDown(self) -> None:
+        """测试后清理"""
+        self.session.close()
+        self.db.close()
+
+    def test_datetime_accepts_datetime(self) -> None:
+        """测试 datetime 列接受 datetime 对象"""
+        now = datetime.now()
+        event = self.Event(created_at=now)
+        self.assertEqual(event.created_at, now)
+        self.assertIsInstance(event.created_at, datetime)
+
+    def test_datetime_with_timezone(self) -> None:
+        """测试 datetime 支持时区"""
+        tz_aware = datetime(2024, 1, 15, 10, 30, 0, tzinfo=timezone.utc)
+        event = self.Event(created_at=tz_aware)
+        self.assertEqual(event.created_at, tz_aware)
+        self.assertIsNotNone(event.created_at.tzinfo)
+
+    def test_datetime_from_iso_string(self) -> None:
+        """测试 datetime 从 ISO 字符串转换"""
+        event = self.Event(created_at='2024-01-15T10:30:00')
+        self.assertIsInstance(event.created_at, datetime)
+        self.assertEqual(event.created_at.year, 2024)
+        self.assertEqual(event.created_at.month, 1)
+        self.assertEqual(event.created_at.day, 15)
+        self.assertEqual(event.created_at.hour, 10)
+        self.assertEqual(event.created_at.minute, 30)
+
+    def test_datetime_from_iso_string_with_timezone(self) -> None:
+        """测试 datetime 从带时区的 ISO 字符串转换"""
+        event = self.Event(created_at='2024-01-15T10:30:00+08:00')
+        self.assertIsInstance(event.created_at, datetime)
+        self.assertIsNotNone(event.created_at.tzinfo)
+
+    def test_date_accepts_date(self) -> None:
+        """测试 date 列接受 date 对象"""
+        today = date.today()
+        event = self.Event(event_date=today)
+        self.assertEqual(event.event_date, today)
+        self.assertIsInstance(event.event_date, date)
+
+    def test_date_from_iso_string(self) -> None:
+        """测试 date 从 ISO 字符串转换"""
+        event = self.Event(event_date='2024-01-15')
+        self.assertIsInstance(event.event_date, date)
+        self.assertEqual(event.event_date.year, 2024)
+        self.assertEqual(event.event_date.month, 1)
+        self.assertEqual(event.event_date.day, 15)
+
+    def test_timedelta_accepts_timedelta(self) -> None:
+        """测试 timedelta 列接受 timedelta 对象"""
+        duration = timedelta(hours=2, minutes=30)
+        event = self.Event(duration=duration)
+        self.assertEqual(event.duration, duration)
+        self.assertIsInstance(event.duration, timedelta)
+
+    def test_timedelta_from_int_seconds(self) -> None:
+        """测试 timedelta 从整数（秒）转换"""
+        event = self.Event(duration=3600)  # 1 hour
+        self.assertIsInstance(event.duration, timedelta)
+        self.assertEqual(event.duration.total_seconds(), 3600)
+
+    def test_timedelta_from_float_seconds(self) -> None:
+        """测试 timedelta 从浮点数（秒）转换"""
+        event = self.Event(duration=3661.5)  # 1 hour, 1 minute, 1.5 seconds
+        self.assertIsInstance(event.duration, timedelta)
+        self.assertEqual(event.duration.total_seconds(), 3661.5)
+
+    def test_null_datetime_types(self) -> None:
+        """测试 datetime 类型 NULL 值"""
+        event = self.Event(created_at=None, event_date=None, duration=None)
+        self.assertIsNone(event.created_at)
+        self.assertIsNone(event.event_date)
+        self.assertIsNone(event.duration)
+
+
+class TestListDictTypes(unittest.TestCase):
+    """list 和 dict 类型测试"""
+
+    def setUp(self) -> None:
+        """测试前设置"""
+        self.db = Storage(in_memory=True)
+        Base: Type[PureBaseModel] = declarative_base(self.db)
+
+        class Document(Base):
+            __tablename__ = 'documents'
+            id = Column('id', int, primary_key=True)
+            tags = Column('tags', list, nullable=True)
+            metadata = Column('metadata', dict, nullable=True)
+
+        self.Document = Document
+        self.session = Session(self.db)
+
+    def tearDown(self) -> None:
+        """测试后清理"""
+        self.session.close()
+        self.db.close()
+
+    def test_list_accepts_list(self) -> None:
+        """测试 list 列接受 list 对象"""
+        tags = ['python', 'database', 'orm']
+        doc = self.Document(tags=tags)
+        self.assertEqual(doc.tags, tags)
+        self.assertIsInstance(doc.tags, list)
+
+    def test_list_with_nested_data(self) -> None:
+        """测试 list 支持嵌套数据"""
+        nested = [[1, 2], [3, 4], {'key': 'value'}]
+        doc = self.Document(tags=nested)
+        self.assertEqual(doc.tags, nested)
+
+    def test_list_from_tuple(self) -> None:
+        """测试 list 从 tuple 转换"""
+        doc = self.Document(tags=('a', 'b', 'c'))
+        self.assertIsInstance(doc.tags, list)
+        self.assertEqual(doc.tags, ['a', 'b', 'c'])
+
+    def test_list_from_json_string(self) -> None:
+        """测试 list 从 JSON 字符串转换"""
+        doc = self.Document(tags='["x", "y", "z"]')
+        self.assertIsInstance(doc.tags, list)
+        self.assertEqual(doc.tags, ['x', 'y', 'z'])
+
+    def test_dict_accepts_dict(self) -> None:
+        """测试 dict 列接受 dict 对象"""
+        meta = {'author': 'Alice', 'version': 1.0}
+        doc = self.Document(metadata=meta)
+        self.assertEqual(doc.metadata, meta)
+        self.assertIsInstance(doc.metadata, dict)
+
+    def test_dict_with_nested_data(self) -> None:
+        """测试 dict 支持嵌套数据"""
+        nested = {'level1': {'level2': {'level3': 'value'}}}
+        doc = self.Document(metadata=nested)
+        self.assertEqual(doc.metadata, nested)
+
+    def test_dict_from_json_string(self) -> None:
+        """测试 dict 从 JSON 字符串转换"""
+        doc = self.Document(metadata='{"key": "value"}')
+        self.assertIsInstance(doc.metadata, dict)
+        self.assertEqual(doc.metadata, {'key': 'value'})
+
+    def test_null_list_dict_types(self) -> None:
+        """测试 list/dict 类型 NULL 值"""
+        doc = self.Document(tags=None, metadata=None)
+        self.assertIsNone(doc.tags)
+        self.assertIsNone(doc.metadata)
+
+
+class TestDatetimeTypePersistence(unittest.TestCase):
+    """datetime 类型持久化测试"""
+
+    def setUp(self) -> None:
+        """测试前设置"""
+        self.db = Storage(in_memory=True)
+        Base: Type[PureBaseModel] = declarative_base(self.db)
+
+        class Task(Base):
+            __tablename__ = 'tasks'
+            id = Column('id', int, primary_key=True)
+            title = Column('title', str)
+            created_at = Column('created_at', datetime, nullable=True)
+            due_date = Column('due_date', date, nullable=True)
+            duration = Column('duration', timedelta, nullable=True)
+            tags = Column('tags', list, nullable=True)
+            options = Column('options', dict, nullable=True)
+
+        self.Task = Task
+        self.session = Session(self.db)
+
+    def tearDown(self) -> None:
+        """测试后清理"""
+        self.session.close()
+        self.db.close()
+
+    def test_insert_and_query_new_types(self) -> None:
+        """测试新类型的插入和查询"""
+        now = datetime.now()
+        today = date.today()
+        duration = timedelta(hours=2)
+        tags = ['important', 'urgent']
+        options = {'priority': 1, 'notify': True}
+
+        stmt = insert(self.Task).values(
+            title='Test Task',
+            created_at=now,
+            due_date=today,
+            duration=duration,
+            tags=tags,
+            options=options
+        )
+        result = self.session.execute(stmt)
+        self.session.commit()
+
+        # 查询验证
+        stmt = select(self.Task).where(self.Task.id == result.inserted_primary_key)
+        task = self.session.execute(stmt).scalars().first()
+
+        self.assertIsNotNone(task)
+        self.assertEqual(task.title, 'Test Task')
+        self.assertEqual(task.created_at, now)
+        self.assertEqual(task.due_date, today)
+        self.assertEqual(task.duration, duration)
+        self.assertEqual(task.tags, tags)
+        self.assertEqual(task.options, options)
 
 
 if __name__ == '__main__':

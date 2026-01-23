@@ -7,7 +7,7 @@
 
 # 各引擎的当前格式版本
 ENGINE_FORMAT_VERSIONS = {
-    'binary': 2,   # v2: 统一元数据结构 + 添加表和列 comment 支持
+    'binary': 4,   # v4: WAL + 双Header + 增量写入
     'csv': 2,      # v2: 统一元数据结构 + 添加表和列 comment 支持
     'excel': 2,    # v2: 统一元数据结构 + 添加表和列 comment 支持
     'json': 2,     # v2: 添加表和列 comment 支持

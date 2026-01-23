@@ -6,7 +6,6 @@ Pytuck CSV存储引擎
 
 import csv
 import json
-import base64
 import io
 import zipfile
 from pathlib import Path
@@ -15,6 +14,7 @@ from datetime import datetime
 from .base import StorageBackend
 from ..common.exceptions import SerializationError
 from .versions import get_format_version
+from ..core.types import TypeRegistry
 
 from ..common.options import CsvBackendOptions
 
@@ -144,7 +144,7 @@ class CSVBackend(StorageBackend):
 
         if len(table.data) > 0:
             fieldnames = list(table.columns.keys())
-            writer = csv.DictWriter(csv_buffer, fieldnames=fieldnames)
+            writer = csv.DictWriter(csv_buffer, fieldnames=fieldnames, delimiter=self.options.delimiter)
             writer.writeheader()
 
             for record in table.data.values():
@@ -166,16 +166,9 @@ class CSVBackend(StorageBackend):
 
         # 重建列定义
         columns = []
-        type_map = {
-            'int': int,
-            'str': str,
-            'float': float,
-            'bool': bool,
-            'bytes': bytes,
-        }
 
         for col_data in schema.get('columns', []):
-            col_type = type_map.get(col_data['type'], str)
+            col_type = TypeRegistry.get_type_by_name(col_data['type'])
             column = Column(
                 col_data['name'],
                 col_type,
@@ -197,11 +190,9 @@ class CSVBackend(StorageBackend):
 
         # 加载 CSV 数据
         with zf.open(csv_file) as f:
-            encoding = 'utf-8'
-            if hasattr(self.options, 'encoding'):
-                encoding = self.options.encoding  # type: ignore
+            encoding = self.options.encoding
             text_stream = io.TextIOWrapper(f, encoding=encoding)
-            reader = csv.DictReader(text_stream)
+            reader = csv.DictReader(text_stream, delimiter=self.options.delimiter)
 
             for row_data in reader:
                 record = self._deserialize_record(row_data, table.columns)
@@ -221,16 +212,20 @@ class CSVBackend(StorageBackend):
         """序列化记录（处理特殊类型）"""
         result = {}
         for key, value in record.items():
+            if key not in columns:
+                result[key] = str(value) if value is not None else ''
+                continue
+
+            column = columns[key]
             if value is None:
                 result[key] = ''
-            elif isinstance(value, bytes):
-                # bytes 转 base64
-                result[key] = base64.b64encode(value).decode('ascii')
-            elif isinstance(value, bool):
-                # bool 转字符串
+            elif column.col_type == bool:
+                # bool 转字符串（CSV 特殊处理）
                 result[key] = 'true' if value else 'false'
             else:
-                result[key] = str(value) if value is not None else ''
+                # 使用 TypeRegistry 统一序列化
+                serialized = TypeRegistry.serialize_for_text(value, column.col_type)
+                result[key] = str(serialized) if serialized is not None else ''
         return result
 
     def _deserialize_record(self, record_data: Dict[str, str], columns: Dict[str, 'Column']) -> Dict[str, Any]:
@@ -245,18 +240,9 @@ class CSVBackend(StorageBackend):
             # 处理空值
             if value == '' or value is None:
                 result[key] = None
-            # 根据类型转换
-            elif column.col_type == int:
-                result[key] = int(value)
-            elif column.col_type == float:
-                result[key] = float(value)
-            elif column.col_type == bool:
-                result[key] = (value.lower() == 'true')
-            elif column.col_type == bytes:
-                # base64 解码
-                result[key] = base64.b64decode(value)
-            else:  # str
-                result[key] = value
+            else:
+                # 使用 TypeRegistry 统一反序列化
+                result[key] = TypeRegistry.deserialize_from_text(value, column.col_type)
 
         return result
 

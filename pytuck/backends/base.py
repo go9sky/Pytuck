@@ -158,13 +158,15 @@ class StorageBackend(ABC):
         """
         return False
 
-    def query_with_pagination(self,
-                             table_name: str,
-                             conditions: List[Dict[str, Any]],
-                             limit: Optional[int] = None,
-                             offset: int = 0,
-                             order_by: Optional[str] = None,
-                             order_desc: bool = False) -> Dict[str, Any]:
+    def query_with_pagination(
+            self,
+            table_name: str,
+            conditions: List[Dict[str, Any]],
+            limit: Optional[int] = None,
+            offset: int = 0,
+            order_by: Optional[str] = None,
+            order_desc: bool = False
+    ) -> Dict[str, Any]:
         """
         带分页的查询（可选实现，用于数据库后端优化）
 

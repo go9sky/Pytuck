@@ -10,13 +10,13 @@ Pytuck ORM 模块测试
 """
 import os
 import sys
-import tempfile
 import unittest
 from typing import Type
 
 # 添加项目根目录到路径
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from examples._common import mktemp_dir_project
 from pytuck import (
     Storage, Session, Column, Relationship,
     declarative_base, PureBaseModel, CRUDBaseModel,
@@ -78,7 +78,7 @@ class TestDeclarativeBase(unittest.TestCase):
 
     def setUp(self):
         """设置测试环境"""
-        self.temp_dir = tempfile.mkdtemp()
+        self.temp_dir = mktemp_dir_project()
         self.db_path = os.path.join(self.temp_dir, 'test.db')
         self.db = Storage(file_path=self.db_path)
 
@@ -182,7 +182,7 @@ class TestPureBaseModel(unittest.TestCase):
 
     def setUp(self):
         """设置测试环境"""
-        self.temp_dir = tempfile.mkdtemp()
+        self.temp_dir = mktemp_dir_project()
         self.db_path = os.path.join(self.temp_dir, 'test.db')
         self.db = Storage(file_path=self.db_path)
 
@@ -259,7 +259,7 @@ class TestCRUDBaseModel(unittest.TestCase):
 
     def setUp(self):
         """设置测试环境"""
-        self.temp_dir = tempfile.mkdtemp()
+        self.temp_dir = mktemp_dir_project()
         self.db_path = os.path.join(self.temp_dir, 'test.db')
         self.db = Storage(file_path=self.db_path)
 
@@ -411,7 +411,7 @@ class TestMultipleEngines(unittest.TestCase):
 
     def _test_engine(self, engine: str, file_ext: str):
         """测试单个引擎"""
-        temp_dir = tempfile.mkdtemp()
+        temp_dir = mktemp_dir_project()
         db_path = os.path.join(temp_dir, f'test.{file_ext}')
 
         try:
@@ -480,7 +480,7 @@ class TestTypeAnnotations(unittest.TestCase):
 
     def setUp(self):
         """设置测试环境"""
-        self.temp_dir = tempfile.mkdtemp()
+        self.temp_dir = mktemp_dir_project()
         self.db_path = os.path.join(self.temp_dir, 'test.db')
         self.db = Storage(file_path=self.db_path)
 

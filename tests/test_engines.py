@@ -12,13 +12,13 @@ Pytuck 多存储引擎测试
 
 import os
 import sys
-import tempfile
 import unittest
 from typing import Type, Dict, Any
 
 # 添加项目根目录到路径
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from examples._common import get_project_temp_dir
 from pytuck import Storage, declarative_base, Session, Column, PureBaseModel, select, insert, update, delete
 from pytuck.backends import BackendRegistry
 
@@ -40,7 +40,7 @@ class BaseEngineTest(unittest.TestCase):
     def setUp(self) -> None:
         """测试前设置"""
         # 创建临时文件
-        self.temp_dir = tempfile.gettempdir()
+        self.temp_dir = get_project_temp_dir()
         self.db_file = os.path.join(self.temp_dir, f'test_{self.engine_name}.{self.file_extension}')
 
         # 清理旧文件

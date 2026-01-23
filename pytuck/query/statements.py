@@ -225,10 +225,14 @@ class Update(Statement[T]):
 
         table_name = self.model_class.__tablename__
         assert table_name is not None, f"Model {self.model_class.__name__} must have __tablename__ defined"
-        conditions = [expr.to_condition() for expr in self._where_clauses]
+        pk_name = self.model_class.__primary_key__
 
-        # 查询符合条件的记录
-        records = storage.query(table_name, conditions)
+        # 优化：检测主键等于查询，直接访问而非全表扫描
+        pk_value = None
+        if len(self._where_clauses) == 1:
+            expr = self._where_clauses[0]
+            if expr.column.name == pk_name and expr.operator in ('=', '=='):
+                pk_value = expr.value
 
         # 验证值
         validated_values: Dict[str, Any] = {}
@@ -237,15 +241,25 @@ class Update(Statement[T]):
                 column = self.model_class.__columns__[col_name]
                 validated_values[col_name] = column.validate(value)
 
-        # 更新每条记录
-        pk_name = self.model_class.__primary_key__
-        count = 0
-        for record in records:
-            pk = record[pk_name]
-            storage.update(table_name, pk, validated_values)
-            count += 1
+        if pk_value is not None:
+            # 主键直接查询（O(1)）
+            try:
+                storage.update(table_name, pk_value, validated_values)
+                return 1
+            except Exception:
+                return 0
+        else:
+            # 条件查询
+            conditions = [expr.to_condition() for expr in self._where_clauses]
+            records = storage.query(table_name, conditions)
 
-        return count
+            count = 0
+            for record in records:
+                pk = record[pk_name]
+                storage.update(table_name, pk, validated_values)
+                count += 1
+
+            return count
 
 
 class Delete(Statement[T]):
@@ -277,20 +291,34 @@ class Delete(Statement[T]):
 
         table_name = self.model_class.__tablename__
         assert table_name is not None, f"Model {self.model_class.__name__} must have __tablename__ defined"
-        conditions = [expr.to_condition() for expr in self._where_clauses]
-
-        # 查询符合条件的记录
-        records = storage.query(table_name, conditions)
-
-        # 删除每条记录
         pk_name = self.model_class.__primary_key__
-        count = 0
-        for record in records:
-            pk = record[pk_name]
-            storage.delete(table_name, pk)
-            count += 1
 
-        return count
+        # 优化：检测主键等于查询，直接访问而非全表扫描
+        pk_value = None
+        if len(self._where_clauses) == 1:
+            expr = self._where_clauses[0]
+            if expr.column.name == pk_name and expr.operator in ('=', '=='):
+                pk_value = expr.value
+
+        if pk_value is not None:
+            # 主键直接删除（O(1)）
+            try:
+                storage.delete(table_name, pk_value)
+                return 1
+            except Exception:
+                return 0
+        else:
+            # 条件查询
+            conditions = [expr.to_condition() for expr in self._where_clauses]
+            records = storage.query(table_name, conditions)
+
+            count = 0
+            for record in records:
+                pk = record[pk_name]
+                storage.delete(table_name, pk)
+                count += 1
+
+            return count
 
 
 # ==================== 顶层工厂函数 ====================

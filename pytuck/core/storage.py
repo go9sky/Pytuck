@@ -5,6 +5,7 @@ Pytuck 存储引擎
 """
 
 import copy
+from pathlib import Path
 from typing import Any, Dict, List, Iterator, Tuple, Optional, Generator, TYPE_CHECKING
 from contextlib import contextmanager
 
@@ -22,6 +23,7 @@ from ..common.exceptions import (
 
 if TYPE_CHECKING:
     from ..backends.base import StorageBackend
+    from ..backends.binary import BinaryBackend
 
 
 class TransactionSnapshot:
@@ -91,6 +93,12 @@ class Table:
         self.data: Dict[Any, Dict[str, Any]] = {}  # {pk: record}
         self.indexes: Dict[str, HashIndex] = {}  # {column_name: HashIndex}
         self.next_id = 1
+
+        # 懒加载支持
+        self._pk_offsets: Optional[Dict[Any, int]] = None  # {pk: file_offset}
+        self._data_file: Optional[Path] = None  # 数据文件路径
+        self._backend: Optional[Any] = None  # Binary 后端引用（用于读取记录）
+        self._lazy_loaded: bool = False  # 是否为懒加载模式
 
         # 自动为标记了index的列创建索引
         for col in columns:
@@ -212,7 +220,7 @@ class Table:
 
     def get(self, pk: Any) -> Dict[str, Any]:
         """
-        获取记录
+        获取记录（支持懒加载）
 
         Args:
             pk: 主键值
@@ -223,10 +231,42 @@ class Table:
         Raises:
             RecordNotFoundError: 记录不存在
         """
-        if pk not in self.data:
+        # 已加载的数据直接返回
+        if pk in self.data:
+            return self.data[pk].copy()
+
+        # 懒加载模式：从文件读取
+        if self._lazy_loaded and self._pk_offsets is not None:
+            if pk not in self._pk_offsets:
+                raise RecordNotFoundError(self.name, pk)
+
+            # 从文件读取记录
+            record = self._read_record_from_file(pk)
+            return record
+
+        raise RecordNotFoundError(self.name, pk)
+
+    def _read_record_from_file(self, pk: Any) -> Dict[str, Any]:
+        """
+        从文件读取单条记录（懒加载模式）
+
+        Args:
+            pk: 主键值
+
+        Returns:
+            记录字典
+        """
+        if self._backend is None or self._pk_offsets is None:
             raise RecordNotFoundError(self.name, pk)
 
-        return self.data[pk].copy()
+        offset = self._pk_offsets[pk]
+
+        with open(self._data_file, 'rb') as f:
+            f.seek(offset)
+            # 使用 backend 的 _read_record 方法读取记录
+            _, record = self._backend._read_record(f, self.columns)
+
+        return record
 
     def scan(self) -> Iterator[Tuple[Any, Dict[str, Any]]]:
         """
@@ -277,9 +317,9 @@ class Storage:
         self,
         file_path: Optional[str] = None,
         in_memory: bool = False,
-        engine: str = 'binary',  # 新增：引擎选择
-        auto_flush: bool = False,  # 新增：自动刷新
-        backend_options: Optional[BackendOptions] = None  # 新增：强类型后端选项
+        engine: str = 'binary',
+        auto_flush: bool = False,
+        backend_options: Optional[BackendOptions] = None,
     ):
         """
         初始化存储引擎
@@ -292,11 +332,10 @@ class Storage:
             backend_options: 强类型的后端配置选项对象（JsonBackendOptions, CsvBackendOptions等）
         """
         self.file_path = file_path
-        self.in_memory = in_memory or (file_path is None)
+        self.in_memory: bool = in_memory or (file_path is None)
         self.engine_name = engine
         self.auto_flush = auto_flush
         self.tables: Dict[str, Table] = {}
-        self.current_transaction = None
         self._dirty = False
 
         # 事务管理属性
@@ -304,8 +343,13 @@ class Storage:
         self._transaction_snapshot: Optional[TransactionSnapshot] = None
         self._transaction_dirty_flag: bool = False
 
+        # WAL 相关属性
+        self._use_wal: bool = False  # 是否启用 WAL 模式
+        self._wal_threshold: int = 1000  # WAL 条目数阈值，超过则自动 checkpoint
+        self._wal_entry_count: int = 0  # 当前 WAL 条目数
+
         # 初始化后端
-        self.backend = None
+        self.backend: Optional[StorageBackend] = None
         if not self.in_memory and file_path:
             # 如果没有提供选项，使用默认选项
             if backend_options is None:
@@ -319,6 +363,10 @@ class Storage:
             if self.backend.exists():
                 self.tables = self.backend.load()
                 self._dirty = False
+
+                # 对于 binary 引擎，检查是否为 v4 格式并回放 WAL
+                if engine == 'binary':
+                    self._init_wal_mode()
 
     def create_table(
         self,
@@ -343,10 +391,17 @@ class Storage:
 
         # 查找主键
         primary_key = 'id'
+        has_pk_column = False
         for col in columns:
             if col.primary_key:
                 primary_key = col.name
+                has_pk_column = True
                 break
+
+        # 如果没有定义主键列，自动添加默认的 id 列
+        if not has_pk_column:
+            id_column = Column('id', int, primary_key=True)
+            columns = [id_column] + list(columns)
 
         table = Table(name, columns, primary_key, comment)
         self.tables[name] = table
@@ -407,8 +462,13 @@ class Storage:
         pk = table.insert(data)
         self._dirty = True
 
-        # 自动刷新到磁盘（如果启用）
-        if self.auto_flush:
+        # 使用 WAL 模式时，写入 WAL
+        if self._use_wal:
+            # 获取完整记录（包含自动生成的主键）
+            record = table.data.get(pk, data)
+            self._write_wal(1, table_name, pk, record, table.columns)  # 1 = INSERT
+        elif self.auto_flush:
+            # 非 WAL 模式：自动刷新到磁盘（如果启用）
             self.flush()
 
         return pk
@@ -426,7 +486,13 @@ class Storage:
         table.update(pk, data)
         self._dirty = True
 
-        if self.auto_flush:
+        # 使用 WAL 模式时，写入 WAL
+        if self._use_wal:
+            # 获取更新后的完整记录
+            record = table.data.get(pk)
+            if record:
+                self._write_wal(2, table_name, pk, record, table.columns)  # 2 = UPDATE
+        elif self.auto_flush:
             self.flush()
 
     def delete(self, table_name: str, pk: Any) -> None:
@@ -438,10 +504,17 @@ class Storage:
             pk: 主键值
         """
         table = self.get_table(table_name)
+
+        # 先记录列信息（WAL 需要）
+        columns = table.columns if self._use_wal else None
+
         table.delete(pk)
         self._dirty = True
 
-        if self.auto_flush:
+        # 使用 WAL 模式时，写入 WAL
+        if self._use_wal and columns:
+            self._write_wal(3, table_name, pk)  # 3 = DELETE
+        elif self.auto_flush:
             self.flush()
 
     def select(self, table_name: str, pk: Any) -> Dict[str, Any]:
@@ -481,8 +554,9 @@ class Storage:
         """
         table = self.get_table(table_name)
 
-        # 优化：使用索引
+        # 优化：使用多索引联合查询（取所有匹配索引结果的交集）
         candidate_pks = None
+        remaining_conditions = []
 
         for condition in conditions:
             if condition.operator == '=' and condition.field in table.indexes:
@@ -493,22 +567,24 @@ class Storage:
                 if candidate_pks is None:
                     candidate_pks = pks
                 else:
-                    # 取交集
+                    # 取交集，缩小候选集
                     candidate_pks = candidate_pks.intersection(pks)
+            else:
+                # 无索引的条件保留后续过滤
+                remaining_conditions.append(condition)
 
-                break  # 只使用一个索引（简化实现）
-
-        # 如果没有使用索引，全表扫描
+        # 如果没有使用索引，全表扫描（需要评估所有条件）
         if candidate_pks is None:
             candidate_pks = set(table.data.keys())
+            remaining_conditions = conditions  # 没有索引时，所有条件都需要评估
 
-        # 过滤记录
+        # 过滤记录（只需评估未使用索引的条件）
         results = []
         for pk in candidate_pks:
             if pk in table.data:
                 record = table.data[pk]
-                # 评估所有条件
-                if all(cond.evaluate(record) for cond in conditions):
+                # 评估剩余条件（索引已匹配的条件无需再次评估）
+                if all(cond.evaluate(record) for cond in remaining_conditions):
                     results.append(record.copy())
 
         # 排序
@@ -566,9 +642,7 @@ class Storage:
         table = self.get_table(table_name)
 
         # 尝试使用后端分页（如果支持）
-        if (self.backend and
-            hasattr(self.backend, 'supports_server_side_pagination') and
-            self.backend.supports_server_side_pagination()):
+        if self.backend and self.backend.supports_server_side_pagination():
 
             # 转换过滤条件为简化格式
             conditions = []
@@ -690,11 +764,98 @@ class Storage:
             self._transaction_snapshot = None
             self._in_transaction = False
 
+    def _init_wal_mode(self) -> None:
+        """
+        初始化 WAL 模式
+
+        检查是否为 v4 格式的 binary 文件，如果是则启用 WAL 模式并回放未提交的 WAL。
+        """
+        from ..backends.binary import BinaryBackend
+
+        if not isinstance(self.backend, BinaryBackend):
+            return
+
+        backend: 'BinaryBackend' = self.backend
+
+        # 检查是否有活跃的 v4 header
+        if backend._active_header is not None:
+            self._use_wal = True
+
+            # 回放未提交的 WAL
+            if backend.has_pending_wal():
+                count = backend.replay_wal(self.tables)
+                if count > 0:
+                    self._dirty = True
+
+    def _get_binary_backend(self) -> Optional['BinaryBackend']:
+        """获取 binary 后端（如果是的话）"""
+        from ..backends.binary import BinaryBackend
+
+        if isinstance(self.backend, BinaryBackend):
+            return self.backend
+        return None
+
+    def _write_wal(
+        self,
+        op_type: int,
+        table_name: str,
+        pk: Any,
+        record: Optional[Dict[str, Any]] = None,
+        columns: Optional[Dict[str, 'Column']] = None
+    ) -> bool:
+        """
+        写入 WAL 条目
+
+        Args:
+            op_type: 操作类型 (1=INSERT, 2=UPDATE, 3=DELETE)
+            table_name: 表名
+            pk: 主键值
+            record: 记录数据
+            columns: 列定义
+
+        Returns:
+            是否成功写入 WAL
+        """
+        if not self._use_wal:
+            return False
+
+        backend = self._get_binary_backend()
+        if backend is None:
+            return False
+
+        from ..backends.binary import WALOpType
+
+        # 转换操作类型
+        wal_op = WALOpType(op_type)
+
+        # 写入 WAL
+        backend.append_wal_entry(wal_op, table_name, pk, record, columns)
+        self._wal_entry_count += 1
+
+        # 检查是否需要自动 checkpoint
+        if self._wal_entry_count >= self._wal_threshold:
+            self._checkpoint()
+
+        return True
+
+    def _checkpoint(self) -> None:
+        """执行 checkpoint，将内存数据写入磁盘并清空 WAL"""
+        if self.backend:
+            self.backend.save(self.tables)
+            self._wal_entry_count = 0
+            self._dirty = False
+
     def flush(self) -> None:
         """强制写入磁盘"""
         if self.backend and self._dirty:
             self.backend.save(self.tables)
             self._dirty = False
+            # 重置 WAL 计数器（checkpoint 会清空 WAL）
+            self._wal_entry_count = 0
+
+            # 首次保存 binary 引擎后，启用 WAL 模式
+            if self.engine_name == 'binary' and not self._use_wal:
+                self._init_wal_mode()
 
     def close(self) -> None:
         """关闭数据库"""

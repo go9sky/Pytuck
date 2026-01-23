@@ -7,13 +7,12 @@ Pytuck - 后端配置选项演示
 
 import os
 import sys
-import tempfile
 from typing import Type
 
 # 添加父目录到路径
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from examples.common import get_project_temp_dir
+from examples._common import get_project_temp_dir
 
 from pytuck import Storage, declarative_base, Session, Column, PureBaseModel
 from pytuck import select, insert
@@ -217,7 +216,7 @@ def demo_csv_options():
     print("="*50)
 
     # 创建临时文件
-    temp_dir = tempfile.gettempdir()
+    temp_dir = get_project_temp_dir()
     csv_file = os.path.join(temp_dir, 'demo_csv_options.zip')
 
     # 清理旧文件
@@ -272,7 +271,7 @@ def demo_sqlite_options():
     print("="*50)
 
     # 创建临时文件
-    temp_dir = tempfile.gettempdir()
+    temp_dir = get_project_temp_dir()
     sqlite_file = os.path.join(temp_dir, 'demo_sqlite_options.sqlite')
 
     # 清理旧文件
@@ -327,7 +326,7 @@ def demo_binary_default():
     print("="*50)
 
     # 创建临时文件
-    temp_dir = tempfile.gettempdir()
+    temp_dir = get_project_temp_dir()
     binary_file = os.path.join(temp_dir, 'demo_binary_default.db')
 
     # 清理旧文件
@@ -381,7 +380,7 @@ def demo_without_options():
     print("="*50)
 
     # 创建临时文件
-    temp_dir = tempfile.gettempdir()
+    temp_dir = get_project_temp_dir()
     default_file = os.path.join(temp_dir, 'demo_default.json')
 
     # 清理旧文件

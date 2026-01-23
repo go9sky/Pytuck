@@ -7,7 +7,6 @@ from typing import Any
 
 class PytuckException(Exception):
     """Pytuck 基础异常类"""
-    pass
 
 
 class TableNotFoundError(PytuckException):
@@ -35,17 +34,14 @@ class DuplicateKeyError(PytuckException):
 
 class TransactionError(PytuckException):
     """事务异常"""
-    pass
 
 
 class SerializationError(PytuckException):
     """序列化/反序列化异常"""
-    pass
 
 
 class ValidationError(PytuckException):
     """数据验证异常"""
-    pass
 
 
 class ColumnNotFoundError(PytuckException):
@@ -56,11 +52,13 @@ class ColumnNotFoundError(PytuckException):
         super().__init__(f"Column '{column_name}' not found in table '{table_name}'")
 
 
-class IndexError(PytuckException):
+class PytuckIndexError(PytuckException):
     """索引异常"""
-    pass
 
 
 class MigrationError(PytuckException):
     """数据迁移异常"""
-    pass
+
+
+class EncryptionError(PytuckException):
+    """加密/解密异常"""

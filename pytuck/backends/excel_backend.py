@@ -12,6 +12,7 @@ from datetime import datetime
 from .base import StorageBackend
 from ..common.exceptions import SerializationError
 from .versions import get_format_version
+from ..core.types import TypeRegistry
 
 from ..common.options import ExcelBackendOptions
 
@@ -42,6 +43,8 @@ class ExcelBackend(StorageBackend):
 
     def save(self, tables: Dict[str, 'Table']) -> None:
         """保存所有表数据到Excel工作簿"""
+        if self.options.read_only:
+            raise SerializationError("Excel backend does not support read-only mode")
         try:
             from openpyxl import Workbook
         except ImportError:
@@ -108,7 +111,9 @@ class ExcelBackend(StorageBackend):
             raise SerializationError("openpyxl is required for Excel backend. Install with: pip install pytuck[excel]")
 
         try:
-            wb = load_workbook(str(self.file_path))
+            wb = load_workbook(
+                filename=str(self.file_path), read_only=self.options.read_only, data_only=True, keep_links=False
+            )
 
             # 从 _pytuck_tables 工作表读取所有表的 schema
             tables_schema: Dict[str, Dict[str, Any]] = {}
@@ -158,6 +163,9 @@ class ExcelBackend(StorageBackend):
 
         # 写入表头
         columns = list(table.columns.keys())
+        # 确保主键列在列表中
+        if table.primary_key not in columns:
+            columns.insert(0, table.primary_key)
         data_sheet.append(columns)
 
         # 写入数据行
@@ -165,15 +173,18 @@ class ExcelBackend(StorageBackend):
             row = []
             for col_name in columns:
                 value = record.get(col_name)
-                # 处理特殊类型
-                if isinstance(value, bytes):
-                    value = base64.b64encode(value).decode('ascii')
-                elif value is None:
-                    value = ''
-                elif isinstance(value, bool):
-                    # Excel会将bool自动转换，这里用字符串明确表示
-                    value = 'TRUE' if value else 'FALSE'
-                row.append(value)
+                column = table.columns.get(col_name)
+
+                if value is None:
+                    row.append('')
+                elif column and column.col_type == bool:
+                    # Excel 特殊处理：bool 转字符串 'TRUE'/'FALSE'
+                    row.append('TRUE' if value else 'FALSE')
+                elif column:
+                    # 使用 TypeRegistry 统一序列化
+                    row.append(TypeRegistry.serialize_for_text(value, column.col_type))
+                else:
+                    row.append(value)
             data_sheet.append(row)
 
     def _load_table_from_workbook(
@@ -182,6 +193,7 @@ class ExcelBackend(StorageBackend):
         """从工作簿加载单个表"""
         from ..core.storage import Table
         from ..core.orm import Column
+        from datetime import datetime, date, timedelta
 
         primary_key = schema.get('primary_key', 'id')
         next_id = schema.get('next_id', 1)
@@ -190,16 +202,9 @@ class ExcelBackend(StorageBackend):
 
         # 重建列
         columns = []
-        type_map = {
-            'int': int,
-            'str': str,
-            'float': float,
-            'bool': bool,
-            'bytes': bytes
-        }
 
         for col_data in columns_data:
-            col_type = type_map.get(col_data['type'], str)
+            col_type = TypeRegistry.get_type_by_name(col_data['type'])
             column = Column(
                 col_data['name'],
                 col_type,
@@ -226,25 +231,26 @@ class ExcelBackend(StorageBackend):
                     if col_name not in table.columns:
                         continue
 
-                    # 反序列化特殊类型
                     column = table.columns[col_name]
 
+                    # 处理空值
                     if value == '' or value is None:
                         value = None
-                    elif column.col_type == bytes and value:
-                        value = base64.b64decode(value)
                     elif column.col_type == bool:
-                        # 处理Excel的bool值
+                        # Excel 的 bool 特殊处理
                         if isinstance(value, bool):
                             pass  # 保持原样
                         elif isinstance(value, str):
                             value = (value.upper() == 'TRUE')
                         else:
                             value = bool(value)
-                    elif column.col_type == int and value is not None:
-                        value = int(value)
-                    elif column.col_type == float and value is not None:
-                        value = float(value)
+                    elif column.col_type == bytes:
+                        # bytes 需要特殊处理（base64 解码）
+                        if value:
+                            value = base64.b64decode(value)
+                    elif column.col_type in (datetime, date, timedelta, list, dict, int, float):
+                        # 使用 TypeRegistry 统一反序列化
+                        value = TypeRegistry.deserialize_from_text(value, column.col_type)
 
                     record[col_name] = value
 

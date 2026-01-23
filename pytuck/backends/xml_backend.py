@@ -8,10 +8,11 @@ import json
 import base64
 from pathlib import Path
 from typing import Any, Dict, Union, TYPE_CHECKING, Tuple, Optional
-from datetime import datetime
+from datetime import datetime, date, timedelta
 from .base import StorageBackend
 from ..common.exceptions import SerializationError
 from .versions import get_format_version
+from ..core.types import TypeRegistry
 
 from ..common.options import XmlBackendOptions
 
@@ -50,9 +51,11 @@ class XMLBackend(StorageBackend):
         temp_path = self.file_path.parent / (self.file_path.name + '.tmp')
         try:
             # 创建根元素
-            root = etree.Element('database',
-                               format_version=str(self.FORMAT_VERSION),
-                               timestamp=datetime.now().isoformat())
+            root = etree.Element(
+                'database',
+                format_version=str(self.FORMAT_VERSION),
+                timestamp=datetime.now().isoformat()
+            )
 
             # 为每个表创建 <table> 元素
             for table_name, table in tables.items():
@@ -60,10 +63,12 @@ class XMLBackend(StorageBackend):
 
             # 写入文件（原子性）
             tree = etree.ElementTree(root)
-            tree.write(str(temp_path),
-                      pretty_print=True,
-                      xml_declaration=True,
-                      encoding='UTF-8')
+            tree.write(
+                str(temp_path),
+                pretty_print=self.options.pretty_print,
+                xml_declaration=True,
+                encoding=self.options.encoding
+            )
 
             if self.file_path.exists():
                 self.file_path.unlink()
@@ -127,12 +132,14 @@ class XMLBackend(StorageBackend):
         # 列定义
         columns_elem = etree.SubElement(table_elem, 'columns')
         for col in table.columns.values():
-            col_elem = etree.SubElement(columns_elem, 'column',
-                           name=col.name,
-                           type=col.col_type.__name__,
-                           nullable=str(col.nullable).lower(),
-                           primary_key=str(col.primary_key).lower(),
-                           index=str(col.index).lower())
+            col_elem = etree.SubElement(
+                columns_elem, 'column',
+                name=col.name,
+                type=col.col_type.__name__,
+                nullable=str(col.nullable).lower(),
+                primary_key=str(col.primary_key).lower(),
+                index=str(col.index).lower()
+            )
             if col.comment:
                 col_elem.set('comment', col.comment)
 
@@ -142,9 +149,9 @@ class XMLBackend(StorageBackend):
             record_elem = etree.SubElement(records_elem, 'record')
             for col_name, value in record.items():
                 column = table.columns[col_name]
-                field_elem = etree.SubElement(record_elem, 'field',
-                                             name=col_name,
-                                             type=column.col_type.__name__)
+                field_elem = etree.SubElement(
+                    record_elem, 'field', name=col_name, type=column.col_type.__name__
+                )
 
                 # 处理值
                 if value is None:
@@ -155,6 +162,19 @@ class XMLBackend(StorageBackend):
                     field_elem.text = base64.b64encode(value).decode('ascii')
                 elif isinstance(value, bool):
                     field_elem.text = str(value).lower()
+                elif isinstance(value, datetime):
+                    # datetime 转 ISO 格式字符串（保留时区）
+                    field_elem.text = value.isoformat()
+                elif isinstance(value, date):
+                    # date 转 ISO 格式字符串
+                    field_elem.text = value.isoformat()
+                elif isinstance(value, timedelta):
+                    # timedelta 转总秒数
+                    field_elem.text = str(value.total_seconds())
+                elif isinstance(value, (list, dict)):
+                    # list/dict 转 JSON 字符串
+                    field_elem.set('encoding', 'json')
+                    field_elem.text = json.dumps(value, ensure_ascii=False)
                 else:
                     field_elem.text = str(value)
 
@@ -172,14 +192,7 @@ class XMLBackend(StorageBackend):
         columns = []
         columns_elem = table_elem.find('columns')
         for col_elem in columns_elem.findall('column'):
-            type_map = {
-                'int': int,
-                'str': str,
-                'float': float,
-                'bool': bool,
-                'bytes': bytes
-            }
-            col_type = type_map.get(col_elem.get('type'), str)
+            col_type = TypeRegistry.get_type_by_name(col_elem.get('type'))
 
             column = Column(
                 col_elem.get('name'),
@@ -203,6 +216,7 @@ class XMLBackend(StorageBackend):
                 for field_elem in record_elem.findall('field'):
                     col_name = field_elem.get('name')
                     col_type_name = field_elem.get('type')
+                    col_type = TypeRegistry.get_type_by_name(col_type_name)
 
                     value: Any
                     # 处理 NULL
@@ -211,20 +225,34 @@ class XMLBackend(StorageBackend):
                     else:
                         text = field_elem.text or ''
 
-                        # 根据类型转换
-                        if col_type_name == 'int':
-                            value = int(text) if text else 0
-                        elif col_type_name == 'float':
-                            value = float(text) if text else 0.0
-                        elif col_type_name == 'bool':
-                            value = (text.lower() == 'true')
-                        elif col_type_name == 'bytes':
+                        # bytes 需要特殊处理（检查 encoding 属性）
+                        if col_type == bytes:
                             if field_elem.get('encoding') == 'base64':
                                 value = base64.b64decode(text)
                             else:
                                 value = text.encode('utf-8')
-                        else:  # str
-                            value = text
+                        # list/dict 需要检查 encoding 属性
+                        elif col_type == list:
+                            if field_elem.get('encoding') == 'json':
+                                value = json.loads(text) if text else []
+                            else:
+                                value = []
+                        elif col_type == dict:
+                            if field_elem.get('encoding') == 'json':
+                                value = json.loads(text) if text else {}
+                            else:
+                                value = {}
+                        elif text:
+                            # 使用 TypeRegistry 统一反序列化
+                            value = TypeRegistry.deserialize_from_text(text, col_type)
+                        else:
+                            # 空文本的默认值
+                            if col_type == int:
+                                value = 0
+                            elif col_type == float:
+                                value = 0.0
+                            else:
+                                value = None
 
                     record[col_name] = value
 

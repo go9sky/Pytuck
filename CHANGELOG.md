@@ -41,3 +41,40 @@ This file documents all notable changes. Format based on [Keep a Changelog](http
   - `pytuck/backends/__init__.py` 简化为仅导入/导出职责
   - `pytuck/backends/registry.py` 移除 `_initialized` 和 `_discover_backends()`
   - 内置后端在 `__init__.py` 中显式导入，触发自动注册
+
+- **异常系统重构 / Exception System Refactoring**
+  - 重构 `PytuckException` 基类，添加通用字段：`message`、`table_name`、`column_name`、`pk`、`details`
+  - 添加 `to_dict()` 方法，便于日志记录和序列化
+  - 新增异常类型：
+    - `TypeConversionError`：类型转换失败（继承自 `ValidationError`）
+    - `ConfigurationError`：配置错误（引擎配置、后端选项等）
+    - `SchemaError`：Schema 定义错误（如缺少主键，继承自 `ConfigurationError`）
+    - `QueryError`：查询构建或执行错误
+    - `ConnectionError`：数据库连接未建立或已断开
+    - `UnsupportedOperationError`：不支持的操作
+  - 统一替换所有内置异常为自定义异常类型：
+    - `ValueError` → `TypeConversionError`/`ValidationError`/`ConfigurationError`/`QueryError`
+    - `TypeError` → `ConfigurationError`/`QueryError`
+    - `RuntimeError` → `ConnectionError`/`TransactionError`
+    - `NotImplementedError`（运行时）→ `UnsupportedOperationError`
+  - 所有新异常类型已在 `pytuck/__init__.py` 中导出，可直接导入使用
+  - 异常层次结构：
+    ```
+    PytuckException (基类)
+    ├── TableNotFoundError        # 表不存在
+    ├── RecordNotFoundError       # 记录不存在
+    ├── DuplicateKeyError         # 主键重复
+    ├── ColumnNotFoundError       # 列不存在
+    ├── ValidationError           # 数据验证错误
+    │   └── TypeConversionError   # 类型转换失败
+    ├── ConfigurationError        # 配置错误
+    │   └── SchemaError           # Schema 定义错误
+    ├── QueryError                # 查询错误
+    ├── TransactionError          # 事务错误
+    ├── ConnectionError           # 连接错误
+    ├── SerializationError        # 序列化错误
+    ├── EncryptionError           # 加密错误
+    ├── MigrationError            # 迁移错误
+    ├── PytuckIndexError          # 索引错误
+    └── UnsupportedOperationError # 不支持的操作
+    ```

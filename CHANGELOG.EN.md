@@ -42,3 +42,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Simplified `pytuck/backends/__init__.py` to import/export responsibilities only
   - Removed `_initialized` and `_discover_backends()` from `pytuck/backends/registry.py`
   - Built-in backends explicitly imported in `__init__.py` to trigger automatic registration
+
+- **Exception System Refactoring**
+  - Refactored `PytuckException` base class with common fields: `message`, `table_name`, `column_name`, `pk`, `details`
+  - Added `to_dict()` method for logging and serialization
+  - New exception types:
+    - `TypeConversionError`: Type conversion failure (extends `ValidationError`)
+    - `ConfigurationError`: Configuration errors (engine config, backend options, etc.)
+    - `SchemaError`: Schema definition errors (e.g., missing primary key, extends `ConfigurationError`)
+    - `QueryError`: Query building or execution errors
+    - `ConnectionError`: Database connection not established or disconnected
+    - `UnsupportedOperationError`: Unsupported operations
+  - Unified replacement of all built-in exceptions with custom exception types:
+    - `ValueError` → `TypeConversionError`/`ValidationError`/`ConfigurationError`/`QueryError`
+    - `TypeError` → `ConfigurationError`/`QueryError`
+    - `RuntimeError` → `ConnectionError`/`TransactionError`
+    - `NotImplementedError` (runtime) → `UnsupportedOperationError`
+  - All new exception types exported in `pytuck/__init__.py` for direct import
+  - Exception hierarchy:
+    ```
+    PytuckException (base)
+    ├── TableNotFoundError        # Table not found
+    ├── RecordNotFoundError       # Record not found
+    ├── DuplicateKeyError         # Duplicate primary key
+    ├── ColumnNotFoundError       # Column not found
+    ├── ValidationError           # Data validation error
+    │   └── TypeConversionError   # Type conversion failure
+    ├── ConfigurationError        # Configuration error
+    │   └── SchemaError           # Schema definition error
+    ├── QueryError                # Query error
+    ├── TransactionError          # Transaction error
+    ├── ConnectionError           # Connection error
+    ├── SerializationError        # Serialization error
+    ├── EncryptionError           # Encryption error
+    ├── MigrationError            # Migration error
+    ├── PytuckIndexError          # Index error
+    └── UnsupportedOperationError # Unsupported operation
+    ```

@@ -23,7 +23,7 @@ from ..common.exceptions import (
 
 if TYPE_CHECKING:
     from ..backends.base import StorageBackend
-    from ..backends.binary_backend import BinaryBackend
+    from ..backends.backend_binary import BinaryBackend
 
 
 class TransactionSnapshot:
@@ -772,7 +772,7 @@ class Storage:
 
         检查是否为 v4 格式的 binary 文件，如果是则启用 WAL 模式并回放未提交的 WAL。
         """
-        from ..backends.binary_backend import BinaryBackend
+        from ..backends.backend_binary import BinaryBackend
 
         if not isinstance(self.backend, BinaryBackend):
             return
@@ -791,7 +791,7 @@ class Storage:
 
     def _get_binary_backend(self) -> Optional['BinaryBackend']:
         """获取 binary 后端（如果是的话）"""
-        from ..backends.binary_backend import BinaryBackend
+        from ..backends.backend_binary import BinaryBackend
 
         if isinstance(self.backend, BinaryBackend):
             return self.backend
@@ -825,7 +825,7 @@ class Storage:
         if backend is None:
             return False
 
-        from ..backends.binary_backend import WALOpType
+        from ..backends.backend_binary import WALOpType
 
         # 转换操作类型
         wal_op = WALOpType(op_type)

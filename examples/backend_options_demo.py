@@ -142,7 +142,7 @@ def demo_json_options():
     print("-"*40)
 
     # 先导入后端以便覆盖方法
-    from pytuck.backends.json_backend import JSONBackend
+    from pytuck.backends.backend_json import JSONBackend
 
     def setup_custom_rapidjson(self, impl):
         """模拟rapidjson自定义实现"""

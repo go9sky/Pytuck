@@ -156,12 +156,12 @@ def get_available_engines() -> Dict[str, bool]:
             status = "✓" if available else "✗"
             print(f"{status} {name}")
     """
-    from ..backends.binary_backend import BinaryBackend
-    from ..backends.json_backend import JSONBackend
-    from ..backends.csv_backend import CSVBackend
-    from ..backends.sqlite_backend import SQLiteBackend
-    from ..backends.excel_backend import ExcelBackend
-    from ..backends.xml_backend import XMLBackend
+    from ..backends.backend_binary import BinaryBackend
+    from ..backends.backend_json import JSONBackend
+    from ..backends.backend_csv import CSVBackend
+    from ..backends.backend_sqlite import SQLiteBackend
+    from ..backends.backend_excel import ExcelBackend
+    from ..backends.backend_xml import XMLBackend
 
     return {
         'binary': BinaryBackend.is_available(),

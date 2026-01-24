@@ -20,7 +20,7 @@ from examples._common import get_project_temp_dir
 from pytuck import Storage, declarative_base, Session, Column, PureBaseModel
 from pytuck import select, insert
 from pytuck.common.options import JsonBackendOptions
-from pytuck.backends.json_backend import JSONBackend
+from pytuck.backends.backend_json import JSONBackend
 
 
 def demo_performance_comparison():

@@ -8,6 +8,7 @@ from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Tuple, Optional, Type
 
 from ..common.options import ConnectorOptions
+from ..common.exceptions import UnsupportedOperationError
 
 
 class DatabaseConnector(ABC):
@@ -224,3 +225,180 @@ class DatabaseConnector(ABC):
     def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
         """上下文管理器退出"""
         self.close()
+
+    # ==========================================================================
+    # 原生 SQL CRUD 接口（用于支持直接数据库操作的后端）
+    # ==========================================================================
+
+    def supports_crud(self) -> bool:
+        """
+        是否支持直接 CRUD 操作
+
+        返回 True 表示连接器支持 insert_row, update_row, delete_row 等方法，
+        可绕过内存执行直接操作数据库。
+
+        Returns:
+            默认返回 False，子类可覆盖
+        """
+        return False
+
+    def insert_row(
+        self,
+        table_name: str,
+        data: Dict[str, Any],
+        pk_column: str
+    ) -> Any:
+        """
+        插入一行数据
+
+        Args:
+            table_name: 表名
+            data: 列名到值的映射
+            pk_column: 主键列名
+
+        Returns:
+            插入记录的主键值
+
+        Raises:
+            UnsupportedOperationError: 如果连接器不支持直接 CRUD
+        """
+        raise UnsupportedOperationError(
+            message="Direct CRUD not supported",
+            details={"connector": self.__class__.__name__}
+        )
+
+    def update_row(
+        self,
+        table_name: str,
+        pk_column: str,
+        pk_value: Any,
+        data: Dict[str, Any]
+    ) -> int:
+        """
+        更新一行数据
+
+        Args:
+            table_name: 表名
+            pk_column: 主键列名
+            pk_value: 主键值
+            data: 要更新的列名到值的映射
+
+        Returns:
+            影响的行数
+
+        Raises:
+            UnsupportedOperationError: 如果连接器不支持直接 CRUD
+        """
+        raise UnsupportedOperationError(
+            message="Direct CRUD not supported",
+            details={"connector": self.__class__.__name__}
+        )
+
+    def delete_row(
+        self,
+        table_name: str,
+        pk_column: str,
+        pk_value: Any
+    ) -> int:
+        """
+        删除一行数据
+
+        Args:
+            table_name: 表名
+            pk_column: 主键列名
+            pk_value: 主键值
+
+        Returns:
+            影响的行数
+
+        Raises:
+            UnsupportedOperationError: 如果连接器不支持直接 CRUD
+        """
+        raise UnsupportedOperationError(
+            message="Direct CRUD not supported",
+            details={"connector": self.__class__.__name__}
+        )
+
+    def select_by_pk(
+        self,
+        table_name: str,
+        pk_column: str,
+        pk_value: Any,
+        columns: Optional[List[str]] = None
+    ) -> Optional[Dict[str, Any]]:
+        """
+        按主键查询一行
+
+        Args:
+            table_name: 表名
+            pk_column: 主键列名
+            pk_value: 主键值
+            columns: 要查询的列名列表，None 表示所有列
+
+        Returns:
+            匹配的记录字典，未找到返回 None
+
+        Raises:
+            UnsupportedOperationError: 如果连接器不支持直接 CRUD
+        """
+        raise UnsupportedOperationError(
+            message="Direct CRUD not supported",
+            details={"connector": self.__class__.__name__}
+        )
+
+    def query_rows(
+        self,
+        table_name: str,
+        where_clause: Optional[str] = None,
+        params: Tuple[Any, ...] = (),
+        columns: Optional[List[str]] = None,
+        order_by: Optional[str] = None,
+        limit: Optional[int] = None,
+        offset: Optional[int] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        条件查询多行
+
+        Args:
+            table_name: 表名
+            where_clause: WHERE 子句（不含 WHERE 关键字），如 '"age" > ?'
+            params: WHERE 子句的参数
+            columns: 要查询的列名列表，None 表示所有列
+            order_by: ORDER BY 子句（不含 ORDER BY 关键字）
+            limit: 最大返回行数
+            offset: 跳过的行数
+
+        Returns:
+            记录字典列表
+
+        Raises:
+            UnsupportedOperationError: 如果连接器不支持直接 CRUD
+        """
+        raise UnsupportedOperationError(
+            message="Direct CRUD not supported",
+            details={"connector": self.__class__.__name__}
+        )
+
+    def begin_transaction(self) -> None:
+        """
+        开始事务
+
+        默认实现为空，子类可根据需要覆盖
+        """
+        pass
+
+    def rollback_transaction(self) -> None:
+        """
+        回滚事务
+
+        默认实现为空，子类可根据需要覆盖
+        """
+        pass
+
+    def commit_transaction(self) -> None:
+        """
+        提交事务
+
+        默认实现为空，子类可根据需要覆盖
+        """
+        pass

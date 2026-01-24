@@ -356,6 +356,10 @@ class Storage:
         self._wal_threshold: int = 1000  # WAL 条目数阈值，超过则自动 checkpoint
         self._wal_entry_count: int = 0  # 当前 WAL 条目数
 
+        # 原生 SQL 模式相关属性
+        self._native_sql_mode: bool = False  # 是否启用原生 SQL 模式
+        self._connector: Optional[Any] = None  # 数据库连接器（原生 SQL 模式）
+
         # 初始化后端
         self.backend: Optional[StorageBackend] = None
         if not self.in_memory and file_path:
@@ -375,6 +379,9 @@ class Storage:
                 # 对于 binary 引擎，检查是否为 v4 格式并回放 WAL
                 if engine == 'binary':
                     self._init_wal_mode()
+
+            # 检测并初始化原生 SQL 模式
+            self._init_native_sql_mode()
 
     def create_table(
         self,
@@ -417,8 +424,50 @@ class Storage:
         self.tables[name] = table
         self._dirty = True
 
+        # 原生 SQL 模式：立即创建数据库表
+        if self._native_sql_mode and self._connector:
+            self._create_table_native_sql(name, table)
+
         if self.auto_flush:
             self.flush()
+
+    def _create_table_native_sql(self, table_name: str, table: Table) -> None:
+        """
+        原生 SQL 模式下创建数据库表
+
+        Args:
+            table_name: 表名
+            table: Table 对象
+        """
+        assert self._connector is not None, "Connector must not be None in native SQL mode"
+        connector = self._connector
+
+        # 确保元数据表存在
+        if self.backend and hasattr(self.backend, '_ensure_metadata_tables'):
+            self.backend._ensure_metadata_tables(connector)
+
+        # 创建数据表
+        if not connector.table_exists(table_name):
+            columns_def = [
+                {
+                    'name': col.name,
+                    'type': col.col_type,
+                    'nullable': col.nullable,
+                    'primary_key': col.primary_key
+                }
+                for col in table.columns.values()
+            ]
+            connector.create_table(table_name, columns_def, table.primary_key)
+
+            # 创建索引
+            for col_name, col in table.columns.items():
+                if col.index and not col.primary_key:
+                    index_name = f'idx_{table_name}_{col_name}'
+                    connector.execute(
+                        f'CREATE INDEX IF NOT EXISTS `{index_name}` ON `{table_name}`(`{col_name}`)'
+                    )
+
+            connector.commit()
 
     def drop_table(self, name: str) -> None:
         """
@@ -469,6 +518,12 @@ class Storage:
             主键值
         """
         table = self.get_table(table_name)
+
+        # 原生 SQL 模式：直接执行 SQL
+        if self._native_sql_mode and self._connector:
+            return self._insert_native_sql(table_name, table, data)
+
+        # 内存模式
         pk = table.insert(data)
         self._dirty = True
 
@@ -483,6 +538,41 @@ class Storage:
 
         return pk
 
+    def _insert_native_sql(self, table_name: str, table: Table, data: Dict[str, Any]) -> Any:
+        """
+        原生 SQL 插入
+
+        Args:
+            table_name: 表名
+            table: Table 对象
+            data: 数据字典
+
+        Returns:
+            主键值
+        """
+        assert self._connector is not None, "Connector must not be None in native SQL mode"
+        connector = self._connector
+
+        # 验证和处理所有字段
+        validated_record: Dict[str, Any] = {}
+        for col_name, column in table.columns.items():
+            value = data.get(col_name)
+            validated_value = column.validate(value)
+            validated_record[col_name] = validated_value
+
+        # 使用连接器插入
+        pk = connector.insert_row(table_name, validated_record, table.primary_key)
+
+        # 更新 next_id
+        if pk is not None and isinstance(pk, int) and pk >= table.next_id:
+            table.next_id = pk + 1
+            self._dirty = True  # 需要保存 schema
+
+        if self.auto_flush:
+            self.flush()
+
+        return pk
+
     def update(self, table_name: str, pk: Any, data: Dict[str, Any]) -> None:
         """
         更新记录
@@ -493,6 +583,13 @@ class Storage:
             data: 新数据
         """
         table = self.get_table(table_name)
+
+        # 原生 SQL 模式：直接执行 SQL
+        if self._native_sql_mode and self._connector:
+            self._update_native_sql(table_name, table, pk, data)
+            return
+
+        # 内存模式
         table.update(pk, data)
         self._dirty = True
 
@@ -505,6 +602,32 @@ class Storage:
         elif self.auto_flush:
             self.flush()
 
+    def _update_native_sql(self, table_name: str, table: Table, pk: Any, data: Dict[str, Any]) -> None:
+        """
+        原生 SQL 更新
+
+        Args:
+            table_name: 表名
+            table: Table 对象
+            pk: 主键值
+            data: 新数据
+        """
+        assert self._connector is not None, "Connector must not be None in native SQL mode"
+        connector = self._connector
+
+        # 验证字段
+        validated_data: Dict[str, Any] = {}
+        for col_name, value in data.items():
+            if col_name in table.columns:
+                column = table.columns[col_name]
+                validated_data[col_name] = column.validate(value)
+
+        # 使用连接器更新
+        connector.update_row(table_name, table.primary_key, pk, validated_data)
+
+        if self.auto_flush:
+            self.flush()
+
     def delete(self, table_name: str, pk: Any) -> None:
         """
         删除记录
@@ -515,6 +638,14 @@ class Storage:
         """
         table = self.get_table(table_name)
 
+        # 原生 SQL 模式：直接执行 SQL
+        if self._native_sql_mode and self._connector:
+            self._connector.delete_row(table_name, table.primary_key, pk)
+            if self.auto_flush:
+                self.flush()
+            return
+
+        # 内存模式
         # 先记录列信息（WAL 需要）
         columns = table.columns if self._use_wal else None
 
@@ -539,7 +670,49 @@ class Storage:
             记录字典
         """
         table = self.get_table(table_name)
+
+        # 原生 SQL 模式：直接执行 SQL
+        if self._native_sql_mode and self._connector:
+            result = self._connector.select_by_pk(table_name, table.primary_key, pk)
+            if result is None:
+                raise RecordNotFoundError(table_name, pk)
+            # 反序列化
+            return self._deserialize_record(result, table.columns)
+
+        # 内存模式
         return table.get(pk)
+
+    def _deserialize_record(self, record: Dict[str, Any], columns: Dict[str, Column]) -> Dict[str, Any]:
+        """
+        反序列化记录
+
+        Args:
+            record: 原始记录
+            columns: 列定义
+
+        Returns:
+            反序列化后的记录
+        """
+        from datetime import datetime, date, timedelta
+        from .types import TypeRegistry
+        import json
+
+        result: Dict[str, Any] = {}
+        for col_name, value in record.items():
+            if col_name in columns and value is not None:
+                column = columns[col_name]
+                col_type = column.col_type
+
+                if col_type == bool and isinstance(value, int):
+                    value = bool(value)
+                elif col_type in (datetime, date, timedelta):
+                    value = TypeRegistry.deserialize_from_text(value, col_type)
+                elif col_type in (list, dict) and isinstance(value, str):
+                    value = json.loads(value)
+
+            result[col_name] = value
+
+        return result
 
     def query(self,
               table_name: str,
@@ -564,6 +737,11 @@ class Storage:
         """
         table = self.get_table(table_name)
 
+        # 原生 SQL 模式：直接执行 SQL
+        if self._native_sql_mode and self._connector:
+            return self._query_native_sql(table_name, table, conditions, limit, offset, order_by, order_desc)
+
+        # 内存模式
         # 优化：使用多索引联合查询（取所有匹配索引结果的交集）
         candidate_pks = None
         remaining_conditions = []
@@ -599,7 +777,7 @@ class Storage:
 
         # 排序
         if order_by and order_by in table.columns:
-            def sort_key(record):
+            def sort_key(record: Dict[str, Any]) -> tuple:
                 value = record.get(order_by)
                 # 处理 None 值，将其排在最后
                 if value is None:
@@ -619,6 +797,78 @@ class Storage:
             results = results[:limit]
 
         return results
+
+    def _query_native_sql(
+        self,
+        table_name: str,
+        table: Table,
+        conditions: List[Condition],
+        limit: Optional[int],
+        offset: int,
+        order_by: Optional[str],
+        order_desc: bool
+    ) -> List[Dict[str, Any]]:
+        """
+        原生 SQL 查询
+
+        Args:
+            table_name: 表名
+            table: Table 对象
+            conditions: 查询条件列表
+            limit: 限制返回记录数
+            offset: 跳过的记录数
+            order_by: 排序字段名
+            order_desc: 是否降序排列
+
+        Returns:
+            记录字典列表
+        """
+        assert self._connector is not None, "Connector must not be None in native SQL mode"
+        connector = self._connector
+
+        # 构建 WHERE 子句
+        where_parts: List[str] = []
+        params: List[Any] = []
+
+        for condition in conditions:
+            op = self._convert_operator(condition.operator)
+            where_parts.append(f'`{condition.field}` {op} ?')
+            params.append(condition.value)
+
+        where_clause = ' AND '.join(where_parts) if where_parts else None
+
+        # 构建 ORDER BY 子句
+        order_by_clause = None
+        if order_by:
+            direction = 'DESC' if order_desc else 'ASC'
+            order_by_clause = f'`{order_by}` {direction}'
+
+        # 执行查询
+        rows = connector.query_rows(
+            table_name,
+            where_clause=where_clause,
+            params=tuple(params),
+            order_by=order_by_clause,
+            limit=limit,
+            offset=offset if offset > 0 else None
+        )
+
+        # 反序列化
+        results = [self._deserialize_record(row, table.columns) for row in rows]
+        return results
+
+    def _convert_operator(self, op: str) -> str:
+        """转换操作符为 SQL 操作符"""
+        op_map = {
+            '==': '=',
+            'eq': '=',
+            'ne': '!=',
+            'lt': '<',
+            'le': '<=',
+            'gt': '>',
+            'ge': '>=',
+        }
+        return op_map.get(op, op)
 
     def query_table_data(self,
                         table_name: str,
@@ -797,6 +1047,27 @@ class Storage:
                 if count > 0:
                     self._dirty = True
 
+    def _init_native_sql_mode(self) -> None:
+        """
+        初始化原生 SQL 模式
+
+        检查后端是否支持原生 SQL 模式，如果支持则获取连接器。
+        """
+        if self.backend is None:
+            return
+
+        # 检查后端是否支持原生 SQL 模式
+        if hasattr(self.backend, 'use_native_sql') and self.backend.use_native_sql:
+            self._native_sql_mode = True
+            # 获取连接器
+            if hasattr(self.backend, 'get_connector'):
+                self._connector = self.backend.get_connector()
+
+    @property
+    def is_native_sql_mode(self) -> bool:
+        """是否启用原生 SQL 模式"""
+        return self._native_sql_mode
+
     def _get_binary_backend(self) -> Optional['BinaryBackend']:
         """获取 binary 后端（如果是的话）"""
         from ..backends.backend_binary import BinaryBackend
@@ -870,6 +1141,12 @@ class Storage:
     def close(self) -> None:
         """关闭数据库"""
         self.flush()
+
+        # 关闭原生 SQL 模式的后端连接
+        if self._native_sql_mode and self.backend:
+            if hasattr(self.backend, 'close'):
+                self.backend.close()
+            self._connector = None
 
     def __repr__(self) -> str:
         return f"Storage(tables={len(self.tables)}, in_memory={self.in_memory})"

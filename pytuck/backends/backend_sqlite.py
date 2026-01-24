@@ -26,10 +26,14 @@ class SQLiteBackend(StorageBackend):
 
     使用 SQLiteConnector 进行底层数据库操作，
     添加 Pytuck 特有的元数据管理。
+
+    支持两种运行模式：
+    - 原生 SQL 模式（use_native_sql=True）：只加载 schema，数据直接在数据库中操作
+    - 兼容模式（use_native_sql=False）：全量加载到内存（旧行为）
     """
 
     ENGINE_NAME = 'sqlite'
-    REQUIRED_DEPENDENCIES = []  # 内置 sqlite3
+    REQUIRED_DEPENDENCIES = ['sqlite3']  # 内置 sqlite3
     FORMAT_VERSION = get_format_version('sqlite')
 
     def __init__(self, file_path: Union[str, Path], options: SqliteBackendOptions):
@@ -45,8 +49,47 @@ class SQLiteBackend(StorageBackend):
         # 类型安全：将 options 转为具体的 SqliteBackendOptions 类型
         self.options: SqliteBackendOptions = options
 
+        # 原生 SQL 模式
+        self._use_native_sql: bool = options.use_native_sql
+        self._connector: Optional[SQLiteConnector] = None
+
+    @property
+    def use_native_sql(self) -> bool:
+        """是否启用原生 SQL 模式"""
+        return self._use_native_sql
+
+    def get_connector(self) -> SQLiteConnector:
+        """
+        获取或创建连接器（复用连接）
+
+        Returns:
+            SQLiteConnector 实例
+        """
+        if self._connector is None:
+            self._connector = SQLiteConnector(str(self.file_path), self.options)
+            self._connector.connect()
+        return self._connector
+
+    def close(self) -> None:
+        """关闭连接器"""
+        if self._connector is not None:
+            self._connector.close()
+            self._connector = None
+
     def save(self, tables: Dict[str, 'Table']) -> None:
-        """保存所有表数据到SQLite数据库"""
+        """
+        保存数据到 SQLite 数据库
+
+        - 原生 SQL 模式：只保存 schema 元数据（数据已直接写入数据库）
+        - 兼容模式：全量保存（旧行为）
+        """
+        if self._use_native_sql:
+            self._save_schema_only(tables)
+        else:
+            self._save_full(tables)
+
+    def _save_full(self, tables: Dict[str, 'Table']) -> None:
+        """全量保存所有表数据到SQLite数据库（兼容模式）"""
         try:
             # 创建连接器
             connector = SQLiteConnector(str(self.file_path), self.options)
@@ -73,11 +116,91 @@ class SQLiteBackend(StorageBackend):
         except Exception as e:
             raise SerializationError(f"Failed to save to SQLite: {e}")
 
+    def _save_schema_only(self, tables: Dict[str, 'Table']) -> None:
+        """
+        只保存 schema 元数据（原生 SQL 模式）
+
+        数据已经直接写入数据库，只需更新元数据表。
+        """
+        try:
+            connector = self.get_connector()
+
+            # 创建元数据表（如果不存在）
+            self._ensure_metadata_tables(connector)
+
+            # 保存版本信息
+            connector.execute(
+                "INSERT OR REPLACE INTO _pytuck_metadata VALUES (?, ?)",
+                ('format_version', str(self.FORMAT_VERSION))
+            )
+            connector.execute(
+                "INSERT OR REPLACE INTO _pytuck_metadata VALUES (?, ?)",
+                ('timestamp', datetime.now().isoformat())
+            )
+
+            # 只保存表元数据，不重建数据表
+            for table_name, table in tables.items():
+                columns_json = json.dumps([
+                    {
+                        'name': col.name,
+                        'type': col.col_type.__name__,
+                        'nullable': col.nullable,
+                        'primary_key': col.primary_key,
+                        'index': col.index,
+                        'comment': col.comment
+                    }
+                    for col in table.columns.values()
+                ])
+
+                connector.execute('''
+                    INSERT OR REPLACE INTO _pytuck_tables
+                    (table_name, primary_key, next_id, comment, columns)
+                    VALUES (?, ?, ?, ?, ?)
+                ''', (table_name, table.primary_key, table.next_id, table.comment, columns_json))
+
+                # 确保数据表存在（创建但不清空）
+                if not connector.table_exists(table_name):
+                    columns_def = [
+                        {
+                            'name': col.name,
+                            'type': col.col_type,
+                            'nullable': col.nullable,
+                            'primary_key': col.primary_key
+                        }
+                        for col in table.columns.values()
+                    ]
+                    connector.create_table(table_name, columns_def, table.primary_key)
+
+                    # 创建索引
+                    for col_name, col in table.columns.items():
+                        if col.index and not col.primary_key:
+                            index_name = f'idx_{table_name}_{col_name}'
+                            connector.execute(
+                                f'CREATE INDEX IF NOT EXISTS `{index_name}` ON `{table_name}`(`{col_name}`)'
+                            )
+
+            connector.commit()
+
+        except Exception as e:
+            raise SerializationError(f"Failed to save schema to SQLite: {e}")
+
     def load(self) -> Dict[str, 'Table']:
-        """从SQLite数据库加载所有表数据"""
+        """
+        加载数据
+
+        - 原生 SQL 模式：只加载 schema 元数据，不加载数据
+        - 兼容模式：全量加载（旧行为）
+        """
         if not self.exists():
             raise FileNotFoundError(f"SQLite database not found: {self.file_path}")
 
+        if self._use_native_sql:
+            return self._load_schema_only()
+        else:
+            return self._load_full()
+
+    def _load_full(self) -> Dict[str, 'Table']:
+        """全量加载所有表数据（兼容模式）"""
         try:
             # 创建连接器，使用默认选项
             connector = SQLiteConnector(str(self.file_path), self.options)
@@ -108,6 +231,84 @@ class SQLiteBackend(StorageBackend):
             raise
         except Exception as e:
             raise SerializationError(f"Failed to load from SQLite: {e}")
+
+    def _load_schema_only(self) -> Dict[str, 'Table']:
+        """
+        只加载 schema 元数据（原生 SQL 模式）
+
+        数据按需从数据库查询，不预加载到内存。
+        """
+        try:
+            connector = self.get_connector()
+
+            # 检查是否是 Pytuck 格式
+            if not connector.table_exists('_pytuck_tables'):
+                raise SerializationError(
+                    f"'{self.file_path}' 不是 Pytuck 格式的 SQLite 数据库。"
+                    f"如需从普通 SQLite 导入，请使用 pytuck.tools.import_from_database()"
+                )
+
+            # 读取所有表元数据
+            cursor = connector.execute(
+                'SELECT table_name, primary_key, next_id, comment, columns FROM _pytuck_tables'
+            )
+            table_rows = cursor.fetchall()
+
+            tables: Dict[str, 'Table'] = {}
+
+            for table_name, primary_key, next_id, table_comment, columns_json in table_rows:
+                table = self._load_table_schema_only(
+                    table_name, primary_key, next_id, table_comment, columns_json
+                )
+                tables[table_name] = table
+
+            return tables
+
+        except SerializationError:
+            raise
+        except Exception as e:
+            raise SerializationError(f"Failed to load schema from SQLite: {e}")
+
+    def _load_table_schema_only(
+        self,
+        table_name: str,
+        primary_key: str,
+        next_id: int,
+        table_comment: str,
+        columns_json: str
+    ) -> 'Table':
+        """
+        只加载表 schema（原生 SQL 模式）
+
+        数据为空，所有 CRUD 操作将直接访问数据库。
+        """
+        from ..core.storage import Table
+        from ..core.orm import Column
+
+        # 重建列定义
+        columns_data = json.loads(columns_json)
+        columns = []
+
+        for col_data in columns_data:
+            col_type = TypeRegistry.get_type_by_name(col_data['type'])
+
+            column = Column(
+                col_data['name'],
+                col_type,
+                nullable=col_data['nullable'],
+                primary_key=col_data['primary_key'],
+                index=col_data.get('index', False),
+                comment=col_data.get('comment')
+            )
+            columns.append(column)
+
+        # 创建表对象（数据为空）
+        table = Table(table_name, columns, primary_key, comment=table_comment)
+        table.next_id = next_id
+
+        # 不加载数据，保持 data 为空字典
+
+        return table
 
     def exists(self) -> bool:
         """检查数据库文件是否存在"""

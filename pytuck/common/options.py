@@ -38,6 +38,7 @@ class CsvBackendOptions:
 @dataclass(slots=True)
 class SqliteBackendOptions(SqliteConnectorOptions):
     """SQLite 后端配置选项"""
+    use_native_sql: bool = True  # 使用原生 SQL 模式，直接执行 SQL 而非全量加载/保存
 
 
 @dataclass(slots=True)

@@ -87,13 +87,13 @@ print(f"Created student, ID: {result.inserted_primary_key}")
 # Query records
 stmt = select(Student).where(Student.id == 1)
 result = session.execute(stmt)
-alice = result.scalars().first()
+alice = result.first()
 print(f"Found: {alice.name}, {alice.age} years old")
 
 # Conditional query (Pythonic syntax)
 stmt = select(Student).where(Student.age >= 18).order_by('name')
 result = session.execute(stmt)
-adults = result.scalars().all()
+adults = result.all()
 for student in adults:
     print(f"  - {student.name}")
 
@@ -117,7 +117,7 @@ session.commit()
 # Method 2: Attribute assignment update (0.3.0 NEW, more intuitive)
 stmt = select(Student).where(Student.id == 1)
 result = session.execute(stmt)
-alice = result.scalars().first()
+alice = result.first()
 alice.age = 21  # Attribute assignment auto-detected and updates database
 session.commit()  # Automatically writes changes to database
 
@@ -345,8 +345,15 @@ chained = stmt.where(User.age >= 18)  # IDE infers: Select[User] ✅
 result = session.execute(stmt)  # IDE infers: Result[User] ✅
 
 # Result processing precise types
-users = result.scalars().all()  # IDE infers: List[User] ✅ (no longer List[PureBaseModel])
-user = result.scalars().first()  # IDE infers: Optional[User] ✅
+users = result.all()  # Returns a list of model instances List[T]
+user = result.first()  # Returns the first model instance Optional[T]
+
+Notes:
+- Result.all() → Returns a list of model instances List[T]
+- Result.first() → Returns the first model instance Optional[T]
+- Result.one() → Returns the unique model instance T (must be exactly one)
+- Result.one_or_none() → Returns the unique model instance or None Optional[T] (at most one)
+- Result.rowcount() → Returns the number of results int
 
 # IDE knows specific attribute types
 for user in users:
@@ -367,13 +374,13 @@ for user in users:
 
 **Before:**
 ```python
-users = result.scalars().all()  # IDE: List[PureBaseModel] 😞
+users = result.all()  # IDE: List[PureBaseModel] 😞
 user.name                       # IDE: doesn't know what attributes exist 😞
 ```
 
 **Now:**
 ```python
-users = result.scalars().all()  # IDE: List[User] ✅
+users = result.all()  # IDE: List[User] ✅
 user.name                       # IDE: knows this is str type ✅
 user.age                        # IDE: knows this is int type ✅
 ```
@@ -539,7 +546,7 @@ class Student(Base):
 # Index query (automatically optimized)
 stmt = select(Student).filter_by(name='Bob')
 result = session.execute(stmt)
-bob = result.scalars().first()
+bob = result.first()
 ```
 
 ### Query Operators
@@ -585,7 +592,7 @@ stmt = select(Student).offset(10).limit(10)
 # Count
 stmt = select(Student).where(Student.age >= 18)
 result = session.execute(stmt)
-adults = result.scalars().all()
+adults = result.all()
 count = len(adults)
 ```
 

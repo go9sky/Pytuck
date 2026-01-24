@@ -635,7 +635,7 @@ session.commit()
 # 查询
 stmt = select(User).where(User.name == 'Alice')
 result = session.execute(stmt)
-users = result.scalars().all()
+users = result.all()
 ```
 
 ### Active Record 模式

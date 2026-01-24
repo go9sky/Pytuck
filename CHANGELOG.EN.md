@@ -79,3 +79,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     ├── PytuckIndexError          # Index error
     └── UnsupportedOperationError # Unsupported operation
     ```
+
+### Breaking Changes
+
+- **Query Result API Simplification**
+  - Removed `Result.scalars()` method, use `Result.all()`/`first()`/`one()`/`one_or_none()` directly
+  - Removed `Result.rows()` method
+  - Removed `Result.fetchall()` method
+  - Removed `Row` class
+  - `ScalarResult` changed to internal class `_ScalarResult`, no longer publicly exported
+  - Migration Guide:
+    ```python
+    # Old usage
+    users = result.scalars().all()
+    user = result.scalars().first()
+
+    # New usage
+    users = result.all()
+    user = result.first()
+    ```
+  - New API:
+    - `Result.all()` → Returns list of model instances `List[T]`
+    - `Result.first()` → Returns first model instance `Optional[T]`
+    - `Result.one()` → Returns exactly one model instance `T` (raises if not exactly one)
+    - `Result.one_or_none()` → Returns one model instance or None `Optional[T]` (at most one)
+    - `Result.rowcount()` → Returns result count `int`

@@ -78,3 +78,28 @@ This file documents all notable changes. Format based on [Keep a Changelog](http
     ├── PytuckIndexError          # 索引错误
     └── UnsupportedOperationError # 不支持的操作
     ```
+
+### 破坏性变更 / Breaking Changes
+
+- **查询结果 API 简化 / Query Result API Simplification**
+  - 移除 `Result.scalars()` 方法，直接使用 `Result.all()`/`first()`/`one()`/`one_or_none()`
+  - 移除 `Result.rows()` 方法
+  - 移除 `Result.fetchall()` 方法
+  - 移除 `Row` 类
+  - `ScalarResult` 改为内部类 `_ScalarResult`，不再公开导出
+  - 迁移指南 / Migration Guide：
+    ```python
+    # 旧用法 / Old usage
+    users = result.scalars().all()
+    user = result.scalars().first()
+
+    # 新用法 / New usage
+    users = result.all()
+    user = result.first()
+    ```
+  - 新 API 说明 / New API:
+    - `Result.all()` → 返回模型实例列表 `List[T]`
+    - `Result.first()` → 返回第一个模型实例 `Optional[T]`
+    - `Result.one()` → 返回唯一模型实例 `T`（必须恰好一条）
+    - `Result.one_or_none()` → 返回唯一模型实例或 None `Optional[T]`（最多一条）
+    - `Result.rowcount()` → 返回结果数量 `int`

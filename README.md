@@ -88,13 +88,13 @@ print(f"Created student, ID: {result.inserted_primary_key}")
 # 查询记录
 stmt = select(Student).where(Student.id == 1)
 result = session.execute(stmt)
-alice = result.scalars().first()
+alice = result.first()
 print(f"Found: {alice.name}, {alice.age} years old")
 
 # 条件查询（Pythonic 语法）
 stmt = select(Student).where(Student.age >= 18).order_by('name')
 result = session.execute(stmt)
-adults = result.scalars().all()
+adults = result.all()
 for student in adults:
     print(f"  - {student.name}")
 
@@ -118,7 +118,7 @@ session.commit()
 # 方式2：属性赋值更新（0.3.0 新增，更直观）
 stmt = select(Student).where(Student.id == 1)
 result = session.execute(stmt)
-alice = result.scalars().first()
+alice = result.first()
 alice.age = 21  # 属性赋值自动检测并更新数据库
 session.commit()  # 自动将修改写入数据库
 
@@ -346,8 +346,15 @@ chained = stmt.where(User.age >= 18)  # IDE 推断：Select[User] ✅
 result = session.execute(stmt)  # IDE 推断：Result[User] ✅
 
 # 结果处理精确类型
-users = result.scalars().all()  # IDE 推断：List[User] ✅ （不再是 List[PureBaseModel]）
-user = result.scalars().first()  # IDE 推断：Optional[User] ✅
+users = result.all()  # 返回 模型实例列表 List[T]
+user = result.first()  # 返回 第一个模型实例 Optional[T]
+
+说明：
+- Result.all() → 返回模型实例列表 List[T]
+- Result.first() → 返回第一个模型实例 Optional[T]
+- Result.one() → 返回唯一模型实例 T（必须恰好一条）
+- Result.one_or_none() → 返回唯一模型实例或 None Optional[T]（最多一条）
+- Result.rowcount() → 返回结果数量 int
 
 # IDE 知道具体属性类型
 for user in users:
@@ -368,13 +375,13 @@ for user in users:
 
 **之前：**
 ```python
-users = result.scalars().all()  # IDE: List[PureBaseModel] 😞
+users = result.all()  # IDE: List[PureBaseModel] 😞
 user.name                       # IDE: 不知道有什么属性 😞
 ```
 
 **现在：**
 ```python
-users = result.scalars().all()  # IDE: List[User] ✅
+users = result.all()  # IDE: List[User] ✅
 user.name                       # IDE: 知道是 str 类型 ✅
 user.age                        # IDE: 知道是 int 类型 ✅
 ```
@@ -540,7 +547,7 @@ class Student(Base):
 # 索引查询（自动优化）
 stmt = select(Student).filter_by(name='Bob')
 result = session.execute(stmt)
-bob = result.scalars().first()
+bob = result.first()
 ```
 
 ### 查询操作符
@@ -586,7 +593,7 @@ stmt = select(Student).offset(10).limit(10)
 # 计数
 stmt = select(Student).where(Student.age >= 18)
 result = session.execute(stmt)
-adults = result.scalars().all()
+adults = result.all()
 count = len(adults)
 ```
 

@@ -110,7 +110,7 @@ class BackendRegistry:
 
         # 二进制引擎（总是可用，无依赖）
         try:
-            from .binary import BinaryBackend
+            from .binary_backend import BinaryBackend
             cls.register(BinaryBackend)
         except ImportError:
             pass

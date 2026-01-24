@@ -18,7 +18,6 @@ class BackendRegistry:
     """
 
     _backends: Dict[str, Type[StorageBackend]] = {}
-    _initialized = False
 
     @classmethod
     def register(cls, backend_class: Type[StorageBackend]) -> None:
@@ -50,9 +49,6 @@ class BackendRegistry:
         Returns:
             后端类，如果不存在则返回 None
         """
-        if not cls._initialized:
-            cls._discover_backends()
-
         return cls._backends.get(engine_name)
 
     @classmethod
@@ -73,9 +69,6 @@ class BackendRegistry:
                 'xml': False,    # 未安装 lxml
             }
         """
-        if not cls._initialized:
-            cls._discover_backends()
-
         return {
             name: backend.is_available()
             for name, backend in cls._backends.items()
@@ -89,66 +82,7 @@ class BackendRegistry:
         Returns:
             引擎名称列表
         """
-        if not cls._initialized:
-            cls._discover_backends()
-
         return list(cls._backends.keys())
-
-    @classmethod
-    def _discover_backends(cls) -> None:
-        """
-        自动发现并注册所有后端（延迟导入）
-
-        采用延迟导入策略：
-        - 导入失败不影响其他引擎
-        - 只在首次使用时执行
-        """
-        if cls._initialized:
-            return
-
-        cls._initialized = True
-
-        # 二进制引擎（总是可用，无依赖）
-        try:
-            from .binary_backend import BinaryBackend
-            cls.register(BinaryBackend)
-        except ImportError:
-            pass
-
-        # JSON 引擎（标准库，总是可用）
-        try:
-            from .json_backend import JSONBackend
-            cls.register(JSONBackend)
-        except ImportError:
-            pass
-
-        # CSV 引擎（标准库，总是可用）
-        try:
-            from .csv_backend import CSVBackend
-            cls.register(CSVBackend)
-        except ImportError:
-            pass
-
-        # SQLite 引擎（内置，总是可用）
-        try:
-            from .sqlite_backend import SQLiteBackend
-            cls.register(SQLiteBackend)
-        except ImportError:
-            pass
-
-        # Excel 引擎（需要 openpyxl）
-        try:
-            from .excel_backend import ExcelBackend
-            cls.register(ExcelBackend)
-        except ImportError:
-            pass
-
-        # XML 引擎（需要 lxml）
-        try:
-            from .xml_backend import XMLBackend
-            cls.register(XMLBackend)
-        except ImportError:
-            pass
 
 
 def get_backend(engine: str, file_path: str, options: BackendOptions) -> StorageBackend:

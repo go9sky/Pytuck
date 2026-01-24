@@ -15,6 +15,16 @@ from .registry import (
     print_available_engines,
 )
 
+# 导入内置后端模块，触发 __init_subclass__ 自动注册
+# 后端模块的外部依赖使用延迟导入（TYPE_CHECKING + 方法内导入）
+# 所以这些导入不会因缺少依赖而失败
+from . import binary_backend   # noqa: F401
+from . import json_backend     # noqa: F401
+from . import csv_backend      # noqa: F401
+from . import sqlite_backend   # noqa: F401
+from . import excel_backend    # noqa: F401
+from . import xml_backend      # noqa: F401
+
 __all__ = [
     'StorageBackend',
     'BackendRegistry',

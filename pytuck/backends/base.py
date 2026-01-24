@@ -22,10 +22,27 @@ class StorageBackend(ABC):
     """
 
     # 引擎标识符（用于注册和选择）
-    ENGINE_NAME: str = None  # type: ignore
+    ENGINE_NAME: str  # type: ignore
 
     # 所需的外部依赖列表（用于检查可用性）
     REQUIRED_DEPENDENCIES: List[str] = []
+
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        """
+        子类定义时自动注册到 BackendRegistry
+
+        只有定义了 ENGINE_NAME 的具体后端类才会被注册。
+        抽象基类或中间类不会被注册。
+        """
+        super().__init_subclass__(**kwargs)
+        # 必须设置 ENGINE_NAME，且不能重复
+        if getattr(cls, 'ENGINE_NAME', None) is None:
+            raise ValueError('ENGINE_NAME must be set')
+
+        from .registry import BackendRegistry
+        if cls.ENGINE_NAME in BackendRegistry.list_engines():
+            raise ValueError(f'The engine name is already registered: "{cls.ENGINE_NAME}"')
+        BackendRegistry.register(cls)
 
     def __init__(self, file_path: Union[str, Path], options: BackendOptions):
         """
@@ -44,6 +61,9 @@ class StorageBackend(ABC):
         # 输入兼容性处理：统一转为 Path 对象
         self.file_path: Path = Path(file_path).expanduser()
         self.options = options
+
+    def __repr__(self) -> str:
+        return f"{self.__class__.__name__}(file_path='{self.file_path}')"
 
     @abstractmethod
     def save(self, tables: Dict[str, 'Table']) -> None:
@@ -195,9 +215,6 @@ class StorageBackend(ABC):
             f"{self.__class__.__name__} does not support server-side pagination. "
             f"Use storage.query() with memory-based pagination instead."
         )
-
-    def __repr__(self) -> str:
-        return f"{self.__class__.__name__}(file_path='{self.file_path}')"
 
     @classmethod
     def probe(cls, file_path: Union[str, Path]) -> Tuple[bool, Optional[Dict[str, Any]]]:

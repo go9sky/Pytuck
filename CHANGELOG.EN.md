@@ -15,6 +15,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Improved
 
+- **SQLite Native SQL Mode Optimization**
+  - SQLite backend now defaults to native SQL mode (`use_native_sql=True`), executing SQL directly instead of full load/save
+  - Completed `TYPE_TO_SQL` mapping for all 10 Pytuck types:
+    - Basic types: `int`, `str`, `float`, `bool`, `bytes`
+    - Extended types: `datetime`, `date`, `timedelta`, `list`, `dict`
+  - Completed `SQL_TO_TYPE` reverse mapping for external SQLite database type inference (`DATETIME`, `DATE`, `TIMESTAMP`)
+  - Added dedicated native SQL mode tests (11 test cases)
+  - Fixed NULL value query issue (using `IS NULL` instead of `= NULL`)
+  - Multi-column ORDER BY support (`order_by('col1').order_by('col2', desc=True)`)
+
 - **Backend Registry Optimization**: Automatic registration using `__init_subclass__`
   - Added `__init_subclass__` method to `StorageBackend` base class for automatic registration to `BackendRegistry` when subclassed
   - Removed hardcoded `BackendRegistry._discover_backends()` discovery logic

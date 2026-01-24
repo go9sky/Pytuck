@@ -12,6 +12,16 @@ This file documents all notable changes. Format based on [Keep a Changelog](http
 
 ### 改进 / Improved
 
+- **SQLite 原生 SQL 模式优化 / SQLite Native SQL Mode**
+  - SQLite 后端默认启用原生 SQL 模式（`use_native_sql=True`），直接执行 SQL 而非全量加载/保存
+  - 完善 `TYPE_TO_SQL` 映射，支持全部 10 种 Pytuck 类型：
+    - 基础类型：`int`, `str`, `float`, `bool`, `bytes`
+    - 扩展类型：`datetime`, `date`, `timedelta`, `list`, `dict`
+  - 完善 `SQL_TO_TYPE` 反向映射，支持外部 SQLite 数据库类型推断（`DATETIME`, `DATE`, `TIMESTAMP`）
+  - 新增原生 SQL 模式专项测试（11 个测试用例）
+  - 修复 NULL 值查询问题（使用 `IS NULL` 而非 `= NULL`）
+  - 支持多列排序（`order_by('col1').order_by('col2', desc=True)`）
+
 - **后端注册器优化 / Backend Registry Optimization**：使用 `__init_subclass__` 实现自动注册
   - `StorageBackend` 基类新增 `__init_subclass__` 方法，子类定义时自动注册到 `BackendRegistry`
   - 移除了 `BackendRegistry._discover_backends()` 硬编码发现逻辑

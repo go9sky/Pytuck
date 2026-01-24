@@ -768,13 +768,9 @@ def _create_pure_base(storage: 'Storage') -> Type[PureBaseModel]:
 
             # 自动创建表
             if cls.__columns__:
-                try:
-                    columns_list = list(cls.__columns__.values())
-                    table_comment = getattr(cls, '__table_comment__', None)
-                    storage.create_table(cls.__tablename__, columns_list, table_comment)
-                except Exception:
-                    # 表可能已存在，忽略
-                    pass
+                columns_list = list(cls.__columns__.values())
+                table_comment = getattr(cls, '__table_comment__', None)
+                storage.create_table(cls.__tablename__, columns_list, table_comment)
 
         def __init__(self, **kwargs: Any):
             """初始化模型实例"""
@@ -874,13 +870,9 @@ def _create_crud_base(storage: 'Storage') -> Type[CRUDBaseModel]:
 
             # 自动创建表
             if cls.__columns__:
-                try:
-                    columns_list = list(cls.__columns__.values())
-                    table_comment = getattr(cls, '__table_comment__', None)
-                    storage.create_table(cls.__tablename__, columns_list, table_comment)
-                except Exception:
-                    # 表可能已存在，忽略
-                    pass
+                columns_list = list(cls.__columns__.values())
+                table_comment = getattr(cls, '__table_comment__', None)
+                storage.create_table(cls.__tablename__, columns_list, table_comment)
 
         def __init__(self, **kwargs: Any):
             """初始化模型实例"""

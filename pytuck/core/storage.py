@@ -392,18 +392,19 @@ class Storage:
             return
 
         # 查找主键
-        primary_key = 'id'
-        has_pk_column = False
+        primary_key = None
         for col in columns:
             if col.primary_key:
                 primary_key = col.name
-                has_pk_column = True
                 break
 
-        # 如果没有定义主键列，自动添加默认的 id 列
-        if not has_pk_column:
-            id_column = Column('id', int, primary_key=True)
-            columns = [id_column] + list(columns)
+        # 强制要求用户定义主键
+        if primary_key is None:
+            raise ValueError(
+                f"Table '{name}' must have a primary key column. "
+                f"Add primary_key=True to one of your Column definitions. "
+                f"Example: Column('id', int, primary_key=True)"
+            )
 
         table = Table(name, columns, primary_key, comment)
         self.tables[name] = table

@@ -176,6 +176,30 @@ class TestDeclarativeBase(unittest.TestCase):
 
         self.assertEqual(TestModel.__primary_key__, 'user_id')
 
+    def test_primary_key_required(self):
+        """测试必须定义主键"""
+        Base = declarative_base(self.db)
+
+        with self.assertRaises(ValueError) as context:
+            class TestModel(Base):
+                __tablename__ = 'test_no_pk'
+                name = Column('name', str)
+                age = Column('age', int)
+
+        self.assertIn('must have a primary key', str(context.exception))
+
+    def test_id_column_without_primary_key_raises_error(self):
+        """测试定义 id 列但不设置 primary_key=True 应抛出错误"""
+        Base = declarative_base(self.db)
+
+        with self.assertRaises(ValueError) as context:
+            class TestModel(Base):
+                __tablename__ = 'test_id_no_pk'
+                id = Column('id', str)  # 没有 primary_key=True
+                name = Column('name', str)
+
+        self.assertIn('must have a primary key', str(context.exception))
+
 
 class TestPureBaseModel(unittest.TestCase):
     """PureBaseModel 测试"""

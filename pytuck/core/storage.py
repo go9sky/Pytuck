@@ -261,6 +261,8 @@ class Table:
 
         offset = self._pk_offsets[pk]
 
+        if self._data_file is None:
+            raise RecordNotFoundError(self.name, pk)
         with open(self._data_file, 'rb') as f:
             f.seek(offset)
             # 使用 backend 的 _read_record 方法读取记录
@@ -645,17 +647,17 @@ class Storage:
         if self.backend and self.backend.supports_server_side_pagination():
 
             # 转换过滤条件为简化格式
-            conditions = []
+            backend_conditions: List[Dict[str, Any]] = []
             if filters:
                 for field, value in filters.items():
                     if field in table.columns:
-                        conditions.append({'field': field, 'operator': '=', 'value': value})
+                        backend_conditions.append({'field': field, 'operator': '=', 'value': value})
 
             try:
                 # 使用后端分页
                 result = self.backend.query_with_pagination(
                     table_name=table_name,
-                    conditions=conditions,
+                    conditions=backend_conditions,
                     limit=limit,
                     offset=offset,
                     order_by=order_by,
@@ -677,7 +679,7 @@ class Storage:
 
         # 使用内存分页（默认方式）
         # 构建查询条件
-        conditions = []
+        conditions: List[Condition] = []
         if filters:
             for field, value in filters.items():
                 if field in table.columns:

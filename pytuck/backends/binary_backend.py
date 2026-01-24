@@ -862,10 +862,12 @@ class BinaryBackend(StorageBackend):
             if entry.op_type == WALOpType.DELETE:
                 # 删除操作
                 if pk in table.data:
+                    old_record = table.data[pk]
                     del table.data[pk]
                     # 更新索引
-                    for idx in table.indexes.values():
-                        idx.remove(pk)
+                    for col_name, idx in table.indexes.items():
+                        if col_name in old_record:
+                            idx.remove(old_record[col_name], pk)
 
             elif entry.op_type in (WALOpType.INSERT, WALOpType.UPDATE):
                 # 插入或更新操作
@@ -879,7 +881,7 @@ class BinaryBackend(StorageBackend):
                     # 更新索引
                     for col_name, idx in table.indexes.items():
                         if col_name in record:
-                            idx.add(record[col_name], pk)
+                            idx.insert(record[col_name], pk)
 
             count += 1
             self._current_lsn = max(self._current_lsn, entry.lsn)
@@ -1203,10 +1205,10 @@ class BinaryBackend(StorageBackend):
                 pos += 2
 
                 # Type Code
-                type_code = record_data[pos]
+                raw_type_code: int = record_data[pos]
                 pos += 1
 
-                if type_code == 0xFF:
+                if raw_type_code == 0xFF:
                     # NULL value
                     pos += 1  # 跳过长度字节（值为 0）
                     value = None
@@ -1218,11 +1220,11 @@ class BinaryBackend(StorageBackend):
                     pos += value_len
 
                     # 解码值
-                    if type_code in codec_cache:
-                        _, codec = codec_cache[type_code]
+                    if raw_type_code in codec_cache:
+                        _, codec = codec_cache[raw_type_code]
                         value, _ = codec.decode(value_bytes)
                     else:
-                        _, codec = TypeRegistry.get_codec_by_code(TypeCode(type_code))
+                        _, codec = TypeRegistry.get_codec_by_code(TypeCode(raw_type_code))
                         value, _ = codec.decode(value_bytes)
 
                 # 获取列名

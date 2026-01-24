@@ -415,12 +415,12 @@ class SQLiteBackend(StorageBackend):
 
                 # 查询总数
                 count_sql = f"SELECT COUNT(*) FROM `{table_name}` {where_clause}"
-                cursor = connector.execute(count_sql, params)
+                cursor = connector.execute(count_sql, tuple(params))
                 total_count = cursor.fetchone()[0] if cursor else 0
 
                 # 查询数据
                 data_sql = f"SELECT * FROM `{table_name}` {where_clause} {order_clause} {limit_clause}"
-                cursor = connector.execute(data_sql, params)
+                cursor = connector.execute(data_sql, tuple(params))
                 rows = cursor.fetchall()
                 col_names = [desc[0] for desc in cursor.description] if cursor.description else []
 

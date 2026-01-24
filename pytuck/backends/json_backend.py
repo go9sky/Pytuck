@@ -94,7 +94,7 @@ class JSONBackend(StorageBackend):
                 if 'ensure_ascii' in sig.parameters:
                     kwargs['ensure_ascii'] = self.options.ensure_ascii
 
-                return ujson.dumps(obj, **kwargs)
+                return ujson.dumps(obj, **kwargs)  # type: ignore[arg-type]
             except Exception:
                 # 如果参数检查失败，就使用最简单的方式
                 return ujson.dumps(obj)
@@ -271,7 +271,7 @@ class JSONBackend(StorageBackend):
         """
         from datetime import datetime, date, timedelta
 
-        result = {}
+        result: Dict[str, Any] = {}
         for key, value in record.items():
             if value is None:
                 result[key] = None

@@ -193,8 +193,12 @@ def get_backend(engine: str, file_path: str, options: BackendOptions) -> Storage
 
 def _get_all_available_engines() -> List[str]:
     """获取所有可用引擎列表，按注册顺序返回"""
-    return [name for name in BackendRegistry.list_engines()
-            if BackendRegistry.get(name).is_available()]
+    result: List[str] = []
+    for name in BackendRegistry.list_engines():
+        backend_cls = BackendRegistry.get(name)
+        if backend_cls is not None and backend_cls.is_available():
+            result.append(name)
+    return result
 
 
 def is_valid_pytuck_database(file_path: Union[str, Path]) -> Tuple[bool, Optional[str]]:

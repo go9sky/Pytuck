@@ -22,6 +22,7 @@ from pytuck import (
     declarative_base, PureBaseModel,
     select, insert, update, delete,
 )
+from pytuck.common.exceptions import QueryError
 
 
 class TestSessionAPI(unittest.TestCase):
@@ -335,7 +336,7 @@ class TestResultFormats(unittest.TestCase):
         # 测试多条记录抛出异常
         stmt = select(self.User)
         result = self.session.execute(stmt)
-        with self.assertRaises(ValueError):
+        with self.assertRaises(QueryError):
             result.scalars().one()
 
     def test_all_rows(self) -> None:

@@ -229,13 +229,13 @@ class TestValidationErrors(unittest.TestCase):
         """测试无效 int 转换"""
         with self.assertRaises(ValidationError) as cm:
             self.User(name='Alice', age='not_a_number', score=3.5, active=True)
-        self.assertIn('cannot convert', str(cm.exception))
+        self.assertIn('Cannot convert', str(cm.exception))
 
     def test_invalid_float_conversion(self) -> None:
         """测试无效 float 转换"""
         with self.assertRaises(ValidationError) as cm:
             self.User(name='Bob', age=25, score='not_a_float', active=True)
-        self.assertIn('cannot convert', str(cm.exception))
+        self.assertIn('Cannot convert', str(cm.exception))
 
     def test_invalid_bool_conversion(self) -> None:
         """测试无效 bool 转换"""
@@ -248,7 +248,7 @@ class TestValidationErrors(unittest.TestCase):
         column = Column('data', bytes)
         with self.assertRaises(ValidationError) as cm:
             column.validate(123)
-        self.assertIn('cannot convert', str(cm.exception))
+        self.assertIn('Cannot convert', str(cm.exception))
 
 
 class TestValidationInInsertUpdate(unittest.TestCase):

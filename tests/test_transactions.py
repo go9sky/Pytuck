@@ -17,6 +17,7 @@ from typing import Type
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from pytuck import Storage, declarative_base, Session, Column, PureBaseModel, select, insert, update, delete
+from pytuck.common.exceptions import TransactionError
 
 
 class TestTransactionCommit(unittest.TestCase):
@@ -219,7 +220,7 @@ class TestTransactionNesting(unittest.TestCase):
 
     def test_nested_transaction_error(self) -> None:
         """测试嵌套事务抛出异常"""
-        with self.assertRaises(RuntimeError):
+        with self.assertRaises(TransactionError):
             with self.session.begin():
                 stmt = insert(self.User).values(name='Alice')
                 self.session.execute(stmt)

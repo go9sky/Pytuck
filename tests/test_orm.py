@@ -22,7 +22,7 @@ from pytuck import (
     declarative_base, PureBaseModel, CRUDBaseModel,
     select, insert, update, delete,
 )
-from pytuck.common.exceptions import ValidationError
+from pytuck.common.exceptions import ValidationError, SchemaError
 
 
 class TestColumn(unittest.TestCase):
@@ -180,7 +180,7 @@ class TestDeclarativeBase(unittest.TestCase):
         """测试必须定义主键"""
         Base = declarative_base(self.db)
 
-        with self.assertRaises(ValueError) as context:
+        with self.assertRaises(SchemaError) as context:
             class TestModel(Base):
                 __tablename__ = 'test_no_pk'
                 name = Column('name', str)
@@ -192,7 +192,7 @@ class TestDeclarativeBase(unittest.TestCase):
         """测试定义 id 列但不设置 primary_key=True 应抛出错误"""
         Base = declarative_base(self.db)
 
-        with self.assertRaises(ValueError) as context:
+        with self.assertRaises(SchemaError) as context:
             class TestModel(Base):
                 __tablename__ = 'test_id_no_pk'
                 id = Column('id', str)  # 没有 primary_key=True

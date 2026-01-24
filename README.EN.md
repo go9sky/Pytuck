@@ -1006,4 +1006,4 @@ MIT License - see [LICENSE](LICENSE) for details.
 
 ## Acknowledgments
 
-Inspired by SQLAlchemy, Django ORM, and TinyDB.
+Inspired by SQLAlchemy, and TinyDB.

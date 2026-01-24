@@ -1004,4 +1004,4 @@ MIT License
 
 ## 致谢
 
-灵感来自于 SQLAlchemy, Django ORM 和 TinyDB。
+灵感来自于 SQLAlchemy 和 TinyDB。

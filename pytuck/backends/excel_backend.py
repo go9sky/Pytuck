@@ -81,6 +81,11 @@ class ExcelBackend(StorageBackend):
                 ])
                 tables_sheet.append([table_name, table.primary_key, table.next_id, table.comment or '', columns_json])
 
+            # 根据配置隐藏元数据工作表
+            if self.options.hide_metadata_sheets:
+                metadata_sheet.sheet_state = 'hidden'
+                tables_sheet.sheet_state = 'hidden'
+
             # 为每个表创建数据工作表
             for table_name, table in tables.items():
                 self._save_table_to_workbook(wb, table_name, table)

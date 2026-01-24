@@ -44,6 +44,7 @@ class SqliteBackendOptions(SqliteConnectorOptions):
 class ExcelBackendOptions:
     """Excel 后端配置选项"""
     read_only: bool = False  # 只读，只读情况下显著提升读取性能，但不可修改数据
+    hide_metadata_sheets: bool = True  # 是否隐藏元数据工作表（_metadata 和 _pytuck_tables），默认隐藏
 
 
 @dataclass(slots=True)

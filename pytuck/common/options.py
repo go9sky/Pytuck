@@ -47,6 +47,21 @@ class ExcelBackendOptions:
     read_only: bool = False  # 只读，只读情况下显著提升读取性能，但不可修改数据
     hide_metadata_sheets: bool = True  # 是否隐藏元数据工作表（_metadata 和 _pytuck_tables），默认隐藏
 
+    # 行号映射选项
+    row_number_mapping: Optional[Literal['as_pk', 'field']] = None
+    # None: 不做任何映射（默认）
+    # 'as_pk': 将 Excel 行号作为主键值
+    # 'field': 将 Excel 行号写入指定字段
+
+    row_number_field_name: str = 'row_num'
+    # 当 row_number_mapping == 'field' 时使用的目标字段名
+
+    row_number_override: bool = False
+    # 是否在存在 _pytuck_tables（即 Pytuck 自有 schema）时强制应用行号映射
+
+    persist_row_number: bool = False
+    # 是否在保存时将行号写入文件（仅对 mapping == 'field' 有意义）
+
 
 @dataclass(slots=True)
 class XmlBackendOptions:

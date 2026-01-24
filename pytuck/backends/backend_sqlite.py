@@ -76,6 +76,45 @@ class SQLiteBackend(StorageBackend):
             self._connector.close()
             self._connector = None
 
+    def supports_lazy_loading(self) -> bool:
+        """
+        检查是否启用延迟加载模式
+
+        Returns:
+            True 如果使用原生 SQL 模式（load() 只加载 schema）
+        """
+        return self._use_native_sql
+
+    def populate_tables_with_data(self, tables: Dict[str, 'Table']) -> None:
+        """
+        从数据库填充表数据（用于原生 SQL 模式下的迁移场景）
+
+        在原生 SQL 模式下，load() 只加载 schema，此方法用于
+        在需要时（如迁移）填充实际数据。
+
+        Args:
+            tables: 需要填充数据的表字典
+        """
+        if not self._use_native_sql:
+            return  # 非原生模式，数据已加载
+
+        connector = self.get_connector()
+
+        for table_name, table in tables.items():
+            if table.data:  # 已有数据，跳过
+                continue
+
+            # 查询所有数据
+            cursor = connector.execute(f'SELECT * FROM `{table_name}`')
+            rows = cursor.fetchall()
+            col_names = [desc[0] for desc in cursor.description]
+
+            # 填充数据
+            for row in rows:
+                record = self._deserialize_row(row, col_names, table.columns)
+                pk = record[table.primary_key]
+                table.data[pk] = record
+
     def save(self, tables: Dict[str, 'Table']) -> None:
         """
         保存数据到 SQLite 数据库
@@ -87,6 +126,14 @@ class SQLiteBackend(StorageBackend):
             self._save_schema_only(tables)
         else:
             self._save_full(tables)
+
+    def save_full(self, tables: Dict[str, 'Table']) -> None:
+        """
+        全量保存所有表数据（用于迁移场景）
+
+        无论是否使用原生 SQL 模式，都强制保存所有数据。
+        """
+        self._save_full(tables)
 
     def _save_full(self, tables: Dict[str, 'Table']) -> None:
         """全量保存所有表数据到SQLite数据库（兼容模式）"""
@@ -426,6 +473,45 @@ class SQLiteBackend(StorageBackend):
                 result[key] = value
         return result
 
+    def _deserialize_row(
+        self,
+        row: tuple,
+        col_names: List[str],
+        columns: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        反序列化单行数据
+
+        Args:
+            row: 数据库返回的行元组
+            col_names: 列名列表
+            columns: 列定义字典
+
+        Returns:
+            反序列化后的记录字典
+        """
+        from datetime import datetime, date, timedelta
+
+        record: Dict[str, Any] = {}
+        for col_name, value in zip(col_names, row):
+            if col_name not in columns:
+                record[col_name] = value
+                continue
+
+            column = columns[col_name]
+            if value is not None:
+                if column.col_type == bool and isinstance(value, int):
+                    value = bool(value)
+                elif column.col_type == bytes:
+                    # SQLite 原生支持 BLOB，直接返回
+                    pass
+                elif column.col_type in (datetime, date, timedelta, list, dict):
+                    # 使用 TypeRegistry 统一反序列化
+                    value = TypeRegistry.deserialize_from_text(value, column.col_type)
+            record[col_name] = value
+
+        return record
+
     def _load_table(
         self,
         connector: SQLiteConnector,
@@ -438,7 +524,6 @@ class SQLiteBackend(StorageBackend):
         """加载单个表"""
         from ..core.storage import Table
         from ..core.orm import Column
-        from datetime import datetime, date, timedelta
 
         # 重建列定义
         columns_data = json.loads(columns_json)
@@ -467,21 +552,7 @@ class SQLiteBackend(StorageBackend):
         col_names = [desc[0] for desc in cursor.description]
 
         for row in rows:
-            record = {}
-            for col_name, value in zip(col_names, row):
-                # 处理类型转换
-                column = table.columns[col_name]
-                if value is not None:
-                    if column.col_type == bool and isinstance(value, int):
-                        value = bool(value)
-                    elif column.col_type == bytes:
-                        # SQLite 原生支持 BLOB，直接返回
-                        pass
-                    elif column.col_type in (datetime, date, timedelta, list, dict):
-                        # 使用 TypeRegistry 统一反序列化
-                        value = TypeRegistry.deserialize_from_text(value, column.col_type)
-                record[col_name] = value
-
+            record = self._deserialize_row(row, col_names, table.columns)
             pk = record[primary_key]
             table.data[pk] = record
 

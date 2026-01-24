@@ -561,7 +561,7 @@ class BinaryBackend(StorageBackend):
         # 懒加载模式（加密时不支持懒加载，因为需要完整解密数据区）
         if self.options.lazy_load and index_data and not cipher:
             for schema in tables_schema:
-                table = self._create_lazy_table(schema, index_data)
+                table = self._create_lazy_table(schema, index_data, header.data_offset)
                 tables[table.name] = table
         else:
             if cipher:
@@ -586,7 +586,8 @@ class BinaryBackend(StorageBackend):
     def _create_lazy_table(
         self,
         schema: Dict[str, Any],
-        index_data: Dict[str, Dict[str, Any]]
+        index_data: Dict[str, Dict[str, Any]],
+        data_offset: int
     ) -> 'Table':
         """
         创建懒加载表（只加载 schema 和索引，不加载数据）
@@ -594,6 +595,7 @@ class BinaryBackend(StorageBackend):
         Args:
             schema: 表结构信息
             index_data: 从索引区读取的索引数据
+            data_offset: 数据区在文件中的起始偏移量
 
         Returns:
             懒加载的 Table 对象
@@ -616,9 +618,14 @@ class BinaryBackend(StorageBackend):
         table._data_file = self.file_path
         table._backend = self
 
-        # 从索引区获取数据
+        # 从索引区获取数据，并修正偏移量为绝对偏移
         table_idx_data = index_data.get(table_name, {})
-        table._pk_offsets = table_idx_data.get('pk_offsets', {})
+        relative_pk_offsets = table_idx_data.get('pk_offsets', {})
+        # 将相对偏移量转换为绝对偏移量
+        table._pk_offsets = {
+            pk: relative_offset + data_offset
+            for pk, relative_offset in relative_pk_offsets.items()
+        }
 
         # 恢复索引
         idx_maps = table_idx_data.get('indexes', {})
@@ -639,6 +646,44 @@ class BinaryBackend(StorageBackend):
         """删除文件"""
         if self.file_path.exists():
             self.file_path.unlink()
+
+    def supports_lazy_loading(self) -> bool:
+        """
+        检查是否启用了懒加载模式
+
+        Returns:
+            True 如果 options.lazy_load=True
+        """
+        return self.options.lazy_load
+
+    def populate_tables_with_data(self, tables: Dict[str, 'Table']) -> None:
+        """
+        填充懒加载表的数据（用于迁移场景）
+
+        在懒加载模式下，load() 只加载 schema 和索引，此方法用于
+        在需要时（如迁移）填充实际数据。
+
+        Args:
+            tables: 需要填充数据的表字典
+        """
+        if not self.options.lazy_load:
+            return  # 非懒加载模式，数据已在 load() 时加载
+
+        for table in tables.values():
+            if table.data:  # 已有数据，跳过
+                continue
+
+            if not getattr(table, '_lazy_loaded', False):
+                continue
+
+            pk_offsets = getattr(table, '_pk_offsets', None)
+            if pk_offsets is None:
+                continue
+
+            # 通过 get() 逐条加载数据
+            for pk in pk_offsets:
+                record = table.get(pk)
+                table.data[pk] = record
 
     # ============== WAL 操作方法 ==============
 

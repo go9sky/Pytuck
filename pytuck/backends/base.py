@@ -179,6 +179,62 @@ class StorageBackend(ABC):
         """
         return False
 
+    def supports_lazy_loading(self) -> bool:
+        """
+        检查后端是否支持延迟加载（即 load() 只加载 schema，数据按需加载）
+
+        Returns:
+            True 如果当前配置下 load() 只加载 schema，数据需要按需查询或填充
+            False 如果 load() 会加载所有数据到内存
+
+        用途：
+            - 迁移工具需要知道是否需要调用 populate_tables_with_data()
+            - 数据库类后端（如 SQLite 原生模式）可能只加载 schema
+
+        Note:
+            返回值可能依赖于当前的配置选项，而非静态属性。
+            例如 SQLite 后端在 use_native_sql=True 时返回 True。
+
+        后端实现说明：
+            - BinaryBackend (lazy_load=True): 通过 _pk_offsets 遍历主键，逐条读取文件
+            - SQLiteBackend (use_native_sql=True): 通过 SQL 查询获取全部数据
+            - 其他数据库后端: 根据具体实现决定
+        """
+        return False
+
+    def populate_tables_with_data(self, tables: Dict[str, 'Table']) -> None:
+        """
+        从持久化存储填充表数据（用于延迟加载模式）
+
+        当 supports_lazy_loading() 返回 True 时，load() 只加载 schema，
+        此方法用于在需要时（如迁移）填充实际数据。
+
+        Args:
+            tables: 需要填充数据的表字典（由 load() 返回）
+
+        Note:
+            - 如果 supports_lazy_loading() 返回 False，此方法通常什么都不做
+            - 子类应检查 table.data 是否已有数据，避免重复加载
+            - 此方法应该是幂等的（多次调用结果相同）
+        """
+        pass  # 默认实现：什么都不做
+
+    def save_full(self, tables: Dict[str, 'Table']) -> None:
+        """
+        全量保存所有表数据（用于迁移场景）
+
+        当 supports_lazy_loading() 返回 True 时，默认的 save() 可能只保存 schema，
+        此方法强制保存所有数据（包括 table.data 中的内容）。
+
+        Args:
+            tables: 要保存的表字典
+
+        Note:
+            - 默认实现直接调用 save()，对于非延迟加载后端足够
+            - 延迟加载后端（如 SQLite 原生模式）应覆盖此方法
+        """
+        self.save(tables)  # 默认实现：直接调用 save()
+
     def query_with_pagination(
             self,
             table_name: str,

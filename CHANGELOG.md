@@ -51,6 +51,13 @@ This file documents all notable changes. Format based on [Keep a Changelog](http
   - 修复 NULL 值查询问题（使用 `IS NULL` 而非 `= NULL`）
   - 支持多列排序（`order_by('col1').order_by('col2', desc=True)`）
 
+- **迁移工具延迟加载后端支持 / Migration Tool Lazy Loading Backend Support**
+  - 修复 `migrate_engine()` 在源后端使用延迟加载模式（如 SQLite 原生模式）时数据为空的问题
+  - `StorageBackend` 基类新增 `supports_lazy_loading()` 方法，用于判断后端是否只加载 schema
+  - `StorageBackend` 基类新增 `populate_tables_with_data()` 方法，用于在延迟加载模式下填充数据
+  - `StorageBackend` 基类新增 `save_full()` 方法，确保迁移时保存所有数据
+  - 新增延迟加载后端迁移专项测试（5 个测试用例）
+
 - **后端注册器优化 / Backend Registry Optimization**：使用 `__init_subclass__` 实现自动注册
   - `StorageBackend` 基类新增 `__init_subclass__` 方法，子类定义时自动注册到 `BackendRegistry`
   - 移除了 `BackendRegistry._discover_backends()` 硬编码发现逻辑

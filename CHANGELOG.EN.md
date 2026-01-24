@@ -54,6 +54,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Fixed NULL value query issue (using `IS NULL` instead of `= NULL`)
   - Multi-column ORDER BY support (`order_by('col1').order_by('col2', desc=True)`)
 
+- **Migration Tool Lazy Loading Backend Support**
+  - Fixed `migrate_engine()` returning empty data when source backend uses lazy loading mode (e.g., SQLite native mode)
+  - Added `supports_lazy_loading()` method to `StorageBackend` base class to check if backend only loads schema
+  - Added `populate_tables_with_data()` method to `StorageBackend` base class for on-demand data loading
+  - Added `save_full()` method to `StorageBackend` base class to ensure all data is saved during migration
+  - Added dedicated lazy loading backend migration tests (5 test cases)
+
 - **Backend Registry Optimization**: Automatic registration using `__init_subclass__`
   - Added `__init_subclass__` method to `StorageBackend` base class for automatic registration to `BackendRegistry` when subclassed
   - Removed hardcoded `BackendRegistry._discover_backends()` discovery logic

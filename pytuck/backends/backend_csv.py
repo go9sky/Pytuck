@@ -152,8 +152,9 @@ class CSVBackend(StorageBackend):
                 row = self._serialize_record(record, table.columns)
                 writer.writerow(row)
 
-        # 写入ZIP
-        zf.writestr(f'{table_name}.csv', csv_buffer.getvalue())
+        # 写入ZIP（使用配置的编码）
+        csv_bytes = csv_buffer.getvalue().encode(self.options.encoding)
+        zf.writestr(f'{table_name}.csv', csv_bytes)
 
     def _load_table_from_zip(
         self, zf: zipfile.ZipFile, table_name: str, schema: Dict[str, Any]

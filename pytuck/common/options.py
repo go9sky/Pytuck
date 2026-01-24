@@ -30,7 +30,7 @@ class JsonBackendOptions:
 @dataclass(slots=True)
 class CsvBackendOptions:
     """CSV 后端配置选项"""
-    encoding: str = 'utf-8'  # 字符编码
+    encoding: str = 'utf-8-sig'  # 字符编码（默认带 BOM，兼容 Excel）
     delimiter: str = ','  # 字段分隔符
     indent: Optional[int] = None  # json元数据缩进空格数（无缩进时为 None）
 

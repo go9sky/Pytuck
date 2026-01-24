@@ -110,6 +110,11 @@ def migrate_engine(
     # 加载源数据
     try:
         tables = source_backend.load()
+
+        # 处理延迟加载模式：load() 只加载 schema，需要额外填充数据
+        if source_backend.supports_lazy_loading():
+            source_backend.populate_tables_with_data(tables)
+
     except Exception as e:
         raise MigrationError(f"从源文件加载数据失败: {e}")
 
@@ -118,7 +123,8 @@ def migrate_engine(
 
     # 保存到目标
     try:
-        target_backend.save(tables)
+        # 使用 save_full() 确保所有数据被保存（处理延迟加载后端）
+        target_backend.save_full(tables)
     except Exception as e:
         raise MigrationError(f"保存数据到目标文件失败: {e}")
 

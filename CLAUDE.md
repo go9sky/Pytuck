@@ -2,6 +2,11 @@
 
 - 始终使用中文回答
 
+### 运行环境
+
+- **Windows**：默认使用 PowerShell 执行命令，PowerShell 中命令无法执行时再尝试 cmd
+- **Linux/macOS**：使用默认 shell（bash/zsh）
+
 ---
 
 # Pytuck 项目说明
@@ -35,23 +40,28 @@ pytuck/
 │   │   ├── statements.py    # SQL 风格语句构建（select, insert, update, delete）
 │   │   └── result.py        # 查询结果封装（Result, ScalarResult, Row, CursorResult）
 │   ├── backends/            # 存储引擎实现
-│   │   ├── __init__.py      # 后端导出
-│   │   ├── base.py          # 基类
+│   │   ├── __init__.py      # 后端导出（导入所有后端触发自动注册）
+│   │   ├── base.py          # StorageBackend 基类（含 __init_subclass__ 自动注册）
+│   │   ├── registry.py      # BackendRegistry 注册器和工厂函数
 │   │   ├── versions.py      # 统一引擎版本管理
-│   │   ├── binary.py        # 二进制引擎（默认）
-│   │   ├── json_backend.py  # JSON 引擎
-│   │   ├── csv_backend.py   # CSV 引擎
-│   │   ├── sqlite_backend.py # SQLite 引擎
-│   │   ├── excel_backend.py # Excel 引擎
-│   │   └── xml_backend.py   # XML 引擎
+│   │   ├── backend_binary.py  # 二进制引擎（默认）
+│   │   ├── backend_csv.py   # CSV 引擎
+│   │   ├── backend_excel.py # Excel 引擎
+│   │   ├── backend_json.py  # JSON 引擎
+│   │   ├── backend_sqlite.py # SQLite 引擎
+│   │   └── backend_xml.py   # XML 引擎
 │   ├── connectors/          # 数据库连接器（统一接口）
 │   │   ├── __init__.py      # 连接器导出
 │   │   ├── base.py          # DatabaseConnector 抽象基类
-│   │   └── sqlite_connector.py # SQLite 连接器
+│   │   └── connector_sqlite.py # SQLite 连接器
 │   └── tools/               # 工具模块（不从根包导出）
 │       ├── __init__.py      # 工具导出
 │       ├── migrate.py       # 数据迁移工具
 │       └── adapters.py      # 数据库适配器（connectors 的薄包装）
+├── docs/                     # 项目文档
+│   ├── changelog/           # 历史版本日志归档
+│   │   └── *.*.*.md
+│   └── ...                  # 其他文档
 ├── examples/                 # 用户示例代码（仅存放演示脚本）
 │   ├── _common.py           # 示例共用工具（下划线前缀表示内部使用）
 │   ├── new_api_demo.py      # 纯模型模式示例（PureBaseModel + Session）
@@ -540,6 +550,42 @@ date +%Y-%m-%d
 - 版本条目格式：`## [版本号] - YYYY-MM-DD`
 - 日期必须是实际创建/发布日期，不能使用占位符或猜测日期
 - 创建新版本条目前，必须先执行日期获取命令确认当前日期
+
+### CHANGELOG 归档规范（强制）
+
+当发布新版本时，**必须将旧版本内容归档到 `docs/changelog/` 目录**：
+
+**归档流程**：
+1. 创建归档文件 `docs/changelog/{版本号}.md`（如 `docs/changelog/0.4.0.md`）
+2. 将旧版本的中英文内容合并到归档文件中
+3. 更新 `CHANGELOG.md` 和 `CHANGELOG.EN.md`，只保留当前版本内容
+
+**归档文件格式**：
+```markdown
+# Changelog - v{版本号}
+
+> 发布日期 / Release Date: YYYY-MM-DD
+
+---
+
+## 中文
+
+### 新增
+...
+
+---
+
+## English
+
+### Added
+...
+```
+
+**规则**：
+- 每个版本单独一个归档文件
+- 归档文件包含完整的中英文内容
+- 主 CHANGELOG 文件只保留当前最新版本
+- 主文件顶部保留历史版本链接：`> 历史版本请查看 / For historical versions, see: [docs/changelog/](./docs/changelog/)`
 
 ## 常用命令
 

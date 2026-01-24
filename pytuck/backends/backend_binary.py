@@ -1526,45 +1526,60 @@ class BinaryBackend(StorageBackend):
             if not file_path.exists():
                 return False, {'error': 'file_not_found'}
 
-            # 检查文件大小是否足够包含文件头
+            # 检查文件大小是否足够包含魔数
             file_stat = file_path.stat()
             file_size = file_stat.st_size
-            if file_size < cls.FILE_HEADER_SIZE:
+            if file_size < 4:
                 return False, {'error': 'file_too_small'}
 
             # 读取并检查文件头
             with open(file_path, 'rb') as f:
-                header = f.read(cls.FILE_HEADER_SIZE)
+                magic = f.read(4)
 
-            if len(header) < cls.FILE_HEADER_SIZE:
-                return False, {'error': 'header_incomplete'}
+                # 检查 v4 格式 (PTK4)
+                if magic == cls.MAGIC_V4:
+                    if file_size < cls.DUAL_HEADER_SIZE:
+                        return False, {'error': 'file_too_small_for_v4'}
 
-            # 检查魔数
-            magic = header[0:4]
-            if magic != cls.MAGIC_NUMBER:
+                    return True, {
+                        'engine': 'binary',
+                        'format_version': 4,
+                        'file_size': file_size,
+                        'modified': file_stat.st_mtime,
+                        'confidence': 'high'
+                    }
+
+                # 检查旧版格式 (PYTK)
+                if magic == cls.MAGIC_NUMBER:
+                    if file_size < cls.FILE_HEADER_SIZE:
+                        return False, {'error': 'file_too_small'}
+
+                    f.seek(0)
+                    header = f.read(cls.FILE_HEADER_SIZE)
+
+                    # 检查版本号
+                    try:
+                        version = struct.unpack('<H', header[4:6])[0]
+                    except struct.error:
+                        return False, {'error': 'invalid_version_format'}
+
+                    # 读取表数量
+                    try:
+                        table_count = struct.unpack('<I', header[6:10])[0]
+                    except struct.error:
+                        return False, {'error': 'invalid_table_count_format'}
+
+                    # 成功识别为 Binary 格式
+                    return True, {
+                        'engine': 'binary',
+                        'format_version': version,
+                        'table_count': table_count,
+                        'file_size': file_size,
+                        'modified': file_stat.st_mtime,
+                        'confidence': 'high'
+                    }
+
                 return False, None  # 不是错误，只是不匹配
-
-            # 检查版本号
-            try:
-                version = struct.unpack('<H', header[4:6])[0]
-            except struct.error:
-                return False, {'error': 'invalid_version_format'}
-
-            # 读取表数量
-            try:
-                table_count = struct.unpack('<I', header[6:10])[0]
-            except struct.error:
-                return False, {'error': 'invalid_table_count_format'}
-
-            # 成功识别为 Binary 格式
-            return True, {
-                'engine': 'binary',
-                'format_version': version,
-                'table_count': table_count,
-                'file_size': file_size,
-                'modified': file_stat.st_mtime,
-                'confidence': 'high'
-            }
 
         except Exception as e:
             return False, {'error': f'probe_exception: {str(e)}'}

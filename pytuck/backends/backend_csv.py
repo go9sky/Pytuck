@@ -195,6 +195,13 @@ class CSVBackend(StorageBackend):
             text_stream = io.TextIOWrapper(f, encoding=encoding)
             reader = csv.DictReader(text_stream, delimiter=self.options.delimiter)
 
+            # 检查主键列是否存在于 CSV header 中
+            if reader.fieldnames and table.primary_key not in reader.fieldnames:
+                raise SerializationError(
+                    f"CSV 文件 '{csv_file}' 缺少主键列 '{table.primary_key}'，"
+                    f"可用列: {reader.fieldnames}"
+                )
+
             for row_data in reader:
                 record = self._deserialize_record(row_data, table.columns)
                 pk = record[table.primary_key]

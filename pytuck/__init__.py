@@ -35,7 +35,7 @@ Pytuck - 轻量级 Python 文档数据库
     # 查询
     stmt = select(User).where(User.age >= 18)
     result = session.execute(stmt)
-    users = result.scalars().all()
+    users = result.all()
 
 2. Active Record 模式 - 模型自带 CRUD 方法：
     from typing import Type
@@ -68,7 +68,7 @@ from .core import Storage
 from .core import Session
 from .query import Query, BinaryExpression
 from .query import select, insert, update, delete
-from .query import Result, ScalarResult, Row, CursorResult
+from .query import Result, CursorResult
 from .common.exceptions import (
     PytuckException,
     TableNotFoundError,
@@ -112,8 +112,6 @@ __all__ = [
 
     # 查询结果
     'Result',        # 查询结果包装器
-    'ScalarResult',  # 标量结果
-    'Row',           # 行对象
     'CursorResult',  # CUD 操作结果
 
     # 高级用法

@@ -256,7 +256,7 @@ class Session:
             # 查询
             stmt = select(User).where(User.age >= 18)
             result = session.execute(stmt)
-            users = result.scalars().all()
+            users = result.all()
 
             # 插入
             stmt = insert(User).values(name='Alice', age=20)
@@ -401,7 +401,7 @@ class Session:
             from pytuck import select
             stmt = select(User).where(User.age >= 18)
             result = session.execute(stmt)
-            users = result.scalars().all()
+            users = result.all()
 
         旧写法（仍然支持）：
             users = session.query(User).filter(User.age >= 18).all()

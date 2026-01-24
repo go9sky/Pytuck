@@ -46,7 +46,7 @@ class Select(Statement[T]):
     Example:
         stmt = select(User).where(User.age >= 18).order_by('name').limit(10)
         result = session.execute(stmt)
-        users = result.scalars().all()
+        users = result.all()
 
     Attributes:
         model_class: The model class to query

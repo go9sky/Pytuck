@@ -6,7 +6,7 @@ Pytuck 查询子系统
 
 from .builder import Query, BinaryExpression, Condition
 from .statements import select, insert, update, delete, Statement, Select, Insert, Update, Delete
-from .result import Result, ScalarResult, Row, CursorResult
+from .result import Result, CursorResult
 
 __all__ = [
     # Builder
@@ -25,7 +25,5 @@ __all__ = [
     'Delete',
     # Result
     'Result',
-    'ScalarResult',
-    'Row',
     'CursorResult',
 ]

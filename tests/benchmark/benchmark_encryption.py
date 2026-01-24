@@ -122,7 +122,7 @@ def benchmark_encryption(
 
     session = Session(db)
     result = session.execute(select(User2))
-    users = result.scalars().all()
+    users = result.all()
 
     read_time = time.perf_counter() - start_time
 

@@ -47,7 +47,7 @@ session.commit()
 print("\n2. Session 关闭后仍可访问")
 
 stmt = select(User).where(User.name == 'Alice')
-alice = session.execute(stmt).scalars().first()
+alice = session.execute(stmt).first()
 
 print(f"   查询前: {alice.name}, {alice.age}岁, email={alice.email}")
 
@@ -79,7 +79,7 @@ session2.execute(stmt)
 session2.commit()
 
 stmt = select(User2).where(User2.name == 'David')
-david = session2.execute(stmt).scalars().first()
+david = session2.execute(stmt).first()
 
 print(f"   查询前: {david.name}, {david.age}岁")
 
@@ -119,7 +119,7 @@ for name, age in [('Eve', 22), ('Frank', 28)]:
 session3.commit()
 
 stmt = select(User3)
-users = session3.execute(stmt).scalars().all()
+users = session3.execute(stmt).all()
 session3.close()
 
 users_list = [u.to_dict() for u in users]
@@ -191,7 +191,7 @@ print("""
    # Pytuck 代码
    session = Session(db)
    stmt = select(User).where(User.name == 'Alice')
-   user = session.execute(stmt).scalars().first()
+   user = session.execute(stmt).first()
    session.close()
 
    # ✅ 正常工作

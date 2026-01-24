@@ -343,13 +343,13 @@ def demo_database_import():
     # 查询用户
     stmt = select(ImportedUser).where(ImportedUser.is_active == True)
     result = session.execute(stmt)
-    active_users = result.scalars().all()
+    active_users = result.all()
     print(f"  活跃用户: {len(active_users)} 个")
 
     # 查询项目
     stmt = select(ImportedProject).where(ImportedProject.budget > 150000)
     result = session.execute(stmt)
-    expensive_projects = result.scalars().all()
+    expensive_projects = result.all()
     print(f"  高预算项目 (>15万): {len(expensive_projects)} 个")
 
     for project in expensive_projects:

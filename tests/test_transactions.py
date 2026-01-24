@@ -61,11 +61,11 @@ class TestTransactionCommit(unittest.TestCase):
 
         # 验证提交
         stmt = select(self.User).filter_by(name='Alice')
-        alice = self.session.execute(stmt).scalars().first()
+        alice = self.session.execute(stmt).first()
         self.assertEqual(alice.balance, 800)
 
         stmt = select(self.User).filter_by(name='Bob')
-        bob = self.session.execute(stmt).scalars().first()
+        bob = self.session.execute(stmt).first()
         self.assertIsNotNone(bob)
         self.assertEqual(bob.balance, 200)
 
@@ -79,7 +79,7 @@ class TestTransactionCommit(unittest.TestCase):
 
         # 验证全部提交
         stmt = select(self.User)
-        users = self.session.execute(stmt).scalars().all()
+        users = self.session.execute(stmt).all()
         self.assertEqual(len(users), 5)
 
 
@@ -140,18 +140,18 @@ class TestTransactionRollback(unittest.TestCase):
 
         # 验证回滚
         stmt = select(self.User).filter_by(id=self.alice_id)
-        alice = self.session.execute(stmt).scalars().first()
+        alice = self.session.execute(stmt).first()
         self.assertEqual(alice.balance, initial_balance)
 
         stmt = select(self.Order)
-        orders = self.session.execute(stmt).scalars().all()
+        orders = self.session.execute(stmt).all()
         self.assertEqual(len(orders), 0)
 
     def test_rollback_batch_insert(self) -> None:
         """测试批量插入时回滚"""
         # 记录初始数量
         stmt = select(self.User)
-        initial_count = len(self.session.execute(stmt).scalars().all())
+        initial_count = len(self.session.execute(stmt).all())
 
         try:
             with self.session.begin():
@@ -168,7 +168,7 @@ class TestTransactionRollback(unittest.TestCase):
 
         # 验证回滚
         stmt = select(self.User)
-        final_count = len(self.session.execute(stmt).scalars().all())
+        final_count = len(self.session.execute(stmt).all())
         self.assertEqual(final_count, initial_count)
 
     def test_partial_rollback(self) -> None:
@@ -189,11 +189,11 @@ class TestTransactionRollback(unittest.TestCase):
 
         # 验证：Bob 存在，Charlie 不存在
         stmt = select(self.User).filter_by(name='Bob')
-        bob = self.session.execute(stmt).scalars().first()
+        bob = self.session.execute(stmt).first()
         self.assertIsNotNone(bob)
 
         stmt = select(self.User).filter_by(name='Charlie')
-        charlie = self.session.execute(stmt).scalars().first()
+        charlie = self.session.execute(stmt).first()
         self.assertIsNone(charlie)
 
 
@@ -261,7 +261,7 @@ class TestSessionContextManager(unittest.TestCase):
         # 验证提交
         session2 = Session(self.db)
         stmt = select(self.User).filter_by(name='Alice')
-        alice = session2.execute(stmt).scalars().first()
+        alice = session2.execute(stmt).first()
         self.assertIsNotNone(alice)
         session2.close()
 
@@ -329,16 +329,16 @@ class TestTransactionComplex(unittest.TestCase):
 
         # 记录初始余额
         stmt = select(self.Account).filter_by(id=self.alice_id)
-        alice_initial = self.session.execute(stmt).scalars().first().balance
+        alice_initial = self.session.execute(stmt).first().balance
 
         stmt = select(self.Account).filter_by(id=self.bob_id)
-        bob_initial = self.session.execute(stmt).scalars().first().balance
+        bob_initial = self.session.execute(stmt).first().balance
 
         # 转账事务
         with self.session.begin():
             # 扣款
             stmt = select(self.Account).filter_by(id=self.alice_id)
-            alice = self.session.execute(stmt).scalars().first()
+            alice = self.session.execute(stmt).first()
             stmt = update(self.Account).where(self.Account.id == self.alice_id).values(
                 balance=alice.balance - transfer_amount
             )
@@ -346,7 +346,7 @@ class TestTransactionComplex(unittest.TestCase):
 
             # 收款
             stmt = select(self.Account).filter_by(id=self.bob_id)
-            bob = self.session.execute(stmt).scalars().first()
+            bob = self.session.execute(stmt).first()
             stmt = update(self.Account).where(self.Account.id == self.bob_id).values(
                 balance=bob.balance + transfer_amount
             )
@@ -362,17 +362,17 @@ class TestTransactionComplex(unittest.TestCase):
 
         # 验证结果
         stmt = select(self.Account).filter_by(id=self.alice_id)
-        alice_final = self.session.execute(stmt).scalars().first().balance
+        alice_final = self.session.execute(stmt).first().balance
 
         stmt = select(self.Account).filter_by(id=self.bob_id)
-        bob_final = self.session.execute(stmt).scalars().first().balance
+        bob_final = self.session.execute(stmt).first().balance
 
         self.assertEqual(alice_final, alice_initial - transfer_amount)
         self.assertEqual(bob_final, bob_initial + transfer_amount)
 
         # 验证交易记录
         stmt = select(self.Transaction)
-        transactions = self.session.execute(stmt).scalars().all()
+        transactions = self.session.execute(stmt).all()
         self.assertEqual(len(transactions), 1)
 
     def test_insufficient_balance_rollback(self) -> None:
@@ -381,16 +381,16 @@ class TestTransactionComplex(unittest.TestCase):
 
         # 记录初始余额
         stmt = select(self.Account).filter_by(id=self.alice_id)
-        alice_initial = self.session.execute(stmt).scalars().first().balance
+        alice_initial = self.session.execute(stmt).first().balance
 
         stmt = select(self.Account).filter_by(id=self.bob_id)
-        bob_initial = self.session.execute(stmt).scalars().first().balance
+        bob_initial = self.session.execute(stmt).first().balance
 
         try:
             with self.session.begin():
                 # 获取 Alice 余额
                 stmt = select(self.Account).filter_by(id=self.alice_id)
-                alice = self.session.execute(stmt).scalars().first()
+                alice = self.session.execute(stmt).first()
 
                 # 检查余额
                 if alice.balance < transfer_amount:
@@ -407,17 +407,17 @@ class TestTransactionComplex(unittest.TestCase):
 
         # 验证回滚
         stmt = select(self.Account).filter_by(id=self.alice_id)
-        alice_final = self.session.execute(stmt).scalars().first().balance
+        alice_final = self.session.execute(stmt).first().balance
 
         stmt = select(self.Account).filter_by(id=self.bob_id)
-        bob_final = self.session.execute(stmt).scalars().first().balance
+        bob_final = self.session.execute(stmt).first().balance
 
         self.assertEqual(alice_final, alice_initial)
         self.assertEqual(bob_final, bob_initial)
 
         # 验证没有交易记录
         stmt = select(self.Transaction)
-        transactions = self.session.execute(stmt).scalars().all()
+        transactions = self.session.execute(stmt).all()
         self.assertEqual(len(transactions), 0)
 
 

@@ -112,19 +112,19 @@ print("\n5. 查询数据（execute + select）")
 # 查询所有学生（IO 明确：execute() 处）
 stmt = select(Student)
 result = session.execute(stmt)
-all_students = result.scalars().all()
+all_students = result.all()
 print(f"   ✓ 所有学生: {[s.name for s in all_students]}")
 
 # 条件查询（Pythonic 表达式语法）
 stmt = select(Student).where(Student.age >= 20)
 result = session.execute(stmt)
-adults = result.scalars().all()
+adults = result.all()
 print(f"   ✓ where(Student.age >= 20): {[s.name for s in adults]}")
 
 # 简单等值查询（filter_by 语法）
 stmt = select(Student).filter_by(name='Alice')
 result = session.execute(stmt)
-alice = result.scalars().first()
+alice = result.first()
 print(f"   ✓ filter_by(name='Alice'): {alice.name}, {alice.age}岁")
 
 # 多条件查询（AND）
@@ -133,37 +133,37 @@ stmt = select(Student).where(
     Student.age < 22
 )
 result = session.execute(stmt)
-young_in_class_a = result.scalars().all()
+young_in_class_a = result.all()
 print(f"   ✓ Class A 中年龄 < 22 的学生: {[s.name for s in young_in_class_a]}")
 
 # 混合使用 filter_by 和 where
 stmt = select(Student).filter_by(class_id=class_a_id).where(Student.age >= 20)
 result = session.execute(stmt)
-class_a_adults = result.scalars().all()
+class_a_adults = result.all()
 print(f"   ✓ 混合查询: Class A 成年学生: {[s.name for s in class_a_adults]}")
 
 # 排序和限制
 stmt = select(Student).order_by('age', desc=True).limit(2)
 result = session.execute(stmt)
-top2 = result.scalars().all()
+top2 = result.all()
 print(f"   ✓ order_by + limit: 年龄最大的2人: {[f'{s.name}({s.age})' for s in top2]}")
 
 # 统计
 stmt = select(Student)
 result = session.execute(stmt)
-total = len(result.scalars().all())
+total = len(result.all())
 print(f"   ✓ 总学生数: {total}")
 
 # 不等于查询
 stmt = select(Student).where(Student.name != 'Alice')
 result = session.execute(stmt)
-not_alice = result.scalars().all()
+not_alice = result.all()
 print(f"   ✓ 名字不是 Alice 的学生: {[s.name for s in not_alice]}")
 
 # IN 查询
 stmt = select(Student).where(Student.age.in_([19, 20, 21]))
 result = session.execute(stmt)
-teenagers = result.scalars().all()
+teenagers = result.all()
 print(f"   ✓ 年龄在 [19, 20, 21] 中的学生: {[s.name for s in teenagers]}")
 
 # ============================================================================
@@ -175,7 +175,7 @@ print("\n6. 更新数据（execute + update）")
 # 查询 Alice 当前年龄
 stmt = select(Student).filter_by(name='Alice')
 result = session.execute(stmt)
-alice = result.scalars().first()
+alice = result.first()
 print(f"   原始数据: {alice.name}, 年龄 {alice.age}")
 
 # 更新 Alice 的年龄
@@ -187,7 +187,7 @@ print(f"   ✓ 更新 Alice 年龄，影响 {result.rowcount()} 行")
 # 验证更新
 stmt = select(Student).filter_by(name='Alice')
 result = session.execute(stmt)
-alice_updated = result.scalars().first()
+alice_updated = result.first()
 print(f"   ✓ 更新后数据: {alice_updated.name}, 年龄 {alice_updated.age}")
 
 # 批量更新
@@ -205,7 +205,7 @@ print("\n7. 删除数据（execute + delete）")
 # 查询当前总数
 stmt = select(Student)
 result = session.execute(stmt)
-before_count = len(result.scalars().all())
+before_count = len(result.all())
 print(f"   删除前总数: {before_count}")
 
 # 条件删除
@@ -217,7 +217,7 @@ print(f"   ✓ 删除 David，影响 {result.rowcount()} 行")
 # 验证删除
 stmt = select(Student)
 result = session.execute(stmt)
-after_count = len(result.scalars().all())
+after_count = len(result.all())
 print(f"   删除后总数: {after_count}")
 
 # ============================================================================
@@ -235,13 +235,13 @@ with session.begin():
 
 stmt = select(Student)
 result = session.execute(stmt)
-count_after_commit = len(result.scalars().all())
+count_after_commit = len(result.all())
 print(f"   ✓ 事务提交成功，当前总数: {count_after_commit}")
 
 print("\n   场景 2: 失败的事务（自动回滚）")
 stmt = select(Student)
 result = session.execute(stmt)
-initial_count = len(result.scalars().all())
+initial_count = len(result.all())
 
 try:
     with session.begin():
@@ -254,36 +254,37 @@ except ValueError as e:
 
 stmt = select(Student)
 result = session.execute(stmt)
-final_count = len(result.scalars().all())
+final_count = len(result.all())
 print(f"   ✓ 事务自动回滚，学生数未变: {initial_count} -> {final_count}")
 
 # ============================================================================
-# 9. Result 对象的多种用法
+# 9. Result 对象的用法
 # ============================================================================
 
-print("\n9. Result 对象的多种用法")
+print("\n9. Result 对象的用法")
 
 stmt = select(Student).where(Student.age >= 20)
 
-# 方式 1：scalars().all() - 返回模型实例列表
+# 方式 1：all() - 返回模型实例列表
 result = session.execute(stmt)
-users = result.scalars().all()
-print(f"   方式 1 - scalars().all(): {[u.name for u in users]}")
+users = result.all()
+print(f"   方式 1 - all(): {[u.name for u in users]}")
 
-# 方式 2：all() - 返回 Row 对象列表
+# 方式 2：first() - 单条查询
 result = session.execute(stmt)
-rows = result.all()
-print(f"   方式 2 - all(): {[row.name for row in rows]}")
+first = result.first()
+print(f"   方式 2 - first(): {first.name if first else None}")
 
-# 方式 3：fetchall() - 返回字典列表
-result = session.execute(stmt)
-dicts = result.fetchall()
-print(f"   方式 3 - fetchall(): {[d['name'] for d in dicts]}")
+# 方式 3：one() - 必须恰好一条
+stmt_single = select(Student).filter_by(name='Alice')
+result = session.execute(stmt_single)
+user = result.one()
+print(f"   方式 3 - one(): {user.name}")
 
-# 方式 4：scalars().first() - 单条查询
-result = session.execute(stmt)
-first = result.scalars().first()
-print(f"   方式 4 - scalars().first(): {first.name if first else None}")
+# 方式 4：one_or_none() - 最多一条
+result = session.execute(stmt_single)
+user = result.one_or_none()
+print(f"   方式 4 - one_or_none(): {user.name if user else None}")
 
 # ============================================================================
 # 总结

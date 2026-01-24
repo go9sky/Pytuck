@@ -50,7 +50,7 @@ class TestSessionCloseAccess(unittest.TestCase):
         """测试 Session 关闭后仍可访问对象"""
         # 查询数据
         stmt = select(self.User).where(self.User.name == 'Alice')
-        user = self.session.execute(stmt).scalars().first()
+        user = self.session.execute(stmt).first()
 
         # 验证查询成功
         self.assertIsNotNone(user)
@@ -68,7 +68,7 @@ class TestSessionCloseAccess(unittest.TestCase):
     def test_to_dict_after_session_close(self) -> None:
         """测试 Session 关闭后 to_dict() 仍可用"""
         stmt = select(self.User).where(self.User.name == 'Alice')
-        user = self.session.execute(stmt).scalars().first()
+        user = self.session.execute(stmt).first()
 
         # 关闭 Session
         self.session.close()
@@ -88,7 +88,7 @@ class TestSessionCloseAccess(unittest.TestCase):
 
         # 查询所有
         stmt = select(self.User)
-        users = self.session.execute(stmt).scalars().all()
+        users = self.session.execute(stmt).all()
         self.assertEqual(len(users), 3)
 
         # 关闭 Session
@@ -122,7 +122,7 @@ class TestStorageCloseAccess(unittest.TestCase):
 
         # 查询数据
         stmt = select(User).where(User.name == 'Alice')
-        user = session.execute(stmt).scalars().first()
+        user = session.execute(stmt).first()
 
         # 验证查询成功
         self.assertIsNotNone(user)
@@ -169,7 +169,7 @@ class TestModelSerialization(unittest.TestCase):
     def test_to_dict(self) -> None:
         """测试 to_dict() 序列化"""
         stmt = select(self.User).where(self.User.name == 'Alice')
-        user = self.session.execute(stmt).scalars().first()
+        user = self.session.execute(stmt).first()
 
         user_dict = user.to_dict()
         self.assertIsInstance(user_dict, dict)
@@ -181,7 +181,7 @@ class TestModelSerialization(unittest.TestCase):
     def test_json_serialization(self) -> None:
         """测试 JSON 序列化"""
         stmt = select(self.User).where(self.User.name == 'Alice')
-        user = self.session.execute(stmt).scalars().first()
+        user = self.session.execute(stmt).first()
 
         # 序列化为 JSON
         user_json = json.dumps(user.to_dict())
@@ -202,7 +202,7 @@ class TestModelSerialization(unittest.TestCase):
 
         # 查询所有
         stmt = select(self.User)
-        users = self.session.execute(stmt).scalars().all()
+        users = self.session.execute(stmt).all()
 
         # 序列化列表
         users_list = [u.to_dict() for u in users]
@@ -250,14 +250,14 @@ class TestMultiSessionIndependence(unittest.TestCase):
         # Session 1：查询数据
         session1 = Session(self.db)
         stmt = select(self.User).where(self.User.name == 'Alice')
-        user1 = session1.execute(stmt).scalars().first()
+        user1 = session1.execute(stmt).first()
         self.assertEqual(user1.name, 'Alice')
         session1.close()
 
         # Session 2：查询同一数据
         session2 = Session(self.db)
         stmt = select(self.User).where(self.User.name == 'Alice')
-        user2 = session2.execute(stmt).scalars().first()
+        user2 = session2.execute(stmt).first()
         self.assertEqual(user2.name, 'Alice')
         session2.close()
 
@@ -270,12 +270,12 @@ class TestMultiSessionIndependence(unittest.TestCase):
         # Session 1：查询数据
         session1 = Session(self.db)
         stmt = select(self.User)
-        users1 = session1.execute(stmt).scalars().all()
+        users1 = session1.execute(stmt).all()
 
         # Session 2：查询数据
         session2 = Session(self.db)
         stmt = select(self.User)
-        users2 = session2.execute(stmt).scalars().all()
+        users2 = session2.execute(stmt).all()
 
         # 关闭 Session 1
         session1.close()
@@ -329,7 +329,7 @@ class TestModelAsDataContainer(unittest.TestCase):
 
         # 查询数据
         stmt = select(self.User).where(self.User.name == 'Alice')
-        user = self.session.execute(stmt).scalars().first()
+        user = self.session.execute(stmt).first()
 
         # 关闭 Session
         self.session.close()
@@ -349,7 +349,7 @@ class TestModelAsDataContainer(unittest.TestCase):
 
         # 查询所有
         stmt = select(self.User)
-        users = self.session.execute(stmt).scalars().all()
+        users = self.session.execute(stmt).all()
 
         # 关闭 Session
         self.session.close()
@@ -372,7 +372,7 @@ class TestModelAsDataContainer(unittest.TestCase):
 
         # 查询数据
         stmt = select(self.User).where(self.User.name == 'Alice')
-        user = self.session.execute(stmt).scalars().first()
+        user = self.session.execute(stmt).first()
 
         # 关闭 Session（模拟请求结束）
         self.session.close()

@@ -281,7 +281,7 @@ class TestValidationInInsertUpdate(unittest.TestCase):
 
         # 验证插入成功
         stmt = select(self.User).where(self.User.id == result.inserted_primary_key)
-        user = self.session.execute(stmt).scalars().first()
+        user = self.session.execute(stmt).first()
         self.assertEqual(user.age, 25)
         self.assertIsInstance(user.age, int)
 
@@ -579,7 +579,7 @@ class TestDatetimeTypePersistence(unittest.TestCase):
 
         # 查询验证
         stmt = select(self.Task).where(self.Task.id == result.inserted_primary_key)
-        task = self.session.execute(stmt).scalars().first()
+        task = self.session.execute(stmt).first()
 
         self.assertIsNotNone(task)
         self.assertEqual(task.title, 'Test Task')

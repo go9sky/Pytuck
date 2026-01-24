@@ -272,7 +272,7 @@ class TestPureBaseModel(unittest.TestCase):
         # 查询
         stmt = select(self.User).where(self.User.name == 'Alice')
         result = session.execute(stmt)
-        users = result.scalars().all()
+        users = result.all()
 
         self.assertEqual(len(users), 1)
         self.assertEqual(users[0].name, 'Alice')

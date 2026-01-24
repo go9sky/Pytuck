@@ -111,7 +111,7 @@ class TestAllEngines:
         # 3. 查询测试
         # 按 ID 查询
         stmt = select(Student).where(Student.id == 1)
-        alice = session.execute(stmt).scalars().first()
+        alice = session.execute(stmt).first()
         assert alice is not None
         assert alice.name == 'Alice'
         assert alice.age == 20
@@ -120,19 +120,19 @@ class TestAllEngines:
 
         # 索引查询
         stmt = select(Student).filter_by(name='Bob')
-        bob = session.execute(stmt).scalars().first()
+        bob = session.execute(stmt).first()
         assert bob is not None
         assert bob.email == 'bob@example.com'
         assert bob.active is False
 
         # 条件查询
         stmt = select(Student).filter_by(active=True)
-        active_students = session.execute(stmt).scalars().all()
+        active_students = session.execute(stmt).all()
         assert len(active_students) == 3  # Alice, Charlie, David
 
         # 排序查询
         stmt = select(Student).order_by('age')
-        sorted_students = session.execute(stmt).scalars().all()
+        sorted_students = session.execute(stmt).all()
         assert sorted_students[0].name == 'Charlie'  # 最年轻
         assert sorted_students[-1].name == 'Eve'  # 最年长
 
@@ -143,7 +143,7 @@ class TestAllEngines:
 
         # 验证更新
         stmt = select(Student).where(Student.id == 1)
-        alice_updated = session.execute(stmt).scalars().first()
+        alice_updated = session.execute(stmt).first()
         assert alice_updated.age == 21
         assert alice_updated.email == 'alice.new@example.com'
 
@@ -154,7 +154,7 @@ class TestAllEngines:
 
         # 验证删除
         stmt = select(Student)
-        remaining = session.execute(stmt).scalars().all()
+        remaining = session.execute(stmt).all()
         assert len(remaining) == 4
 
         # 6. 持久化测试
@@ -181,12 +181,12 @@ class TestAllEngines:
 
         # 验证数据
         stmt = select(Student2)
-        all_students = session2.execute(stmt).scalars().all()
+        all_students = session2.execute(stmt).all()
         assert len(all_students) == 4
 
         # 验证具体数据
         stmt = select(Student2).where(Student2.id == 1)
-        alice2 = session2.execute(stmt).scalars().first()
+        alice2 = session2.execute(stmt).first()
         assert alice2.age == 21
         assert alice2.email == 'alice.new@example.com'
         assert alice2.active is True
@@ -194,13 +194,13 @@ class TestAllEngines:
 
         # 验证 bytes 类型
         stmt = select(Student2).where(Student2.id == 2)
-        bob2 = session2.execute(stmt).scalars().first()
+        bob2 = session2.execute(stmt).first()
         assert bob2.avatar == b'avatar_bob'
         assert bob2.active is False
 
         # 索引查询验证
         stmt = select(Student2).filter_by(name='David')
-        david = session2.execute(stmt).scalars().first()
+        david = session2.execute(stmt).first()
         assert david.name == 'David'
         assert david.age == 21
 
@@ -242,14 +242,14 @@ class TestAllEngines:
 
         # 查询 NULL 值
         stmt = select(NullTest).filter_by(str_field=None)
-        null_records = session.execute(stmt).scalars().all()
+        null_records = session.execute(stmt).all()
         assert len(null_records) == 1
         assert null_records[0].int_field is None
         assert null_records[0].bytes_field is None
 
         # 查询空字符串（不是 NULL）
         stmt = select(NullTest).where(NullTest.str_field == '')
-        empty_records = session.execute(stmt).scalars().all()
+        empty_records = session.execute(stmt).all()
         assert len(empty_records) == 1
         assert empty_records[0].int_field == 0
         assert empty_records[0].bytes_field == b''
@@ -293,14 +293,14 @@ class TestAllEngines:
 
         # 索引查询
         stmt = select(IndexTest).filter_by(indexed_name='name_50')
-        result = session.execute(stmt).scalars().first()
+        result = session.execute(stmt).first()
         assert result is not None
         assert result.indexed_name == 'name_50'
         assert result.non_indexed_value == 'value_50'
 
         # 非索引查询
         stmt = select(IndexTest).where(IndexTest.non_indexed_value == 'value_75')
-        result = session.execute(stmt).scalars().first()
+        result = session.execute(stmt).first()
         assert result is not None
         assert result.indexed_name == 'name_75'
 
@@ -393,7 +393,7 @@ class TestAllEngines:
 
         # 5. 验证加载的数据
         stmt = select(Task2).where(Task2.id == 1)
-        task1 = session2.execute(stmt).scalars().first()
+        task1 = session2.execute(stmt).first()
 
         assert task1 is not None
         assert task1.title == 'Test Task'
@@ -429,7 +429,7 @@ class TestAllEngines:
 
         # 6. 验证 NULL 值
         stmt = select(Task2).where(Task2.id == 2)
-        task2 = session2.execute(stmt).scalars().first()
+        task2 = session2.execute(stmt).first()
 
         assert task2 is not None
         assert task2.title == 'Empty Task'

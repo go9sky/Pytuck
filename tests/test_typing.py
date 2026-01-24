@@ -32,7 +32,7 @@ def test_mypy_pytuck() -> None:
 if TYPE_CHECKING:
     from pytuck import Storage, declarative_base, Session, Column
     from pytuck import select, insert, update, delete
-    from pytuck.query.result import Result, ScalarResult, CursorResult
+    from pytuck.query.result import Result, CursorResult
     from pytuck.query.statements import Select, Insert, Update, Delete
 
     # 示例模型定义
@@ -63,12 +63,11 @@ if TYPE_CHECKING:
         insert(User).values(name='Alice', age=25)
     )
 
-    # ScalarResult 方法应返回正确类型
-    scalar_result: ScalarResult[User] = select_result.scalars()
-    users: List[User] = scalar_result.all()
-    user: Optional[User] = scalar_result.first()
-    one_user: User = scalar_result.one()
-    maybe_user: Optional[User] = scalar_result.one_or_none()
+    # 直接使用 Result 的方法进行类型断言（不再依赖 ScalarResult）
+    users: List[User] = select_result.all()
+    user: Optional[User] = select_result.first()
+    one_user: User = select_result.one()
+    maybe_user: Optional[User] = select_result.one_or_none()
 
     # 属性访问类型验证
     if user is not None:

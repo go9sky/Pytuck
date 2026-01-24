@@ -278,7 +278,7 @@ class EngineBenchmark:
         with Timer() as t:
             stmt = select(model_class)
             result = session.execute(stmt)
-            records = result.scalars().all()
+            records = result.all()
         return t.elapsed
 
     def benchmark_query_indexed(self, session: 'Session', model_class: type, count: int) -> float:
@@ -287,7 +287,7 @@ class EngineBenchmark:
             for i in range(min(100, count)):
                 stmt = select(model_class).filter_by(name=f'User_{i}')
                 result = session.execute(stmt)
-                record = result.scalars().first()
+                record = result.first()
         return t.elapsed
 
     def benchmark_query_non_indexed(self, session: 'Session', model_class: type, count: int) -> float:
@@ -297,7 +297,7 @@ class EngineBenchmark:
                 # email 字段没有索引，需要全表扫描
                 stmt = select(model_class).where(model_class.email == f'user{i}@example.com')
                 result = session.execute(stmt)
-                record = result.scalars().first()
+                record = result.first()
         return t.elapsed
 
     def benchmark_range_query(self, session: 'Session', model_class: type) -> Tuple[float, int]:
@@ -305,7 +305,7 @@ class EngineBenchmark:
         with Timer() as t:
             stmt = select(model_class).where(model_class.age >= 30, model_class.age <= 50)
             result = session.execute(stmt)
-            records = result.scalars().all()
+            records = result.all()
         return t.elapsed, len(records)
 
     def benchmark_batch_read(self, session: 'Session', model_class: type, count: int) -> float:
@@ -314,7 +314,7 @@ class EngineBenchmark:
         with Timer() as t:
             stmt = select(model_class).limit(batch_size)
             result = session.execute(stmt)
-            records = result.scalars().all()
+            records = result.all()
         return t.elapsed
 
     def benchmark_query_filtered(self, session: 'Session', model_class: type) -> float:
@@ -322,7 +322,7 @@ class EngineBenchmark:
         with Timer() as t:
             stmt = select(model_class).where(model_class.age >= 30, model_class.age < 50)
             result = session.execute(stmt)
-            records = result.scalars().all()
+            records = result.all()
         return t.elapsed
 
     def benchmark_update(self, session: 'Session', model_class: type, count: int) -> float:
@@ -405,7 +405,7 @@ class EngineBenchmark:
         with Timer() as t1:
             stmt = select(BenchmarkUser).filter_by(name=f'User_{query_idx}')
             result = session.execute(stmt)
-            record = result.scalars().first()
+            record = result.first()
 
         # 后续查询（热查询，可能命中缓存）
         with Timer() as t2:
@@ -413,7 +413,7 @@ class EngineBenchmark:
                 idx = (query_idx + i * 100) % count
                 stmt = select(BenchmarkUser).filter_by(name=f'User_{idx}')
                 result = session.execute(stmt)
-                record = result.scalars().first()
+                record = result.first()
 
         session.close()
         db.close()

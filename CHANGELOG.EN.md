@@ -13,6 +13,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.5.0] - 2026-01-24
 
+### Added
+
+- **Excel Row Number Mapping**
+  - Added `row_number_mapping` option to use Excel physical row numbers as primary key or map to a field
+  - `row_number_mapping='as_pk'`: Use row number directly as primary key value
+  - `row_number_mapping='field'`: Map row number to a specified field (default: `row_num`)
+  - `row_number_field_name`: Customize the row number field name
+  - `row_number_override`: Force row number mapping even for Pytuck-created files
+  - `persist_row_number`: Persist row number field when saving
+  - Support for loading external Excel files (without Pytuck metadata)
+  - Added dedicated Excel row number mapping tests (11 test cases)
+  - Example:
+    ```python
+    from pytuck import Storage
+    from pytuck.common.options import ExcelBackendOptions
+
+    # Use row number as primary key
+    opts = ExcelBackendOptions(row_number_mapping='as_pk')
+    db = Storage(file_path='external.xlsx', engine='excel', backend_options=opts)
+
+    # Map row number to row_num field
+    opts = ExcelBackendOptions(
+        row_number_mapping='field',
+        row_number_field_name='row_num',
+        persist_row_number=True
+    )
+    db = Storage(file_path='external.xlsx', engine='excel', backend_options=opts)
+    ```
+
 ### Improved
 
 - **SQLite Native SQL Mode Optimization**

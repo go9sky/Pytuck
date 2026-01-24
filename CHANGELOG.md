@@ -10,6 +10,35 @@ This file documents all notable changes. Format based on [Keep a Changelog](http
 
 ## [0.5.0] - 2026-01-24
 
+### 新增 / Added
+
+- **Excel 后端行号映射功能 / Excel Row Number Mapping**
+  - 新增 `row_number_mapping` 选项，支持将 Excel 物理行号用作主键或映射到指定字段
+  - `row_number_mapping='as_pk'`：将行号直接作为主键值
+  - `row_number_mapping='field'`：将行号映射到指定字段（默认 `row_num`）
+  - `row_number_field_name`：自定义行号字段名称
+  - `row_number_override`：在 Pytuck 创建的文件中强制应用行号映射
+  - `persist_row_number`：保存时持久化行号字段
+  - 支持读取外部 Excel 文件（无 Pytuck 元数据）
+  - 新增 Excel 行号映射专项测试（11 个测试用例）
+  - 示例 / Example：
+    ```python
+    from pytuck import Storage
+    from pytuck.common.options import ExcelBackendOptions
+
+    # 将行号作为主键
+    opts = ExcelBackendOptions(row_number_mapping='as_pk')
+    db = Storage(file_path='external.xlsx', engine='excel', backend_options=opts)
+
+    # 将行号映射到 row_num 字段
+    opts = ExcelBackendOptions(
+        row_number_mapping='field',
+        row_number_field_name='row_num',
+        persist_row_number=True
+    )
+    db = Storage(file_path='external.xlsx', engine='excel', backend_options=opts)
+    ```
+
 ### 改进 / Improved
 
 - **SQLite 原生 SQL 模式优化 / SQLite Native SQL Mode**

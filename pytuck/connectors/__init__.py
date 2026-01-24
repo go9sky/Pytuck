@@ -13,7 +13,7 @@ Pytuck 数据库连接器模块
 from typing import Any, Dict, Type, Optional
 
 from .base import DatabaseConnector
-from .sqlite_connector import SQLiteConnector
+from .connector_sqlite import SQLiteConnector
 from ..common.options import ConnectorOptions, get_default_connector_options
 
 

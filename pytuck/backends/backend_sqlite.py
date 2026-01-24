@@ -10,7 +10,7 @@ from typing import Any, Dict, List, Optional, Union, TYPE_CHECKING, Tuple
 from datetime import datetime
 
 from .base import StorageBackend
-from ..connectors.sqlite_connector import SQLiteConnector
+from ..connectors.connector_sqlite import SQLiteConnector
 from ..common.exceptions import SerializationError
 from .versions import get_format_version
 from ..core.types import TypeRegistry

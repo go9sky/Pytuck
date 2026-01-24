@@ -8,6 +8,7 @@ from typing import Any, Dict, List, Optional, Type, Generic, TYPE_CHECKING, Unio
 from abc import ABC, abstractmethod
 
 from ..common.types import T
+from ..common.exceptions import QueryError
 
 if TYPE_CHECKING:
     from ..core.orm import PureBaseModel, Column
@@ -99,7 +100,10 @@ class Select(Statement[T]):
                 expr = BinaryExpression(column, '=', value)
                 self._where_clauses.append(expr)
             else:
-                raise ValueError(f"Column '{field_name}' not found in {self.model_class.__name__}")
+                raise QueryError(
+                    f"Column '{field_name}' not found in {self.model_class.__name__}",
+                    column_name=field_name
+                )
 
         return self
 

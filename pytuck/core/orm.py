@@ -12,7 +12,7 @@ from typing import (
 )
 from datetime import datetime, date, timedelta, timezone
 
-from ..common.exceptions import ValidationError
+from ..common.exceptions import ValidationError, TypeConversionError
 from .types import TypeCode, TypeRegistry
 
 if TYPE_CHECKING:
@@ -151,7 +151,7 @@ class Column:
                 return self.col_type(value)
         except (ValueError, TypeError) as e:
             raise ValidationError(
-                f"Column '{self.name}' cannot convert {type(value).__name__} "
+                f"Column '{self.name}' Cannot convert {type(value).__name__} "
                 f"to {self.col_type.__name__}: {e}"
             )
 
@@ -173,8 +173,16 @@ class Column:
             elif lower_val in ('0', 'false', 'no', ''):
                 return False
             else:
-                raise ValueError(f"Cannot convert '{value}' to bool")
-        raise ValueError(f"Cannot convert {type(value).__name__} to bool")
+                raise TypeConversionError(
+                    f"Cannot convert '{value}' to bool",
+                    value=value,
+                    target_type='bool'
+                )
+        raise TypeConversionError(
+            f"Cannot convert {type(value).__name__} to bool",
+            value=value,
+            target_type='bool'
+        )
 
     def _convert_to_bytes(self, value: Any) -> bytes:
         """转换为字节类型"""
@@ -184,7 +192,11 @@ class Column:
             return value.encode('utf-8')
         if isinstance(value, (bytearray, memoryview)):
             return bytes(value)
-        raise ValueError(f"Cannot convert {type(value).__name__} to bytes")
+        raise TypeConversionError(
+            f"Cannot convert {type(value).__name__} to bytes",
+            value=value,
+            target_type='bytes'
+        )
 
     def _convert_to_datetime(self, value: Any) -> datetime:
         """
@@ -213,7 +225,11 @@ class Column:
         if isinstance(value, (int, float)):
             # Unix 时间戳
             return datetime.fromtimestamp(value)
-        raise ValueError(f"Cannot convert {type(value).__name__} to datetime")
+        raise TypeConversionError(
+            f"Cannot convert {type(value).__name__} to datetime",
+            value=value,
+            target_type='datetime'
+        )
 
     def _convert_to_date(self, value: Any) -> date:
         """
@@ -230,7 +246,11 @@ class Column:
             return value.date()
         if isinstance(value, str):
             return date.fromisoformat(value)
-        raise ValueError(f"Cannot convert {type(value).__name__} to date")
+        raise TypeConversionError(
+            f"Cannot convert {type(value).__name__} to date",
+            value=value,
+            target_type='date'
+        )
 
     def _convert_to_timedelta(self, value: Any) -> timedelta:
         """
@@ -262,7 +282,11 @@ class Column:
                 return timedelta(minutes=int(minutes), seconds=float(seconds))
             # 尝试纯秒数
             return timedelta(seconds=float(value))
-        raise ValueError(f"Cannot convert {type(value).__name__} to timedelta")
+        raise TypeConversionError(
+            f"Cannot convert {type(value).__name__} to timedelta",
+            value=value,
+            target_type='timedelta'
+        )
 
     def _convert_to_list(self, value: Any) -> list:
         """
@@ -281,9 +305,17 @@ class Column:
             import json
             result = json.loads(value)
             if not isinstance(result, list):
-                raise ValueError(f"JSON string does not represent a list")
+                raise TypeConversionError(
+                    f"JSON string does not represent a list",
+                    value=value,
+                    target_type='list'
+                )
             return result
-        raise ValueError(f"Cannot convert {type(value).__name__} to list")
+        raise TypeConversionError(
+            f"Cannot convert {type(value).__name__} to list",
+            value=value,
+            target_type='list'
+        )
 
     def _convert_to_dict(self, value: Any) -> dict:
         """
@@ -299,9 +331,17 @@ class Column:
             import json
             result = json.loads(value)
             if not isinstance(result, dict):
-                raise ValueError(f"JSON string does not represent a dict")
+                raise TypeConversionError(
+                    f"JSON string does not represent a dict",
+                    value=value,
+                    target_type='dict'
+                )
             return result
-        raise ValueError(f"Cannot convert {type(value).__name__} to dict")
+        raise TypeConversionError(
+            f"Cannot convert {type(value).__name__} to dict",
+            value=value,
+            target_type='dict'
+        )
 
     def __repr__(self) -> str:
         return f"Column(name='{self.name}', type={self.col_type.__name__}, pk={self.primary_key})"

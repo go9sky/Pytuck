@@ -11,6 +11,8 @@ from typing import Optional, Union
 import hashlib
 import struct
 
+from .exceptions import ConfigurationError
+
 
 # 加密等级常量
 ENCRYPTION_LEVELS = ('low', 'medium', 'high')
@@ -348,7 +350,7 @@ def get_cipher(level: str, key: bytes) -> CipherType:
         加密器实例
 
     Raises:
-        ValueError: 无效的加密等级
+        ConfigurationError: 无效的加密等级
     """
     ciphers = {
         'low': XORCipher,
@@ -356,7 +358,10 @@ def get_cipher(level: str, key: bytes) -> CipherType:
         'high': ChaCha20Cipher,
     }
     if level not in ciphers:
-        raise ValueError(f"Invalid encryption level: {level}. Must be one of {ENCRYPTION_LEVELS}")
+        raise ConfigurationError(
+            f"Invalid encryption level: {level}. Must be one of {ENCRYPTION_LEVELS}",
+            details={'level': level, 'valid_levels': ENCRYPTION_LEVELS}
+        )
     return ciphers[level](key)
 
 

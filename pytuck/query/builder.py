@@ -7,6 +7,7 @@ Pytuck 查询构建器
 from typing import Any, List, Optional, Type, Generic, TYPE_CHECKING, Union
 
 from ..common.types import T
+from ..common.exceptions import QueryError
 
 if TYPE_CHECKING:
     from ..core.orm import PureBaseModel, Column
@@ -59,7 +60,7 @@ class Condition:
         elif self.operator == 'IN':
             return bool(field_value in self.value)
         else:
-            raise ValueError(f"Unsupported operator: {self.operator}")
+            raise QueryError(f"Unsupported operator: {self.operator}")
 
     def __repr__(self) -> str:
         return f"Condition({self.field} {self.operator} {self.value})"
@@ -142,7 +143,7 @@ class Query(Generic[T]):
                 condition = expr.to_condition()
                 self._conditions.append(condition)
             else:
-                raise TypeError(
+                raise QueryError(
                     f"Expected BinaryExpression, got {type(expr).__name__}. "
                     f"Use Model.column >= value syntax."
                 )
@@ -286,7 +287,7 @@ class Query(Generic[T]):
         )
 
         if not storage:
-            raise ValueError(f"No database configured for {self.model_class.__name__}")
+            raise QueryError(f"No database configured for {self.model_class.__name__}")
 
         # 获取表名（支持新旧两种风格）
         table_name: Optional[str] = (
@@ -295,7 +296,7 @@ class Query(Generic[T]):
         )
 
         if not table_name:
-            raise ValueError(f"No table name defined for {self.model_class.__name__}")
+            raise QueryError(f"No table name defined for {self.model_class.__name__}")
 
         # 从存储引擎查询
         records: List[dict] = storage.query(table_name, self._conditions)

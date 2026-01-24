@@ -8,6 +8,7 @@ from typing import Any, Dict, List, Type, Optional, Tuple, Union
 from pathlib import Path
 from .base import StorageBackend
 from ..common.options import BackendOptions
+from ..common.exceptions import ConfigurationError
 
 
 class BackendRegistry:
@@ -31,10 +32,10 @@ class BackendRegistry:
             BackendRegistry.register(BinaryBackend)
         """
         if not issubclass(backend_class, StorageBackend):
-            raise TypeError(f"{backend_class} must be a subclass of StorageBackend")
+            raise ConfigurationError(f"{backend_class} must be a subclass of StorageBackend")
 
         if backend_class.ENGINE_NAME is None:
-            raise ValueError(f"{backend_class} must define ENGINE_NAME")
+            raise ConfigurationError(f"{backend_class} must define ENGINE_NAME")
 
         cls._backends[backend_class.ENGINE_NAME] = backend_class
 
@@ -109,14 +110,14 @@ def get_backend(engine: str, file_path: str, options: BackendOptions) -> Storage
 
     if backend_class is None:
         available = BackendRegistry.list_engines()
-        raise ValueError(
+        raise ConfigurationError(
             f"Backend '{engine}' not found. "
             f"Available backends: {available}"
         )
 
     if not backend_class.is_available():
         deps = ', '.join(backend_class.REQUIRED_DEPENDENCIES) if backend_class.REQUIRED_DEPENDENCIES else 'none'
-        raise ValueError(
+        raise ConfigurationError(
             f"Backend '{engine}' is not available. "
             f"Required dependencies: {deps}. "
             f"Install with: pip install pytuck[{engine}]"
@@ -261,14 +262,14 @@ def is_valid_pytuck_database_engine(file_path: Union[str, Path], engine_name: st
     backend_class = BackendRegistry.get(engine_name)
     if backend_class is None:
         available_engines = BackendRegistry.list_engines()
-        raise ValueError(
+        raise ConfigurationError(
             f"Engine '{engine_name}' not found. "
             f"Available engines: {available_engines}"
         )
 
     if not backend_class.is_available():
         deps = ', '.join(backend_class.REQUIRED_DEPENDENCIES) if backend_class.REQUIRED_DEPENDENCIES else 'none'
-        raise ValueError(
+        raise ConfigurationError(
             f"Engine '{engine_name}' is not available. "
             f"Required dependencies: {deps}. "
             f"Install with: pip install pytuck[{engine_name}]"

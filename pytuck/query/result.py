@@ -7,6 +7,7 @@ Result - 查询结果包装器
 from typing import Any, Dict, List, Optional, Type, Union, Generic, TYPE_CHECKING
 
 from ..common.types import T
+from ..common.exceptions import QueryError, UnsupportedOperationError
 
 if TYPE_CHECKING:
     from ..core.orm import PureBaseModel
@@ -126,9 +127,9 @@ class ScalarResult(Generic[T]):
     def one(self) -> T:
         """返回唯一的模型实例（必须恰好一条）"""
         if len(self._records) == 0:
-            raise ValueError("Expected one result, got 0")
+            raise QueryError("Expected one result, got 0")
         if len(self._records) > 1:
-            raise ValueError(f"Expected one result, got {len(self._records)}")
+            raise QueryError(f"Expected one result, got {len(self._records)}")
         return self._create_instance(self._records[0])
 
     def one_or_none(self) -> Optional[T]:
@@ -136,7 +137,7 @@ class ScalarResult(Generic[T]):
         if len(self._records) == 0:
             return None
         if len(self._records) > 1:
-            raise ValueError(f"Expected at most one result, got {len(self._records)}")
+            raise QueryError(f"Expected at most one result, got {len(self._records)}")
         return self._create_instance(self._records[0])
 
 
@@ -193,25 +194,25 @@ class Result(Generic[T]):
     def all(self) -> List[T]:
         """返回所有结果为模型实例（推荐用法）"""
         if self._operation != 'select':
-            raise NotImplementedError("all() not supported for non-select operations")
+            raise UnsupportedOperationError("all() not supported for non-select operations")
         return self.scalars().all()
 
     def first(self) -> Optional[T]:
         """返回第一个结果为模型实例"""
         if self._operation != 'select':
-            raise NotImplementedError("first() not supported for non-select operations")
+            raise UnsupportedOperationError("first() not supported for non-select operations")
         return self.scalars().first()
 
     def one(self) -> T:
         """返回唯一的结果为模型实例（必须恰好一条）"""
         if self._operation != 'select':
-            raise NotImplementedError("one() not supported for non-select operations")
+            raise UnsupportedOperationError("one() not supported for non-select operations")
         return self.scalars().one()
 
     def one_or_none(self) -> Optional[T]:
         """返回唯一的结果为模型实例或 None（最多一条）"""
         if self._operation != 'select':
-            raise NotImplementedError("one_or_none() not supported for non-select operations")
+            raise UnsupportedOperationError("one_or_none() not supported for non-select operations")
         return self.scalars().one_or_none()
 
     def rows(self) -> List[Row]:
@@ -278,19 +279,19 @@ class CursorResult(Result[T]):
         return self._inserted_pk
 
     def scalars(self) -> ScalarResult[T]:
-        raise NotImplementedError(f"scalars() not supported for {self._operation} operation")
+        raise UnsupportedOperationError(f"scalars() not supported for {self._operation} operation")
 
     def all(self) -> List[T]:
-        raise NotImplementedError(f"all() not supported for {self._operation} operation")
+        raise UnsupportedOperationError(f"all() not supported for {self._operation} operation")
 
     def first(self) -> Optional[T]:
-        raise NotImplementedError(f"first() not supported for {self._operation} operation")
+        raise UnsupportedOperationError(f"first() not supported for {self._operation} operation")
 
     def one(self) -> T:
-        raise NotImplementedError(f"one() not supported for {self._operation} operation")
+        raise UnsupportedOperationError(f"one() not supported for {self._operation} operation")
 
     def one_or_none(self) -> Optional[T]:
-        raise NotImplementedError(f"one_or_none() not supported for {self._operation} operation")
+        raise UnsupportedOperationError(f"one_or_none() not supported for {self._operation} operation")
 
     def rows(self) -> List[Row]:
-        raise NotImplementedError(f"rows() not supported for {self._operation} operation")
+        raise UnsupportedOperationError(f"rows() not supported for {self._operation} operation")

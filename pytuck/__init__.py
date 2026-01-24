@@ -74,9 +74,19 @@ from .common.exceptions import (
     TableNotFoundError,
     RecordNotFoundError,
     DuplicateKeyError,
+    ColumnNotFoundError,
     TransactionError,
     SerializationError,
-    EncryptionError
+    EncryptionError,
+    ValidationError,
+    TypeConversionError,
+    ConfigurationError,
+    SchemaError,
+    QueryError,
+    ConnectionError,
+    UnsupportedOperationError,
+    MigrationError,
+    PytuckIndexError,
 )
 
 __version__ = '0.4.0'
@@ -112,11 +122,34 @@ __all__ = [
 
     # ==================== 异常 ====================
 
+    # 基类
     'PytuckException',
+
+    # 表和记录级异常
     'TableNotFoundError',
     'RecordNotFoundError',
     'DuplicateKeyError',
+    'ColumnNotFoundError',
+
+    # 验证和类型异常
+    'ValidationError',
+    'TypeConversionError',
+
+    # 配置异常
+    'ConfigurationError',
+    'SchemaError',
+
+    # 查询异常
+    'QueryError',
+
+    # 连接和事务异常
+    'ConnectionError',
     'TransactionError',
+
+    # 操作异常
+    'UnsupportedOperationError',
     'SerializationError',
     'EncryptionError',
+    'MigrationError',
+    'PytuckIndexError',
 ]

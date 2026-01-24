@@ -18,7 +18,9 @@ from ..common.exceptions import (
     RecordNotFoundError,
     DuplicateKeyError,
     ColumnNotFoundError,
-    TransactionError
+    TransactionError,
+    ValidationError,
+    SchemaError
 )
 
 if TYPE_CHECKING:
@@ -129,7 +131,11 @@ class Table:
                     self.next_id += 1
                     record[self.primary_key] = pk
                 else:
-                    raise ValueError(f"Primary key '{self.primary_key}' must be provided")
+                    raise ValidationError(
+                        f"Primary key '{self.primary_key}' must be provided",
+                        table_name=self.name,
+                        column_name=self.primary_key
+                    )
         else:
             # 检查主键是否已存在
             if pk in self.data:
@@ -400,10 +406,11 @@ class Storage:
 
         # 强制要求用户定义主键
         if primary_key is None:
-            raise ValueError(
+            raise SchemaError(
                 f"Table '{name}' must have a primary key column. "
                 f"Add primary_key=True to one of your Column definitions. "
-                f"Example: Column('id', int, primary_key=True)"
+                f"Example: Column('id', int, primary_key=True)",
+                table_name=name
             )
 
         table = Table(name, columns, primary_key, comment)

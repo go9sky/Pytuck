@@ -8,6 +8,7 @@ from typing import Any, Dict, List, Optional, Type, Tuple, TYPE_CHECKING, Union,
 from contextlib import contextmanager
 
 from ..common.types import T
+from ..common.exceptions import QueryError, TransactionError
 from ..query.builder import Query
 from ..query.result import Result, CursorResult
 from ..query.statements import Statement, Insert, Select, Update, Delete
@@ -286,7 +287,10 @@ class Session:
             return CursorResult(count, statement.model_class, 'delete')
 
         else:
-            raise TypeError(f"Unsupported statement type: {type(statement)}")
+            raise QueryError(
+                f"Unsupported statement type: {type(statement).__name__}",
+                details={'statement_type': type(statement).__name__}
+            )
 
     def _register_instance(self, instance: PureBaseModel) -> None:
         """
@@ -427,7 +431,7 @@ class Session:
                 session.add(User(name='Bob'))
         """
         if self._in_transaction:
-            raise RuntimeError("Nested transactions are not supported in Session")
+            raise TransactionError("Nested transactions are not supported in Session")
 
         self._in_transaction = True
 

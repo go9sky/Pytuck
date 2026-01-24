@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Dict, Any, List, Optional, Union, TYPE_CHECKING, Tuple
 
 from ..common.options import BackendOptions
+from ..common.exceptions import ConfigurationError
 
 if TYPE_CHECKING:
     from ..core.storage import Table
@@ -37,11 +38,11 @@ class StorageBackend(ABC):
         super().__init_subclass__(**kwargs)
         # 必须设置 ENGINE_NAME，且不能重复
         if getattr(cls, 'ENGINE_NAME', None) is None:
-            raise ValueError('ENGINE_NAME must be set')
+            raise ConfigurationError('ENGINE_NAME must be set')
 
         from .registry import BackendRegistry
         if cls.ENGINE_NAME in BackendRegistry.list_engines():
-            raise ValueError(f'The engine name is already registered: "{cls.ENGINE_NAME}"')
+            raise ConfigurationError(f'The engine name is already registered: "{cls.ENGINE_NAME}"')
         BackendRegistry.register(cls)
 
     def __init__(self, file_path: Union[str, Path], options: BackendOptions):

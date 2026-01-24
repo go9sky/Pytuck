@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any, Dict, Callable, Union, TYPE_CHECKING, Tuple, Optional
 from datetime import datetime
 from .base import StorageBackend
-from ..common.exceptions import SerializationError
+from ..common.exceptions import SerializationError, ConfigurationError
 from .versions import get_format_version
 from ..core.types import TypeRegistry
 
@@ -58,7 +58,7 @@ class JSONBackend(StorageBackend):
 
         # 检验内部私有方法是否已被正确赋值
         if not hasattr(self, '_dumps_func') or not hasattr(self, '_loads_func') or not hasattr(self, '_impl_name'):
-            raise ValueError(f"JSON implementation '{impl}' setup failed: _dumps_func, _loads_func, and _impl_name must be assigned")
+            raise ConfigurationError(f"JSON implementation '{impl}' setup failed: _dumps_func, _loads_func, and _impl_name must be assigned")
 
     def _setup_orjson(self) -> None:
         """设置orjson实现，参数不兼容时直接舍弃"""

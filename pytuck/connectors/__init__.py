@@ -15,6 +15,7 @@ from typing import Any, Dict, Type, Optional
 from .base import DatabaseConnector
 from .connector_sqlite import SQLiteConnector
 from ..common.options import ConnectorOptions, get_default_connector_options
+from ..common.exceptions import ConfigurationError
 
 
 # 连接器注册表
@@ -39,7 +40,7 @@ def get_connector(db_type: str, db_path: str, options: Optional[ConnectorOptions
         连接器实例（未连接状态，需调用 connect() 或使用 with 语句）
 
     Raises:
-        ValueError: 不支持的数据库类型
+        ConfigurationError: 不支持的数据库类型
 
     Example:
         from pytuck.common.options import SqliteConnectorOptions
@@ -59,7 +60,10 @@ def get_connector(db_type: str, db_path: str, options: Optional[ConnectorOptions
     """
     if db_type not in CONNECTORS:
         available = ', '.join(CONNECTORS.keys())
-        raise ValueError(f"不支持的数据库类型: '{db_type}'。可用类型: {available}")
+        raise ConfigurationError(
+            f"不支持的数据库类型: '{db_type}'。可用类型: {available}",
+            details={'db_type': db_type, 'available_types': list(CONNECTORS.keys())}
+        )
 
     # 如果没有提供选项，使用默认选项
     if options is None:

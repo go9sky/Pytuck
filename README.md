@@ -11,6 +11,8 @@
 
 纯Python实现的轻量级文档数据库，支持多种存储引擎，无SQL，通过对象和方法管理数据。
 
+> **设计初衷**：为 Ren'Py 等阉割版 Python 环境提供零依赖的关系型数据库方案，让任何受限环境都能享受 SQLAlchemy 风格的 Pythonic 数据操作体验。
+
 ## 仓库镜像
 
 - **GitHub**: https://github.com/go9sky/pytuck
@@ -71,10 +73,10 @@ Base: Type[PureBaseModel] = declarative_base(db)
 class Student(Base):
     __tablename__ = 'students'
 
-    id = Column('id', int, primary_key=True)
-    name = Column('name', str, nullable=False, index=True)
-    age = Column('age', int)
-    email = Column('email', str, nullable=True)
+    id = Column(int, primary_key=True)
+    name = Column(str, nullable=False, index=True)
+    age = Column(int)
+    email = Column(str, nullable=True)
 
 # 创建 Session
 session = Session(db)
@@ -88,13 +90,13 @@ print(f"Created student, ID: {result.inserted_primary_key}")
 # 查询记录
 stmt = select(Student).where(Student.id == 1)
 result = session.execute(stmt)
-alice = result.scalars().first()
+alice = result.first()
 print(f"Found: {alice.name}, {alice.age} years old")
 
 # 条件查询（Pythonic 语法）
 stmt = select(Student).where(Student.age >= 18).order_by('name')
 result = session.execute(stmt)
-adults = result.scalars().all()
+adults = result.all()
 for student in adults:
     print(f"  - {student.name}")
 
@@ -118,7 +120,7 @@ session.commit()
 # 方式2：属性赋值更新（0.3.0 新增，更直观）
 stmt = select(Student).where(Student.id == 1)
 result = session.execute(stmt)
-alice = result.scalars().first()
+alice = result.first()
 alice.age = 21  # 属性赋值自动检测并更新数据库
 session.commit()  # 自动将修改写入数据库
 
@@ -149,9 +151,9 @@ Base: Type[CRUDBaseModel] = declarative_base(db, crud=True)  # 注意 crud=True
 class Student(Base):
     __tablename__ = 'students'
 
-    id = Column('id', int, primary_key=True)
-    name = Column('name', str, nullable=False)
-    age = Column('age', int)
+    id = Column(int, primary_key=True)
+    name = Column(str, nullable=False)
+    age = Column(int)
 
 # 创建记录（自动保存）
 alice = Student.create(name='Alice', age=20)
@@ -332,9 +334,9 @@ Base = declarative_base(db)
 
 class User(Base):
     __tablename__ = 'users'
-    id = Column('id', int, primary_key=True)
-    name = Column('name', str)
-    age = Column('age', int)
+    id = Column(int, primary_key=True)
+    name = Column(str)
+    age = Column(int)
 
 session = Session(db)
 
@@ -346,8 +348,15 @@ chained = stmt.where(User.age >= 18)  # IDE 推断：Select[User] ✅
 result = session.execute(stmt)  # IDE 推断：Result[User] ✅
 
 # 结果处理精确类型
-users = result.scalars().all()  # IDE 推断：List[User] ✅ （不再是 List[PureBaseModel]）
-user = result.scalars().first()  # IDE 推断：Optional[User] ✅
+users = result.all()  # 返回 模型实例列表 List[T]
+user = result.first()  # 返回 第一个模型实例 Optional[T]
+
+说明：
+- Result.all() → 返回模型实例列表 List[T]
+- Result.first() → 返回第一个模型实例 Optional[T]
+- Result.one() → 返回唯一模型实例 T（必须恰好一条）
+- Result.one_or_none() → 返回唯一模型实例或 None Optional[T]（最多一条）
+- Result.rowcount() → 返回结果数量 int
 
 # IDE 知道具体属性类型
 for user in users:
@@ -368,13 +377,13 @@ for user in users:
 
 **之前：**
 ```python
-users = result.scalars().all()  # IDE: List[PureBaseModel] 😞
+users = result.all()  # IDE: List[PureBaseModel] 😞
 user.name                       # IDE: 不知道有什么属性 😞
 ```
 
 **现在：**
 ```python
-users = result.scalars().all()  # IDE: List[User] ✅
+users = result.all()  # IDE: List[User] ✅
 user.name                       # IDE: 知道是 str 类型 ✅
 user.age                        # IDE: 知道是 int 类型 ✅
 ```
@@ -418,8 +427,8 @@ Base = declarative_base(db, crud=True)
 
 class User(Base):
     __tablename__ = 'users'
-    id = Column('id', int, primary_key=True)
-    name = Column('name', str)
+    id = Column(int, primary_key=True)
+    name = Column(str)
 
 # create/save/delete 只修改内存
 user = User.create(name='Alice')
@@ -535,12 +544,12 @@ session.commit()
 ```python
 class Student(Base):
     __tablename__ = 'students'
-    name = Column('name', str, index=True)  # 创建索引
+    name = Column(str, index=True)  # 创建索引
 
 # 索引查询（自动优化）
 stmt = select(Student).filter_by(name='Bob')
 result = session.execute(stmt)
-bob = result.scalars().first()
+bob = result.first()
 ```
 
 ### 查询操作符
@@ -586,7 +595,7 @@ stmt = select(Student).offset(10).limit(10)
 # 计数
 stmt = select(Student).where(Student.age >= 18)
 result = session.execute(stmt)
-adults = result.scalars().all()
+adults = result.all()
 count = len(adults)
 ```
 
@@ -612,8 +621,8 @@ Base = declarative_base(db)
 
 class User(Base):
     __tablename__ = 'users'
-    id = Column('id', int, primary_key=True)
-    name = Column('name', str)
+    id = Column(int, primary_key=True)
+    name = Column(str)
 
 session = Session(db)
 stmt = select(User).where(User.id == 1)
@@ -638,58 +647,43 @@ print(user.to_dict())  # ✅ 正常工作
 
 ### 关联关系（Relationship）
 
-Pytuck 支持一对多和多对一关联关系，具有延迟加载和缓存机制：
+Pytuck 支持一对多、多对一、自引用等关联关系：
 
 ```python
 from pytuck.core.orm import Relationship
+from typing import List, Optional
 
-# 定义关联关系
 class User(Base):
     __tablename__ = 'users'
-    id = Column('id', int, primary_key=True)
-    name = Column('name', str)
-    # 一对多：一个用户有多个订单
-    orders = Relationship('Order', foreign_key='user_id')
+    id = Column(int, primary_key=True)
+    name = Column(str)
+    # 一对多：使用表名引用（推荐）
+    orders: List['Order'] = Relationship('orders', foreign_key='user_id')  # type: ignore
 
 class Order(Base):
     __tablename__ = 'orders'
-    id = Column('id', int, primary_key=True)
-    user_id = Column('user_id', int)
-    amount = Column('amount', float)
-    # 多对一：一个订单属于一个用户
-    user = Relationship(User, foreign_key='user_id')
+    id = Column(int, primary_key=True)
+    user_id = Column(int)
+    amount = Column(float)
+    # 多对一
+    user: Optional[User] = Relationship('users', foreign_key='user_id')  # type: ignore
 
-# 使用关联
-user = User.get(1)
-orders = user.orders  # 延迟加载，首次访问时查询
-for order in orders:
-    print(f"Order: {order.amount}")
-
-# 反向访问
-order = Order.get(1)
-user = order.user  # 多对一查询
-print(f"User: {user.name}")
+# 自引用（树形结构）- 使用 uselist 指定方向
+class Category(Base):
+    __tablename__ = 'categories'
+    id = Column(int, primary_key=True)
+    parent_id = Column(int, nullable=True)
+    parent: Optional['Category'] = Relationship('categories', foreign_key='parent_id', uselist=False)  # type: ignore
+    children: List['Category'] = Relationship('categories', foreign_key='parent_id', uselist=True)  # type: ignore
 ```
 
-**Relationship 特性**：
+**特性**：
+- ✅ **表名引用**：使用表名字符串，支持前向引用
+- ✅ **延迟加载**：首次访问时查询，自动缓存
+- ✅ **uselist 参数**：自引用场景显式指定返回类型
+- ✅ **类型提示**：直接声明返回类型获得 IDE 补全
 
-- ✅ **延迟加载**：首次访问时才查询数据库
-- ✅ **自动缓存**：加载后缓存结果，避免重复查询
-- ✅ **双向关联**：支持 back_populates 参数
-- ✅ **Storage 关闭后**：已加载的关联仍可访问（使用缓存）
-- ⚠️ **需要预加载**：Storage 关闭前访问一次以触发加载
-
-```python
-# 预加载策略
-user = User.get(1)
-orders = user.orders  # 在 storage 关闭前访问，触发加载并缓存
-
-db.close()
-
-# 关闭后仍可访问（使用缓存）
-for order in orders:
-    print(order.amount)  # ✅ 正常工作
-```
+> 完整示例见 `examples/relationship_demo.py`
 
 ### 类型验证与转换
 
@@ -698,8 +692,8 @@ Pytuck 提供零依赖的自动类型验证和转换：
 ```python
 class User(Base):
     __tablename__ = 'users'
-    id = Column('id', int, primary_key=True)
-    age = Column('age', int)  # 声明为 int
+    id = Column(int, primary_key=True)
+    age = Column(int)  # 声明为 int
 
 # 宽松模式（默认）：自动转换
 user = User(age='25')  # ✅ 自动转换 '25' → 25
@@ -707,8 +701,8 @@ user = User(age='25')  # ✅ 自动转换 '25' → 25
 # 严格模式：不转换，类型错误抛出异常
 class StrictUser(Base):
     __tablename__ = 'strict_users'
-    id = Column('id', int, primary_key=True)
-    age = Column('age', int, strict=True)  # 严格模式
+    id = Column(int, primary_key=True)
+    age = Column(int, strict=True)  # 严格模式
 
 user = StrictUser(age='25')  # ❌ ValidationError
 ```
@@ -870,7 +864,6 @@ Pytuck 是一个轻量级嵌入式数据库，设计目标是简单易用。以�
 | **无 OR 条件** | 查询条件仅支持 AND 逻辑，不支持 OR |
 | **无聚合函数** | 不支持 COUNT, SUM, AVG, MIN, MAX 等 |
 | **无关系加载** | 不支持延迟加载和预加载关联对象 |
-| **无迁移工具** | Schema 变更需要手动处理 |
 | **单写入者** | 不支持并发写入，适合单进程使用 |
 | **全量保存** | 非二进制/SQLite 后端每次保存完整重写文件 |
 | **无嵌套事务** | 仅支持单层事务，不支持嵌套 |
@@ -904,6 +897,32 @@ Pytuck 是一个轻量级嵌入式数据库，设计目标是简单易用。以�
 - [x] 表和列备注支持（`comment` 参数）
 - [x] 完整的泛型类型提示系统
 - [x] 强类型配置选项系统（dataclass 替代 **kwargs）
+- [x] **Schema 同步与迁移功能** ✨NEW✨
+  - [x] 支持程序重启时自动同步表结构（新增列、备注等）
+  - [x] `SyncOptions` 配置类控制同步行为
+  - [x] `SyncResult` 记录同步变更详情
+  - [x] 三层 API 设计：Table → Storage → Session
+  - [x] 支持 SQLite 原生 SQL 模式 DDL 操作
+  - [x] 纯表名 API 支持（无需模型类）
+- [x] **Excel 后端行号映射功能** ✨NEW✨
+  - [x] `row_number_mapping='as_pk'`：行号作为主键
+  - [x] `row_number_mapping='field'`：行号映射到指定字段
+  - [x] 支持读取外部 Excel 文件
+- [x] **SQLite 原生 SQL 模式优化** ✨NEW✨
+  - [x] 默认启用原生 SQL 模式（直接执行 SQL）
+  - [x] 完善类型映射（10 种 Pytuck 类型）
+  - [x] 多列排序支持
+- [x] **异常系统重构** ✨NEW✨
+  - [x] 统一的异常层次结构
+  - [x] 新增 TypeConversionError、ConfigurationError、SchemaError 等
+- [x] **后端自动注册机制** ✨NEW✨
+  - [x] 使用 `__init_subclass__` 实现自动注册
+  - [x] 自定义后端只需继承 `StorageBackend` 即可
+- [x] **查询结果 API 简化** ✨NEW✨
+  - [x] 移除 `Result.scalars()` 中间层
+  - [x] 直接使用 `result.all()`, `result.first()` 等
+- [x] **迁移工具延迟加载后端支持** ✨NEW✨
+  - [x] 修复延迟加载模式下数据迁移问题
 
 ### 计划中的功能
 
@@ -915,7 +934,6 @@ Pytuck 是一个轻量级嵌入式数据库，设计目标是简单易用。以�
 - [ ] **OR 条件支持** - 复杂逻辑查询条件
 - [ ] **聚合函数** - COUNT, SUM, AVG, MIN, MAX 等
 - [ ] **关系延迟加载** - 优化关联数据加载性能
-- [ ] **Schema 迁移工具** - 数据库结构版本管理
 - [ ] **并发访问支持** - 多进程/线程安全访问
 
 ### 计划增加的引擎
@@ -1004,4 +1022,4 @@ MIT License
 
 ## 致谢
 
-灵感来自于 SQLAlchemy, Django ORM 和 TinyDB。
+灵感来自于 SQLAlchemy 和 TinyDB。

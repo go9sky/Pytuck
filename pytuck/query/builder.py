@@ -4,9 +4,10 @@ Pytuck 查询构建器
 提供链式查询API
 """
 
-from typing import Any, List, Optional, Type, Generic, TYPE_CHECKING, Union
+from typing import Any, List, Optional, Tuple, Type, Generic, TYPE_CHECKING, Union
 
 from ..common.types import T
+from ..common.exceptions import QueryError
 
 if TYPE_CHECKING:
     from ..core.orm import PureBaseModel, Column
@@ -59,7 +60,7 @@ class Condition:
         elif self.operator == 'IN':
             return bool(field_value in self.value)
         else:
-            raise ValueError(f"Unsupported operator: {self.operator}")
+            raise QueryError(f"Unsupported operator: {self.operator}")
 
     def __repr__(self) -> str:
         return f"Condition({self.field} {self.operator} {self.value})"
@@ -88,6 +89,7 @@ class BinaryExpression:
 
     def to_condition(self) -> Condition:
         """转换为 Condition 对象"""
+        assert self.column.name is not None, "Column name must be set"
         return Condition(self.column.name, self.operator, self.value)
 
     def __repr__(self) -> str:
@@ -108,8 +110,7 @@ class Query(Generic[T]):
         self.model_class = model_class
         self.storage = storage  # 新 API：通过参数传入
         self._conditions: List[Condition] = []
-        self._order_by_field: Optional[str] = None
-        self._order_desc: bool = False
+        self._order_by_fields: List[Tuple[str, bool]] = []  # [(field, desc), ...]
         self._limit_value: Optional[int] = None
         self._offset_value: int = 0
 
@@ -142,7 +143,7 @@ class Query(Generic[T]):
                 condition = expr.to_condition()
                 self._conditions.append(condition)
             else:
-                raise TypeError(
+                raise QueryError(
                     f"Expected BinaryExpression, got {type(expr).__name__}. "
                     f"Use Model.column >= value syntax."
                 )
@@ -176,17 +177,25 @@ class Query(Generic[T]):
 
     def order_by(self, field: str, desc: bool = False) -> 'Query[T]':
         """
-        排序
+        添加排序字段
+
+        支持多列排序，多次调用时按调用顺序确定排序优先级。
 
         Args:
             field: 排序字段
-            desc: 是否降序
+            desc: 是否降序，默认 False（升序）
 
         Returns:
             查询构建器（链式调用）
+
+        Example:
+            # 单列排序
+            query.order_by('age')
+
+            # 多列排序（先按 age 降序，再按 name 升序）
+            query.order_by('age', desc=True).order_by('name')
         """
-        self._order_by_field = field
-        self._order_desc = desc
+        self._order_by_fields.append((field, desc))
         return self
 
     def limit(self, n: int) -> 'Query[T]':
@@ -254,8 +263,6 @@ class Query(Generic[T]):
             # 兼容旧 API 的属性
             if hasattr(instance, '_loaded_from_db'):
                 instance._loaded_from_db = True
-            if hasattr(instance, '_pk_value'):
-                instance._pk_value = record.get(pk_name)
 
             instances.append(instance)
 
@@ -286,7 +293,7 @@ class Query(Generic[T]):
         )
 
         if not storage:
-            raise ValueError(f"No database configured for {self.model_class.__name__}")
+            raise QueryError(f"No database configured for {self.model_class.__name__}")
 
         # 获取表名（支持新旧两种风格）
         table_name: Optional[str] = (
@@ -295,17 +302,21 @@ class Query(Generic[T]):
         )
 
         if not table_name:
-            raise ValueError(f"No table name defined for {self.model_class.__name__}")
+            raise QueryError(f"No table name defined for {self.model_class.__name__}")
 
         # 从存储引擎查询
         records: List[dict] = storage.query(table_name, self._conditions)
 
-        # 排序
-        if self._order_by_field:
-            records.sort(
-                key=lambda r: r.get(self._order_by_field) or '',
-                reverse=self._order_desc
-            )
+        # 多列排序（从后往前排序，确保优先级正确）
+        if self._order_by_fields:
+            # 反向遍历，先按低优先级排序，再按高优先级排序
+            # 利用 Python 排序的稳定性，最终实现多列排序
+            for field, desc in reversed(self._order_by_fields):
+                def make_sort_key(f: str) -> Any:
+                    def sort_key(r: dict) -> Any:
+                        return r.get(f) if r.get(f) is not None else ''
+                    return sort_key
+                records.sort(key=make_sort_key(field), reverse=desc)
 
         # 偏移和限制
         if self._offset_value > 0:

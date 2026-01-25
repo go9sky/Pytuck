@@ -19,3 +19,7 @@ T = TypeVar('T', bound='PureBaseModel')
 # CRUD 模型泛型参数，绑定到 CRUDBaseModel
 # 用于 Active Record 模式的 classmethod 返回类型
 T_CRUD = TypeVar('T_CRUD', bound='CRUDBaseModel')
+
+# Relationship 泛型参数（无 bound，因为可能是 List[T] 或 Optional[T]）
+# 用于 Relationship 描述符的类型提示
+RelationshipT = TypeVar('RelationshipT')

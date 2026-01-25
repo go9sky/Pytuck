@@ -4,10 +4,11 @@ SQLAlchemy 2.0 风格的 Statement API
 提供 select, insert, update, delete 语句构建器
 """
 
-from typing import Any, Dict, List, Optional, Type, Generic, TYPE_CHECKING, Union
+from typing import Any, Dict, List, Optional, Tuple, Type, Generic, TYPE_CHECKING, Union
 from abc import ABC, abstractmethod
 
 from ..common.types import T
+from ..common.exceptions import QueryError
 
 if TYPE_CHECKING:
     from ..core.orm import PureBaseModel, Column
@@ -45,13 +46,15 @@ class Select(Statement[T]):
     Example:
         stmt = select(User).where(User.age >= 18).order_by('name').limit(10)
         result = session.execute(stmt)
-        users = result.scalars().all()
+        users = result.all()
+
+        # Multi-column ordering (priority: first to last)
+        stmt = select(User).order_by('age', desc=True).order_by('name')
 
     Attributes:
         model_class: The model class to query
         _where_clauses: List of query conditions (BinaryExpression)
-        _order_by_field: Field name for ordering
-        _order_desc: Whether to sort in descending order
+        _order_by_fields: List of (field_name, desc) tuples for multi-column ordering
         _limit_value: Maximum number of records to return
         _offset_value: Number of records to skip
     """
@@ -59,8 +62,7 @@ class Select(Statement[T]):
     def __init__(self, model_class: Type[T]) -> None:
         super().__init__(model_class)
         self._where_clauses: List['BinaryExpression'] = []
-        self._order_by_field: Optional[str] = None
-        self._order_desc: bool = False
+        self._order_by_fields: List[Tuple[str, bool]] = []  # [(field, desc), ...]
         self._limit_value: Optional[int] = None
         self._offset_value: int = 0
 
@@ -99,14 +101,34 @@ class Select(Statement[T]):
                 expr = BinaryExpression(column, '=', value)
                 self._where_clauses.append(expr)
             else:
-                raise ValueError(f"Column '{field_name}' not found in {self.model_class.__name__}")
+                raise QueryError(
+                    f"Column '{field_name}' not found in {self.model_class.__name__}",
+                    column_name=field_name
+                )
 
         return self
 
     def order_by(self, field: str, desc: bool = False) -> 'Select[T]':
-        """排序"""
-        self._order_by_field = field
-        self._order_desc = desc
+        """
+        添加排序字段
+
+        支持多列排序，多次调用时按调用顺序确定排序优先级。
+
+        Args:
+            field: 排序字段名
+            desc: 是否降序，默认 False（升序）
+
+        Returns:
+            Select 对象（链式调用）
+
+        Example:
+            # 单列排序
+            stmt = select(User).order_by('age')
+
+            # 多列排序（先按 age 降序，再按 name 升序）
+            stmt = select(User).order_by('age', desc=True).order_by('name')
+        """
+        self._order_by_fields.append((field, desc))
         return self
 
     def limit(self, n: int) -> 'Select[T]':
@@ -131,13 +153,16 @@ class Select(Statement[T]):
         assert table_name is not None, f"Model {self.model_class.__name__} must have __tablename__ defined"
         records = storage.query(table_name, conditions)
 
-        # 排序
-        if self._order_by_field:
-            order_field = self._order_by_field  # Type narrowing for mypy
-            records.sort(
-                key=lambda r: r.get(order_field) or '',
-                reverse=self._order_desc
-            )
+        # 多列排序（从后往前排序，确保优先级正确）
+        if self._order_by_fields:
+            # 反向遍历，先按低优先级排序，再按高优先级排序
+            # 利用 Python 排序的稳定性，最终实现多列排序
+            for field, desc in reversed(self._order_by_fields):
+                def make_sort_key(f: str) -> Any:
+                    def sort_key(r: dict) -> Any:
+                        return r.get(f) if r.get(f) is not None else ''
+                    return sort_key
+                records.sort(key=make_sort_key(field), reverse=desc)
 
         # 偏移和限制
         if self._offset_value > 0:

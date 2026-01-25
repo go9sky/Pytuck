@@ -28,10 +28,10 @@ Base: Type[PureBaseModel] = declarative_base(db)
 
 class User(Base):
     __tablename__ = 'users'
-    id = Column('id', int, primary_key=True)
-    name = Column('name', str)
-    age = Column('age', int)
-    email = Column('email', str, nullable=True)
+    id = Column(int, primary_key=True)
+    name = Column(str)
+    age = Column(int)
+    email = Column(str, nullable=True)
 
 session = Session(db)
 
@@ -47,7 +47,7 @@ session.commit()
 print("\n2. Session 关闭后仍可访问")
 
 stmt = select(User).where(User.name == 'Alice')
-alice = session.execute(stmt).scalars().first()
+alice = session.execute(stmt).first()
 
 print(f"   查询前: {alice.name}, {alice.age}岁, email={alice.email}")
 
@@ -69,9 +69,9 @@ Base2: Type[PureBaseModel] = declarative_base(db2)
 
 class User2(Base2):
     __tablename__ = 'users'
-    id = Column('id', int, primary_key=True)
-    name = Column('name', str)
-    age = Column('age', int)
+    id = Column(int, primary_key=True)
+    name = Column(str)
+    age = Column(int)
 
 session2 = Session(db2)
 stmt = insert(User2).values(name='David', age=35)
@@ -79,7 +79,7 @@ session2.execute(stmt)
 session2.commit()
 
 stmt = select(User2).where(User2.name == 'David')
-david = session2.execute(stmt).scalars().first()
+david = session2.execute(stmt).first()
 
 print(f"   查询前: {david.name}, {david.age}岁")
 
@@ -108,9 +108,9 @@ Base3: Type[PureBaseModel] = declarative_base(db3)
 
 class User3(Base3):
     __tablename__ = 'users'
-    id = Column('id', int, primary_key=True)
-    name = Column('name', str)
-    age = Column('age', int)
+    id = Column(int, primary_key=True)
+    name = Column(str)
+    age = Column(int)
 
 session3 = Session(db3)
 for name, age in [('Eve', 22), ('Frank', 28)]:
@@ -119,7 +119,7 @@ for name, age in [('Eve', 22), ('Frank', 28)]:
 session3.commit()
 
 stmt = select(User3)
-users = session3.execute(stmt).scalars().all()
+users = session3.execute(stmt).all()
 session3.close()
 
 users_list = [u.to_dict() for u in users]
@@ -191,7 +191,7 @@ print("""
    # Pytuck 代码
    session = Session(db)
    stmt = select(User).where(User.name == 'Alice')
-   user = session.execute(stmt).scalars().first()
+   user = session.execute(stmt).first()
    session.close()
 
    # ✅ 正常工作

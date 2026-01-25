@@ -42,10 +42,10 @@ class User(Base):
     """用户模型"""
     __tablename__ = 'users'
 
-    id = Column('id', int, primary_key=True)
-    name = Column('name', str, nullable=False)
-    email = Column('email', str)
-    age = Column('age', int)
+    id = Column(int, primary_key=True)
+    name = Column(str, nullable=False)
+    email = Column(str)
+    age = Column(int)
 
 
 print("   ✓ User 模型定义完成")

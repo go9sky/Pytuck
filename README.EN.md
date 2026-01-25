@@ -11,6 +11,8 @@
 
 A lightweight, pure Python document database with multi-engine support. No SQL required - manage your data through Python objects and methods.
 
+> **Design Philosophy**: Provide a zero-dependency relational database solution for restricted Python environments like Ren'Py, enabling SQLAlchemy-style Pythonic data operations in any limited environment.
+
 ## Repository Mirrors
 
 - **GitHub**: https://github.com/go9sky/pytuck
@@ -70,10 +72,10 @@ Base: Type[PureBaseModel] = declarative_base(db)
 class Student(Base):
     __tablename__ = 'students'
 
-    id = Column('id', int, primary_key=True)
-    name = Column('name', str, nullable=False, index=True)
-    age = Column('age', int)
-    email = Column('email', str, nullable=True)
+    id = Column(int, primary_key=True)
+    name = Column(str, nullable=False, index=True)
+    age = Column(int)
+    email = Column(str, nullable=True)
 
 # Create Session
 session = Session(db)
@@ -87,13 +89,13 @@ print(f"Created student, ID: {result.inserted_primary_key}")
 # Query records
 stmt = select(Student).where(Student.id == 1)
 result = session.execute(stmt)
-alice = result.scalars().first()
+alice = result.first()
 print(f"Found: {alice.name}, {alice.age} years old")
 
 # Conditional query (Pythonic syntax)
 stmt = select(Student).where(Student.age >= 18).order_by('name')
 result = session.execute(stmt)
-adults = result.scalars().all()
+adults = result.all()
 for student in adults:
     print(f"  - {student.name}")
 
@@ -117,7 +119,7 @@ session.commit()
 # Method 2: Attribute assignment update (0.3.0 NEW, more intuitive)
 stmt = select(Student).where(Student.id == 1)
 result = session.execute(stmt)
-alice = result.scalars().first()
+alice = result.first()
 alice.age = 21  # Attribute assignment auto-detected and updates database
 session.commit()  # Automatically writes changes to database
 
@@ -148,9 +150,9 @@ Base: Type[CRUDBaseModel] = declarative_base(db, crud=True)  # Note: crud=True
 class Student(Base):
     __tablename__ = 'students'
 
-    id = Column('id', int, primary_key=True)
-    name = Column('name', str, nullable=False)
-    age = Column('age', int)
+    id = Column(int, primary_key=True)
+    name = Column(str, nullable=False)
+    age = Column(int)
 
 # Create record (auto-save)
 alice = Student.create(name='Alice', age=20)
@@ -331,9 +333,9 @@ Base = declarative_base(db)
 
 class User(Base):
     __tablename__ = 'users'
-    id = Column('id', int, primary_key=True)
-    name = Column('name', str)
-    age = Column('age', int)
+    id = Column(int, primary_key=True)
+    name = Column(str)
+    age = Column(int)
 
 session = Session(db)
 
@@ -345,8 +347,15 @@ chained = stmt.where(User.age >= 18)  # IDE infers: Select[User] ✅
 result = session.execute(stmt)  # IDE infers: Result[User] ✅
 
 # Result processing precise types
-users = result.scalars().all()  # IDE infers: List[User] ✅ (no longer List[PureBaseModel])
-user = result.scalars().first()  # IDE infers: Optional[User] ✅
+users = result.all()  # Returns a list of model instances List[T]
+user = result.first()  # Returns the first model instance Optional[T]
+
+Notes:
+- Result.all() → Returns a list of model instances List[T]
+- Result.first() → Returns the first model instance Optional[T]
+- Result.one() → Returns the unique model instance T (must be exactly one)
+- Result.one_or_none() → Returns the unique model instance or None Optional[T] (at most one)
+- Result.rowcount() → Returns the number of results int
 
 # IDE knows specific attribute types
 for user in users:
@@ -367,13 +376,13 @@ for user in users:
 
 **Before:**
 ```python
-users = result.scalars().all()  # IDE: List[PureBaseModel] 😞
+users = result.all()  # IDE: List[PureBaseModel] 😞
 user.name                       # IDE: doesn't know what attributes exist 😞
 ```
 
 **Now:**
 ```python
-users = result.scalars().all()  # IDE: List[User] ✅
+users = result.all()  # IDE: List[User] ✅
 user.name                       # IDE: knows this is str type ✅
 user.age                        # IDE: knows this is int type ✅
 ```
@@ -417,8 +426,8 @@ Base = declarative_base(db, crud=True)
 
 class User(Base):
     __tablename__ = 'users'
-    id = Column('id', int, primary_key=True)
-    name = Column('name', str)
+    id = Column(int, primary_key=True)
+    name = Column(str)
 
 # create/save/delete only modify memory
 user = User.create(name='Alice')
@@ -534,12 +543,12 @@ Add indexes to fields to accelerate queries:
 ```python
 class Student(Base):
     __tablename__ = 'students'
-    name = Column('name', str, index=True)  # Create index
+    name = Column(str, index=True)  # Create index
 
 # Index query (automatically optimized)
 stmt = select(Student).filter_by(name='Bob')
 result = session.execute(stmt)
-bob = result.scalars().first()
+bob = result.first()
 ```
 
 ### Query Operators
@@ -585,7 +594,7 @@ stmt = select(Student).offset(10).limit(10)
 # Count
 stmt = select(Student).where(Student.age >= 18)
 result = session.execute(stmt)
-adults = result.scalars().all()
+adults = result.all()
 count = len(adults)
 ```
 
@@ -611,8 +620,8 @@ Base = declarative_base(db)
 
 class User(Base):
     __tablename__ = 'users'
-    id = Column('id', int, primary_key=True)
-    name = Column('name', str)
+    id = Column(int, primary_key=True)
+    name = Column(str)
 
 session = Session(db)
 stmt = select(User).where(User.id == 1)
@@ -637,58 +646,43 @@ print(user.to_dict())  # ✅ Works
 
 ### Relationships
 
-Pytuck supports one-to-many and many-to-one relationships with lazy loading and caching:
+Pytuck supports one-to-many, many-to-one, and self-referential relationships:
 
 ```python
 from pytuck.core.orm import Relationship
+from typing import List, Optional
 
-# Define relationships
 class User(Base):
     __tablename__ = 'users'
-    id = Column('id', int, primary_key=True)
-    name = Column('name', str)
-    # One-to-many: one user has many orders
-    orders = Relationship('Order', foreign_key='user_id')
+    id = Column(int, primary_key=True)
+    name = Column(str)
+    # One-to-many: use table name reference (recommended)
+    orders: List['Order'] = Relationship('orders', foreign_key='user_id')  # type: ignore
 
 class Order(Base):
     __tablename__ = 'orders'
-    id = Column('id', int, primary_key=True)
-    user_id = Column('user_id', int)
-    amount = Column('amount', float)
-    # Many-to-one: one order belongs to one user
-    user = Relationship(User, foreign_key='user_id')
+    id = Column(int, primary_key=True)
+    user_id = Column(int)
+    amount = Column(float)
+    # Many-to-one
+    user: Optional[User] = Relationship('users', foreign_key='user_id')  # type: ignore
 
-# Use relationships
-user = User.get(1)
-orders = user.orders  # Lazy loaded on first access
-for order in orders:
-    print(f"Order: {order.amount}")
-
-# Reverse access
-order = Order.get(1)
-user = order.user  # Many-to-one query
-print(f"User: {user.name}")
+# Self-reference (tree structure) - use uselist to specify direction
+class Category(Base):
+    __tablename__ = 'categories'
+    id = Column(int, primary_key=True)
+    parent_id = Column(int, nullable=True)
+    parent: Optional['Category'] = Relationship('categories', foreign_key='parent_id', uselist=False)  # type: ignore
+    children: List['Category'] = Relationship('categories', foreign_key='parent_id', uselist=True)  # type: ignore
 ```
 
-**Relationship Features**:
+**Features**:
+- ✅ **Table Name Reference**: Use table name string for forward references
+- ✅ **Lazy Loading**: Queries on first access, auto-cached
+- ✅ **uselist Parameter**: Explicitly specify return type for self-reference
+- ✅ **Type Hints**: Declare return type for IDE completion
 
-- ✅ **Lazy Loading**: Queries database only on first access
-- ✅ **Auto Caching**: Caches results to avoid repeated queries
-- ✅ **Bidirectional**: Supports back_populates parameter
-- ✅ **After Storage Close**: Already loaded relationships remain accessible (uses cache)
-- ⚠️ **Requires Eager Loading**: Access once before storage close to trigger loading
-
-```python
-# Eager loading strategy
-user = User.get(1)
-orders = user.orders  # Access before storage close to load and cache
-
-db.close()
-
-# Still accessible after close (uses cache)
-for order in orders:
-    print(order.amount)  # ✅ Works
-```
+> See `examples/relationship_demo.py` for complete examples
 
 ### Type Validation and Conversion
 
@@ -697,8 +691,8 @@ Pytuck provides zero-dependency automatic type validation and conversion:
 ```python
 class User(Base):
     __tablename__ = 'users'
-    id = Column('id', int, primary_key=True)
-    age = Column('age', int)  # Declared as int
+    id = Column(int, primary_key=True)
+    age = Column(int)  # Declared as int
 
 # Loose mode (default): auto conversion
 user = User(age='25')  # ✅ Automatically converts '25' → 25
@@ -706,8 +700,8 @@ user = User(age='25')  # ✅ Automatically converts '25' → 25
 # Strict mode: no conversion, raises error on type mismatch
 class StrictUser(Base):
     __tablename__ = 'strict_users'
-    id = Column('id', int, primary_key=True)
-    age = Column('age', int, strict=True)  # Strict mode
+    id = Column(int, primary_key=True)
+    age = Column(int, strict=True)  # Strict mode
 
 user = StrictUser(age='25')  # ❌ ValidationError
 ```
@@ -920,7 +914,6 @@ Pytuck is a lightweight embedded database designed for simplicity. Here are the 
 | **No OR conditions** | Query conditions only support AND logic |
 | **No aggregate functions** | No COUNT, SUM, AVG, MIN, MAX support |
 | **No relationship loading** | No lazy loading or eager loading of related objects |
-| **No migration tools** | Schema changes require manual handling |
 | **Single writer** | No concurrent write support, suitable for single-process use |
 | **Full rewrite on save** | Non-binary/SQLite backends rewrite entire file on each save |
 | **No nested transactions** | Only single-level transactions supported |
@@ -954,6 +947,32 @@ Pytuck is a lightweight embedded database designed for simplicity. Here are the 
 - [x] Table and column comment support (`comment` parameter)
 - [x] Complete generic type hints system
 - [x] Strongly-typed configuration options system (dataclass replaces **kwargs)
+- [x] **Schema Sync & Migration** ✨NEW✨
+  - [x] Support automatic schema synchronization when loading existing database
+  - [x] `SyncOptions` configuration class to control sync behavior
+  - [x] `SyncResult` to record sync change details
+  - [x] Three-layer API design: Table → Storage → Session
+  - [x] Support SQLite native SQL mode DDL operations
+  - [x] Pure table-name API (no model class required)
+- [x] **Excel Row Number Mapping** ✨NEW✨
+  - [x] `row_number_mapping='as_pk'`: Use row number as primary key
+  - [x] `row_number_mapping='field'`: Map row number to a field
+  - [x] Support loading external Excel files
+- [x] **SQLite Native SQL Mode Optimization** ✨NEW✨
+  - [x] Native SQL mode enabled by default
+  - [x] Complete type mapping (10 Pytuck types)
+  - [x] Multi-column ORDER BY support
+- [x] **Exception System Refactoring** ✨NEW✨
+  - [x] Unified exception hierarchy
+  - [x] Added TypeConversionError, ConfigurationError, SchemaError, etc.
+- [x] **Backend Auto-Registration** ✨NEW✨
+  - [x] Automatic registration via `__init_subclass__`
+  - [x] Custom backends only need to inherit `StorageBackend`
+- [x] **Query Result API Simplification** ✨NEW✨
+  - [x] Removed `Result.scalars()` intermediate layer
+  - [x] Use `result.all()`, `result.first()` directly
+- [x] **Migration Tool Lazy Loading Support** ✨NEW✨
+  - [x] Fixed data migration issues with lazy loading backends
 
 ### Planned Features
 
@@ -965,7 +984,6 @@ Pytuck is a lightweight embedded database designed for simplicity. Here are the 
 - [ ] **OR Condition Support** - Complex logical query conditions
 - [ ] **Aggregate Functions** - COUNT, SUM, AVG, MIN, MAX, etc.
 - [ ] **Relationship Lazy Loading** - Optimize associated data loading performance
-- [ ] **Schema Migration Tools** - Database structure version management
 - [ ] **Concurrent Access Support** - Multi-process/thread-safe access
 
 ### Planned Engines
@@ -1006,4 +1024,4 @@ MIT License - see [LICENSE](LICENSE) for details.
 
 ## Acknowledgments
 
-Inspired by SQLAlchemy, Django ORM, and TinyDB.
+Inspired by SQLAlchemy, and TinyDB.

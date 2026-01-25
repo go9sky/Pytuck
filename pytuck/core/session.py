@@ -8,11 +8,13 @@ from typing import Any, Dict, List, Optional, Type, Tuple, TYPE_CHECKING, Union,
 from contextlib import contextmanager
 
 from ..common.types import T
+from ..common.exceptions import QueryError, TransactionError
+from ..common.options import SyncOptions, SyncResult
 from ..query.builder import Query
 from ..query.result import Result, CursorResult
 from ..query.statements import Statement, Insert, Select, Update, Delete
 from .storage import Storage
-from .orm import PureBaseModel
+from .orm import PureBaseModel, Column
 
 
 class Session:
@@ -255,7 +257,7 @@ class Session:
             # 查询
             stmt = select(User).where(User.age >= 18)
             result = session.execute(stmt)
-            users = result.scalars().all()
+            users = result.all()
 
             # 插入
             stmt = insert(User).values(name='Alice', age=20)
@@ -265,7 +267,11 @@ class Session:
         from ..query.statements import Select, Insert, Update, Delete
         from ..query.result import Result, CursorResult
 
-        # 执行 statement
+        # 原生 SQL 模式：使用编译器执行
+        if self.storage.is_native_sql_mode:
+            return self._execute_native_sql(statement)
+
+        # 内存模式：现有执行路径
         if isinstance(statement, Select):
             records = statement._execute(self.storage)
             # 传递 session 引用给 Result，用于自动注册实例
@@ -286,7 +292,212 @@ class Session:
             return CursorResult(count, statement.model_class, 'delete')
 
         else:
-            raise TypeError(f"Unsupported statement type: {type(statement)}")
+            raise QueryError(
+                f"Unsupported statement type: {type(statement).__name__}",
+                details={'statement_type': type(statement).__name__}
+            )
+
+    def _execute_native_sql(self, statement: Statement) -> Union[Result, CursorResult]:
+        """
+        原生 SQL 模式下执行语句
+
+        使用 SQL 编译器将语句编译为 SQL 并直接在数据库上执行。
+
+        Args:
+            statement: Statement 对象
+
+        Returns:
+            Result 或 CursorResult
+        """
+        from ..query.statements import Select, Insert, Update, Delete
+        from ..query.compiler import QueryCompiler
+        from ..query.result import Result, CursorResult
+        import json
+        from datetime import datetime, date, timedelta
+        from .types import TypeRegistry
+
+        compiler = QueryCompiler()
+
+        assert self.storage._connector is not None, "Connector must not be None in native SQL mode"
+        connector = self.storage._connector
+
+        if isinstance(statement, Select):
+            # 编译并执行 SELECT
+            if compiler.can_compile(statement):
+                compiled = compiler.compile(statement)
+
+                # 从编译后的 SQL 中提取 WHERE 部分
+                # 使用 connector 的 query_rows 方法
+                table = self.storage.get_table(statement.model_class.__tablename__)
+
+                # 构建 order by 字符串
+                order_by_str = None
+                if statement._order_by_fields:
+                    order_parts = []
+                    for field, desc in statement._order_by_fields:
+                        if desc:
+                            order_parts.append(f'`{field}` DESC')
+                        else:
+                            order_parts.append(f'`{field}` ASC')
+                    order_by_str = ', '.join(order_parts)
+
+                # 构建 where 子句
+                where_parts = []
+                params = []
+                for expr in statement._where_clauses:
+                    assert expr.column.name is not None, "Column name must be set"
+                    col_name = expr.column.name  # 类型为 str
+                    op = compiler._convert_op(expr.operator)
+                    if expr.operator == 'IN':
+                        if isinstance(expr.value, (list, tuple)):
+                            placeholders = ', '.join(['?' for _ in expr.value])
+                            where_parts.append(f'`{col_name}` IN ({placeholders})')
+                            for v in expr.value:
+                                params.append(compiler._serialize_param(v, statement.model_class, col_name))
+                    elif expr.value is None:
+                        # NULL 值需要特殊处理：使用 IS NULL 或 IS NOT NULL
+                        if op in ('=', '=='):
+                            where_parts.append(f'`{col_name}` IS NULL')
+                        elif op in ('!=', '<>'):
+                            where_parts.append(f'`{col_name}` IS NOT NULL')
+                        else:
+                            # 其他操作符与 NULL 比较无意义，跳过
+                            pass
+                    else:
+                        where_parts.append(f'`{col_name}` {op} ?')
+                        params.append(compiler._serialize_param(expr.value, statement.model_class, col_name))
+
+                where_clause = ' AND '.join(where_parts) if where_parts else None
+
+                # 执行查询
+                rows = connector.query_rows(
+                    statement.model_class.__tablename__,
+                    where_clause=where_clause,
+                    params=tuple(params),
+                    order_by=order_by_str,
+                    limit=statement._limit_value,
+                    offset=statement._offset_value if statement._offset_value > 0 else None
+                )
+
+                # 反序列化记录
+                records = [self._deserialize_record(row, table.columns) for row in rows]
+                return Result(records, statement.model_class, 'select', session=self)
+
+            else:
+                # 回退到内存执行
+                records = statement._execute(self.storage)
+                return Result(records, statement.model_class, 'select', session=self)
+
+        elif isinstance(statement, Insert):
+            # 编译并执行 INSERT
+            table = self.storage.get_table(statement.model_class.__tablename__)
+
+            # 验证和序列化值
+            validated_data = {}
+            for col_name, value in statement._values.items():
+                if col_name in table.columns:
+                    column = table.columns[col_name]
+                    validated_data[col_name] = column.validate(value)
+
+            pk = connector.insert_row(
+                statement.model_class.__tablename__,
+                validated_data,
+                statement.model_class.__primary_key__
+            )
+
+            # 更新 next_id
+            if pk is not None and isinstance(pk, int) and pk >= table.next_id:
+                table.next_id = pk + 1
+                self.storage._dirty = True
+
+            return CursorResult(1, statement.model_class, 'insert', inserted_pk=pk)
+
+        elif isinstance(statement, Update):
+            # 编译并执行 UPDATE
+            table = self.storage.get_table(statement.model_class.__tablename__)
+            pk_name = statement.model_class.__primary_key__
+
+            # 验证值
+            validated_data = {}
+            for col_name, value in statement._values.items():
+                if col_name in table.columns:
+                    column = table.columns[col_name]
+                    validated_data[col_name] = column.validate(value)
+
+            # 优化：主键直接更新
+            pk_value = None
+            if len(statement._where_clauses) == 1:
+                expr = statement._where_clauses[0]
+                if expr.column.name == pk_name and expr.operator in ('=', '=='):
+                    pk_value = expr.value
+
+            if pk_value is not None:
+                # 主键直接更新
+                count = connector.update_row(
+                    statement.model_class.__tablename__,
+                    pk_name,
+                    pk_value,
+                    validated_data
+                )
+                return CursorResult(count, statement.model_class, 'update')
+            else:
+                # 条件更新
+                count = statement._execute(self.storage)
+                return CursorResult(count, statement.model_class, 'update')
+
+        elif isinstance(statement, Delete):
+            # 编译并执行 DELETE
+            table = self.storage.get_table(statement.model_class.__tablename__)
+            pk_name = statement.model_class.__primary_key__
+
+            # 优化：主键直接删除
+            pk_value = None
+            if len(statement._where_clauses) == 1:
+                expr = statement._where_clauses[0]
+                if expr.column.name == pk_name and expr.operator in ('=', '=='):
+                    pk_value = expr.value
+
+            if pk_value is not None:
+                # 主键直接删除
+                count = connector.delete_row(
+                    statement.model_class.__tablename__,
+                    pk_name,
+                    pk_value
+                )
+                return CursorResult(count, statement.model_class, 'delete')
+            else:
+                # 条件删除
+                count = statement._execute(self.storage)
+                return CursorResult(count, statement.model_class, 'delete')
+
+        else:
+            raise QueryError(
+                f"Unsupported statement type: {type(statement).__name__}",
+                details={'statement_type': type(statement).__name__}
+            )
+
+    def _deserialize_record(self, record: dict, columns: dict) -> dict:
+        """反序列化数据库记录"""
+        from datetime import datetime, date, timedelta
+        from .types import TypeRegistry
+        import json
+
+        result = {}
+        for col_name, value in record.items():
+            if col_name in columns and value is not None:
+                column = columns[col_name]
+                col_type = column.col_type
+
+                if col_type == bool and isinstance(value, int):
+                    value = bool(value)
+                elif col_type in (datetime, date, timedelta):
+                    value = TypeRegistry.deserialize_from_text(value, col_type)
+                elif col_type in (list, dict) and isinstance(value, str):
+                    value = json.loads(value)
+
+            result[col_name] = value
+
+        return result
 
     def _register_instance(self, instance: PureBaseModel) -> None:
         """
@@ -397,7 +608,7 @@ class Session:
             from pytuck import select
             stmt = select(User).where(User.age >= 18)
             result = session.execute(stmt)
-            users = result.scalars().all()
+            users = result.all()
 
         旧写法（仍然支持）：
             users = session.query(User).filter(User.age >= 18).all()
@@ -427,7 +638,7 @@ class Session:
                 session.add(User(name='Bob'))
         """
         if self._in_transaction:
-            raise RuntimeError("Nested transactions are not supported in Session")
+            raise TransactionError("Nested transactions are not supported in Session")
 
         self._in_transaction = True
 
@@ -460,3 +671,187 @@ class Session:
             self.commit()
         else:
             self.rollback()
+
+    # ==================== Schema 操作（面向模型） ====================
+
+    def _resolve_table_name(self, model_or_table: Union[Type[PureBaseModel], str]) -> str:
+        """
+        解析表名
+
+        Args:
+            model_or_table: 模型类或表名字符串
+
+        Returns:
+            表名字符串
+        """
+        if isinstance(model_or_table, str):
+            return model_or_table
+        else:
+            table_name = model_or_table.__tablename__
+            assert table_name is not None, f"Model {model_or_table.__name__} must have __tablename__ defined"
+            return table_name
+
+    def sync_schema(
+        self,
+        model_class: Type[PureBaseModel],
+        options: Optional[SyncOptions] = None
+    ) -> SyncResult:
+        """
+        同步模型到数据库表结构
+
+        从模型类中提取列定义，与数据库中的表结构对比并同步。
+
+        Args:
+            model_class: 模型类
+            options: 同步选项
+
+        Returns:
+            SyncResult: 同步结果
+
+        Example:
+            from pytuck import SyncOptions
+
+            result = session.sync_schema(User)
+            if result.has_changes:
+                print(f"Added columns: {result.columns_added}")
+
+            # 自定义选项
+            opts = SyncOptions(sync_column_comments=False)
+            result = session.sync_schema(User, options=opts)
+        """
+        table_name = self._resolve_table_name(model_class)
+        columns = list(model_class.__columns__.values())
+        comment = getattr(model_class, '__table_comment__', None)
+        return self.storage.sync_table_schema(table_name, columns, comment, options)
+
+    def add_column(
+        self,
+        model_or_table: Union[Type[PureBaseModel], str],
+        column: Column,
+        default_value: Any = None
+    ) -> None:
+        """
+        添加列
+
+        Args:
+            model_or_table: 模型类或表名字符串
+            column: 列定义
+            default_value: 为现有记录填充的默认值
+
+        Example:
+            from pytuck import Column
+
+            # 通过模型类
+            session.add_column(User, Column(int, nullable=True, name='age'))
+
+            # 通过表名
+            session.add_column('users', Column(int, nullable=True, name='age'))
+
+            # 带默认值
+            session.add_column(User, Column(str, name='status'), default_value='active')
+        """
+        table_name = self._resolve_table_name(model_or_table)
+        self.storage.add_column(table_name, column, default_value)
+
+    def drop_column(
+        self,
+        model_or_table: Union[Type[PureBaseModel], str],
+        column_name: str
+    ) -> None:
+        """
+        删除列
+
+        Args:
+            model_or_table: 模型类或表名字符串
+            column_name: 列名
+
+        Example:
+            # 通过模型类
+            session.drop_column(User, 'old_field')
+
+            # 通过表名
+            session.drop_column('users', 'old_field')
+        """
+        table_name = self._resolve_table_name(model_or_table)
+        self.storage.drop_column(table_name, column_name)
+
+    def update_table_comment(
+        self,
+        model_or_table: Union[Type[PureBaseModel], str],
+        comment: Optional[str]
+    ) -> None:
+        """
+        更新表备注
+
+        Args:
+            model_or_table: 模型类或表名字符串
+            comment: 新的表备注
+
+        Example:
+            session.update_table_comment(User, '用户信息表')
+            session.update_table_comment('users', '用户信息表')
+        """
+        table_name = self._resolve_table_name(model_or_table)
+        self.storage.update_table_comment(table_name, comment)
+
+    def update_column(
+        self,
+        model_or_table: Union[Type[PureBaseModel], str],
+        column_name: str,
+        comment: Optional[str] = None,
+        index: Optional[bool] = None
+    ) -> None:
+        """
+        更新列属性
+
+        Args:
+            model_or_table: 模型类或表名字符串
+            column_name: 列名
+            comment: 新的列备注（None 表示不修改）
+            index: 是否索引（None 表示不修改）
+
+        Example:
+            # 更新备注
+            session.update_column(User, 'name', comment='用户名')
+
+            # 添加索引
+            session.update_column(User, 'email', index=True)
+
+            # 同时更新
+            session.update_column('users', 'phone', comment='电话号码', index=True)
+        """
+        table_name = self._resolve_table_name(model_or_table)
+        self.storage.update_column(table_name, column_name, comment, index)
+
+    def drop_table(self, model_or_table: Union[Type[PureBaseModel], str]) -> None:
+        """
+        删除表
+
+        Args:
+            model_or_table: 模型类或表名字符串
+
+        Example:
+            session.drop_table(TempData)
+            session.drop_table('temp_data')
+        """
+        table_name = self._resolve_table_name(model_or_table)
+        self.storage.drop_table(table_name)
+
+    def rename_table(
+        self,
+        old_model_or_table: Union[Type[PureBaseModel], str],
+        new_name: str
+    ) -> None:
+        """
+        重命名表
+
+        Args:
+            old_model_or_table: 旧模型类或表名
+            new_name: 新表名
+
+        Example:
+            session.rename_table(User, 'user_accounts')
+            session.rename_table('users', 'user_accounts')
+        """
+        old_name = self._resolve_table_name(old_model_or_table)
+        self.storage.rename_table(old_name, new_name)

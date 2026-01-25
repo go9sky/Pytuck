@@ -21,9 +21,9 @@ Pytuck - 轻量级 Python 文档数据库
 
     class User(Base):
         __tablename__ = 'users'
-        id = Column('id', int, primary_key=True)
-        name = Column('name', str)
-        age = Column('age', int)
+        id = Column(int, primary_key=True)
+        name = Column(str)
+        age = Column(int)
 
     session = Session(db)
 
@@ -35,7 +35,7 @@ Pytuck - 轻量级 Python 文档数据库
     # 查询
     stmt = select(User).where(User.age >= 18)
     result = session.execute(stmt)
-    users = result.scalars().all()
+    users = result.all()
 
 2. Active Record 模式 - 模型自带 CRUD 方法：
     from typing import Type
@@ -47,8 +47,8 @@ Pytuck - 轻量级 Python 文档数据库
 
     class User(Base):
         __tablename__ = 'users'
-        id = Column('id', int, primary_key=True)
-        name = Column('name', str)
+        id = Column(int, primary_key=True)
+        name = Column(str)
 
     # 直接在模型上操作
     user = User.create(name='Alice')
@@ -68,16 +68,27 @@ from .core import Storage
 from .core import Session
 from .query import Query, BinaryExpression
 from .query import select, insert, update, delete
-from .query import Result, ScalarResult, Row, CursorResult
+from .query import Result, CursorResult
 from .common.exceptions import (
     PytuckException,
     TableNotFoundError,
     RecordNotFoundError,
     DuplicateKeyError,
+    ColumnNotFoundError,
     TransactionError,
     SerializationError,
-    EncryptionError
+    EncryptionError,
+    ValidationError,
+    TypeConversionError,
+    ConfigurationError,
+    SchemaError,
+    QueryError,
+    ConnectionError,
+    UnsupportedOperationError,
+    MigrationError,
+    PytuckIndexError,
 )
+from .common.options import SyncOptions, SyncResult
 
 __version__ = '0.4.0'
 __all__ = [
@@ -100,10 +111,12 @@ __all__ = [
     'PureBaseModel',      # 纯模型基类类型
     'CRUDBaseModel',      # Active Record 基类类型
 
+    # Schema 同步
+    'SyncOptions',        # 同步选项
+    'SyncResult',         # 同步结果
+
     # 查询结果
     'Result',        # 查询结果包装器
-    'ScalarResult',  # 标量结果
-    'Row',           # 行对象
     'CursorResult',  # CUD 操作结果
 
     # 高级用法
@@ -112,11 +125,34 @@ __all__ = [
 
     # ==================== 异常 ====================
 
+    # 基类
     'PytuckException',
+
+    # 表和记录级异常
     'TableNotFoundError',
     'RecordNotFoundError',
     'DuplicateKeyError',
+    'ColumnNotFoundError',
+
+    # 验证和类型异常
+    'ValidationError',
+    'TypeConversionError',
+
+    # 配置异常
+    'ConfigurationError',
+    'SchemaError',
+
+    # 查询异常
+    'QueryError',
+
+    # 连接和事务异常
+    'ConnectionError',
     'TransactionError',
+
+    # 操作异常
+    'UnsupportedOperationError',
     'SerializationError',
     'EncryptionError',
+    'MigrationError',
+    'PytuckIndexError',
 ]

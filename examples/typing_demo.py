@@ -5,7 +5,7 @@ Pytuck 泛型类型提示演示
 
 在支持类型提示的 IDE 中（如 PyCharm、VSCode），您将看到：
 1. 精确的类型推断：select(User) → Select[User]
-2. 智能代码补全：result.scalars().all() → List[User]
+2. 智能代码补全：result.all() → List[User]
 3. 属性访问提示：user.name, user.age 等
 4. 类型错误检测：编译时发现类型不匹配
 """
@@ -25,10 +25,10 @@ def main() -> None:
 
     class User(Base):
         __tablename__ = 'users'
-        id = Column('id', int, primary_key=True)
-        name = Column('name', str)
-        age = Column('age', int)
-        email = Column('email', str)
+        id = Column(int, primary_key=True)
+        name = Column(str)
+        age = Column(int)
+        email = Column(str)
 
     # 创建会话
     session = Session(db)
@@ -74,14 +74,12 @@ def main() -> None:
     # 4. 结果处理的精确类型
     print("\n4. 结果处理精确类型")
 
-    scalar_result = result.scalars()  # IDE 推断：ScalarResult[User] ✅
-    print(f"   result.scalars() → {type(scalar_result)}")
+    # 直接从 Result 提取模型列表或单个模型（不再使用 Result）
+    users = result.all()  # IDE 推断：List[User] ✅
+    print(f"   result.all() → {type(users)} (元素类型: {type(users[0]) if users else 'N/A'})")
 
-    users = scalar_result.all()  # IDE 推断：List[User] ✅ (不再是 List[PureBaseModel])
-    print(f"   scalars().all() → {type(users)} (元素类型: {type(users[0]) if users else 'N/A'})")
-
-    first_user = scalar_result.first()  # IDE 推断：Optional[User] ✅
-    print(f"   scalars().first() → 类型是 Optional[User]")
+    first_user = result.first()  # IDE 推断：Optional[User] ✅
+    print(f"   result.first() → 类型是 Optional[User]")
 
     # 5. 类型安全的属性访问
     print("\n5. 类型安全的属性访问")
@@ -124,7 +122,6 @@ def main() -> None:
                          .order_by('name', desc=True)
                          .limit(5)
                      )
-                     .scalars()
                      .all())  # IDE 推断：List[User] ✅
 
     print(f"   复杂查询结果: {len(complex_users)} 个用户")
@@ -132,8 +129,8 @@ def main() -> None:
     # 9. 类型错误示例（这些在 IDE 中会显示错误）
     print("\n9. 类型检查能力演示")
     print("   以下代码在 IDE 中会显示类型错误:")
-    print("   # user_direct: User = result.scalars().first()  # ❌ 可能是 None")
-    print("   # wrong_type: str = result.scalars().all()      # ❌ 类型不匹配")
+    print("   # user_direct: User = result.first()  # ❌ 可能是 None")
+    print("   # wrong_type: str = result.all()      # ❌ 类型不匹配")
     print("   # user.nonexistent_field                         # ❌ 属性不存在")
 
     print("\n=== 演示完成 ===")
@@ -155,10 +152,10 @@ def demonstrate_type_inference() -> None:
 
     class Product(Base):
         __tablename__ = 'products'
-        id = Column('id', int, primary_key=True)
-        name = Column('name', str)
-        price = Column('price', float)
-        in_stock = Column('in_stock', bool)
+        id = Column(int, primary_key=True)
+        name = Column(str)
+        price = Column(float)
+        in_stock = Column(bool)
 
     session = Session(db)
 
@@ -176,13 +173,12 @@ def demonstrate_type_inference() -> None:
 
     # 执行和结果的类型推断
     result = session.execute(ordered)  # Result[Product]
-    scalars = result.scalars()  # ScalarResult[Product]
-    products = scalars.all()  # List[Product]
+    # 直接从 Result 提取产品列表
+    products = result.all()  # List[Product]
 
     print("\n结果处理类型链:")
     print(f"  session.execute(stmt) → 推断类型: Result[Product]")
-    print(f"  result.scalars()      → 推断类型: ScalarResult[Product]")
-    print(f"  scalars.all()         → 推断类型: List[Product] ✅")
+    print(f"  result.all()          → 推断类型: List[Product] ✅")
 
     print("\n这意味着:")
     print("  - IDE 自动完成会显示 Product 的所有属性")

@@ -195,8 +195,8 @@ class XMLBackend(StorageBackend):
             col_type = TypeRegistry.get_type_by_name(col_elem.get('type'))
 
             column = Column(
-                col_elem.get('name'),
                 col_type,
+                name=col_elem.get('name'),
                 nullable=(col_elem.get('nullable') == 'true'),
                 primary_key=(col_elem.get('primary_key') == 'true'),
                 index=(col_elem.get('index') == 'true'),

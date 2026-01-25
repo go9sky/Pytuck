@@ -33,14 +33,14 @@ class TestRelationshipBasic(unittest.TestCase):
         # 先定义 Order 类（前向引用）
         class Order(Base):
             __tablename__ = 'orders'
-            id = Column('id', int, primary_key=True)
-            user_id = Column('user_id', int)
-            amount = Column('amount', float)
+            id = Column(int, primary_key=True)
+            user_id = Column(int)
+            amount = Column(float)
 
         class User(Base):
             __tablename__ = 'users'
-            id = Column('id', int, primary_key=True)
-            name = Column('name', str)
+            id = Column(int, primary_key=True)
+            name = Column(str)
             # 一对多：一个用户有多个订单（使用类而不是字符串）
             orders = Relationship(Order, foreign_key='user_id')
 
@@ -102,14 +102,14 @@ class TestRelationshipAfterClose(unittest.TestCase):
 
         class Order(Base):
             __tablename__ = 'orders'
-            id = Column('id', int, primary_key=True)
-            user_id = Column('user_id', int)
-            amount = Column('amount', float)
+            id = Column(int, primary_key=True)
+            user_id = Column(int)
+            amount = Column(float)
 
         class User(Base):
             __tablename__ = 'users'
-            id = Column('id', int, primary_key=True)
-            name = Column('name', str)
+            id = Column(int, primary_key=True)
+            name = Column(str)
             orders = Relationship(Order, foreign_key='user_id')
 
         # 插入数据
@@ -139,14 +139,14 @@ class TestRelationshipAfterClose(unittest.TestCase):
 
         class Order(Base):
             __tablename__ = 'orders'
-            id = Column('id', int, primary_key=True)
-            user_id = Column('user_id', int)
-            amount = Column('amount', float)
+            id = Column(int, primary_key=True)
+            user_id = Column(int)
+            amount = Column(float)
 
         class User(Base):
             __tablename__ = 'users'
-            id = Column('id', int, primary_key=True)
-            name = Column('name', str)
+            id = Column(int, primary_key=True)
+            name = Column(str)
             orders = Relationship(Order, foreign_key='user_id')
 
         # 插入数据
@@ -172,14 +172,14 @@ class TestRelationshipAfterClose(unittest.TestCase):
 
         class Order(Base):
             __tablename__ = 'orders'
-            id = Column('id', int, primary_key=True)
-            user_id = Column('user_id', int)
-            amount = Column('amount', float)
+            id = Column(int, primary_key=True)
+            user_id = Column(int)
+            amount = Column(float)
 
         class User(Base):
             __tablename__ = 'users'
-            id = Column('id', int, primary_key=True)
-            name = Column('name', str)
+            id = Column(int, primary_key=True)
+            name = Column(str)
             orders = Relationship(Order, foreign_key='user_id')
 
         Order.user = Relationship(User, foreign_key='user_id')
@@ -217,14 +217,14 @@ class TestRelationshipCache(unittest.TestCase):
 
         class Order(Base):
             __tablename__ = 'orders'
-            id = Column('id', int, primary_key=True)
-            user_id = Column('user_id', int)
-            amount = Column('amount', float)
+            id = Column(int, primary_key=True)
+            user_id = Column(int)
+            amount = Column(float)
 
         class User(Base):
             __tablename__ = 'users'
-            id = Column('id', int, primary_key=True)
-            name = Column('name', str)
+            id = Column(int, primary_key=True)
+            name = Column(str)
             orders = Relationship(Order, foreign_key='user_id')
 
         self.User = User
@@ -273,14 +273,14 @@ class TestRelationshipNullForeignKey(unittest.TestCase):
 
         class User(Base):
             __tablename__ = 'users'
-            id = Column('id', int, primary_key=True)
-            name = Column('name', str)
+            id = Column(int, primary_key=True)
+            name = Column(str)
 
         class Order(Base):
             __tablename__ = 'orders'
-            id = Column('id', int, primary_key=True)
-            user_id = Column('user_id', int, nullable=True)
-            amount = Column('amount', float)
+            id = Column(int, primary_key=True)
+            user_id = Column(int, nullable=True)
+            amount = Column(float)
             user = Relationship(User, foreign_key='user_id')
 
         self.User = User
@@ -312,14 +312,14 @@ class TestRelationshipBidirectional(unittest.TestCase):
 
         class Order(Base):
             __tablename__ = 'orders'
-            id = Column('id', int, primary_key=True)
-            user_id = Column('user_id', int)
-            amount = Column('amount', float)
+            id = Column(int, primary_key=True)
+            user_id = Column(int)
+            amount = Column(float)
 
         class User(Base):
             __tablename__ = 'users'
-            id = Column('id', int, primary_key=True)
-            name = Column('name', str)
+            id = Column(int, primary_key=True)
+            name = Column(str)
             orders = Relationship(Order, foreign_key='user_id', back_populates='user')
 
         Order.user = Relationship(User, foreign_key='user_id', back_populates='orders')
@@ -343,6 +343,298 @@ class TestRelationshipBidirectional(unittest.TestCase):
         self.assertEqual(orders[0].amount, 100.0)
 
         # 反向访问：Order → User
+        order_obj = self.Order.get(order.id)
+        user_from_order = order_obj.user
+        self.assertEqual(user_from_order.name, 'Alice')
+
+
+class TestRelationshipStringReference(unittest.TestCase):
+    """Relationship 字符串引用（表名）测试"""
+
+    def setUp(self) -> None:
+        """测试前设置"""
+        self.db = Storage(in_memory=True)
+        Base: Type[CRUDBaseModel] = declarative_base(self.db, crud=True)
+
+        # 使用字符串（表名）定义双向关联 - 无需在类外赋值
+        class Order(Base):
+            __tablename__ = 'orders'
+            id = Column(int, primary_key=True)
+            user_id = Column(int)
+            amount = Column(float)
+            # 使用表名引用 User 模型
+            user = Relationship('users', foreign_key='user_id')
+
+        class User(Base):
+            __tablename__ = 'users'
+            id = Column(int, primary_key=True)
+            name = Column(str)
+            # 使用表名引用 Order 模型
+            orders = Relationship('orders', foreign_key='user_id', back_populates='user')
+
+        self.User = User
+        self.Order = Order
+
+    def tearDown(self) -> None:
+        """测试后清理"""
+        self.db.close()
+
+    def test_string_reference_one_to_many(self) -> None:
+        """测试字符串引用的一对多关系"""
+        user = self.User.create(name='Alice')
+        self.Order.create(user_id=user.id, amount=100.0)
+        self.Order.create(user_id=user.id, amount=200.0)
+
+        # 通过表名引用访问关联
+        user_obj = self.User.get(user.id)
+        orders = user_obj.orders
+        self.assertEqual(len(orders), 2)
+
+    def test_string_reference_many_to_one(self) -> None:
+        """测试字符串引用的多对一关系"""
+        user = self.User.create(name='Bob')
+        order = self.Order.create(user_id=user.id, amount=150.0)
+
+        # 通过表名引用访问关联
+        order_obj = self.Order.get(order.id)
+        user_from_order = order_obj.user
+        self.assertIsNotNone(user_from_order)
+        self.assertEqual(user_from_order.name, 'Bob')
+
+    def test_bidirectional_with_string_reference(self) -> None:
+        """测试字符串引用的双向关联"""
+        user = self.User.create(name='Charlie')
+        order = self.Order.create(user_id=user.id, amount=300.0)
+
+        # 双向访问
+        user_obj = self.User.get(user.id)
+        order_obj = self.Order.get(order.id)
+
+        self.assertEqual(user_obj.orders[0].id, order.id)
+        self.assertEqual(order_obj.user.id, user.id)
+
+
+class TestRelationshipOneToOne(unittest.TestCase):
+    """Relationship 一对一关系测试"""
+
+    def setUp(self) -> None:
+        """测试前设置"""
+        self.db = Storage(in_memory=True)
+        Base: Type[CRUDBaseModel] = declarative_base(self.db, crud=True)
+
+        # 一对一：用户 - 用户资料
+        class UserProfile(Base):
+            __tablename__ = 'user_profiles'
+            id = Column(int, primary_key=True)
+            user_id = Column(int)
+            bio = Column(str)
+            # 多对一：资料 → 用户
+            user = Relationship('users', foreign_key='user_id')
+
+        class User(Base):
+            __tablename__ = 'users'
+            id = Column(int, primary_key=True)
+            name = Column(str)
+            # 一对一：用户 → 资料（实际是一对多，但只取第一个）
+            profiles = Relationship('user_profiles', foreign_key='user_id')
+
+        self.User = User
+        self.UserProfile = UserProfile
+
+    def tearDown(self) -> None:
+        """测试后清理"""
+        self.db.close()
+
+    def test_one_to_one_relationship(self) -> None:
+        """测试一对一关系"""
+        user = self.User.create(name='Alice')
+        profile = self.UserProfile.create(user_id=user.id, bio='Hello World')
+
+        # 用户 → 资料
+        user_obj = self.User.get(user.id)
+        profiles = user_obj.profiles
+        self.assertEqual(len(profiles), 1)
+        self.assertEqual(profiles[0].bio, 'Hello World')
+
+        # 资料 → 用户
+        profile_obj = self.UserProfile.get(profile.id)
+        self.assertEqual(profile_obj.user.name, 'Alice')
+
+
+class TestRelationshipManyToMany(unittest.TestCase):
+    """Relationship 多对多关系测试（通过中间表）"""
+
+    def setUp(self) -> None:
+        """测试前设置"""
+        self.db = Storage(in_memory=True)
+        Base: Type[CRUDBaseModel] = declarative_base(self.db, crud=True)
+
+        # 多对多：学生 - 课程（通过中间表 enrollments）
+        class Enrollment(Base):
+            __tablename__ = 'enrollments'
+            id = Column(int, primary_key=True)
+            student_id = Column(int)
+            course_id = Column(int)
+            # 关联
+            student = Relationship('students', foreign_key='student_id')
+            course = Relationship('courses', foreign_key='course_id')
+
+        class Student(Base):
+            __tablename__ = 'students'
+            id = Column(int, primary_key=True)
+            name = Column(str)
+            enrollments = Relationship('enrollments', foreign_key='student_id')
+
+        class Course(Base):
+            __tablename__ = 'courses'
+            id = Column(int, primary_key=True)
+            title = Column(str)
+            enrollments = Relationship('enrollments', foreign_key='course_id')
+
+        self.Student = Student
+        self.Course = Course
+        self.Enrollment = Enrollment
+
+    def tearDown(self) -> None:
+        """测试后清理"""
+        self.db.close()
+
+    def test_many_to_many_through_junction(self) -> None:
+        """测试通过中间表的多对多关系"""
+        student1 = self.Student.create(name='Alice')
+        student2 = self.Student.create(name='Bob')
+        course1 = self.Course.create(title='Math')
+        course2 = self.Course.create(title='Physics')
+
+        # 创建选课记录
+        self.Enrollment.create(student_id=student1.id, course_id=course1.id)
+        self.Enrollment.create(student_id=student1.id, course_id=course2.id)
+        self.Enrollment.create(student_id=student2.id, course_id=course1.id)
+
+        # 学生 → 选课记录 → 课程
+        student1_obj = self.Student.get(student1.id)
+        enrollments = student1_obj.enrollments
+        self.assertEqual(len(enrollments), 2)
+
+        # 验证可以通过中间表访问课程
+        courses = [e.course for e in enrollments]
+        course_titles = [c.title for c in courses]
+        self.assertIn('Math', course_titles)
+        self.assertIn('Physics', course_titles)
+
+        # 课程 → 选课记录 → 学生
+        course1_obj = self.Course.get(course1.id)
+        enrollments = course1_obj.enrollments
+        self.assertEqual(len(enrollments), 2)
+
+        students = [e.student for e in enrollments]
+        student_names = [s.name for s in students]
+        self.assertIn('Alice', student_names)
+        self.assertIn('Bob', student_names)
+
+
+class TestRelationshipSelfReference(unittest.TestCase):
+    """Relationship 自引用关系测试（树形结构）"""
+
+    def setUp(self) -> None:
+        """测试前设置"""
+        self.db = Storage(in_memory=True)
+        Base: Type[CRUDBaseModel] = declarative_base(self.db, crud=True)
+
+        # 自引用：分类树（parent_id 指向自己）
+        class Category(Base):
+            __tablename__ = 'categories'
+            id = Column(int, primary_key=True)
+            name = Column(str)
+            parent_id = Column(int, nullable=True)
+            # 自引用关系 - 需要用 uselist 明确指定
+            parent = Relationship('categories', foreign_key='parent_id', uselist=False)
+            children = Relationship('categories', foreign_key='parent_id', uselist=True)
+
+        self.Category = Category
+
+    def tearDown(self) -> None:
+        """测试后清理"""
+        self.db.close()
+
+    def test_self_reference_parent(self) -> None:
+        """测试自引用关系 - 获取父节点"""
+        root = self.Category.create(name='Root', parent_id=None)
+        child = self.Category.create(name='Child', parent_id=root.id)
+
+        # 子节点 → 父节点
+        child_obj = self.Category.get(child.id)
+        parent = child_obj.parent
+        self.assertIsNotNone(parent)
+        self.assertEqual(parent.name, 'Root')
+
+    def test_self_reference_children(self) -> None:
+        """测试自引用关系 - 获取子节点"""
+        root = self.Category.create(name='Root', parent_id=None)
+        self.Category.create(name='Child1', parent_id=root.id)
+        self.Category.create(name='Child2', parent_id=root.id)
+
+        # 父节点 → 子节点
+        root_obj = self.Category.get(root.id)
+        children = root_obj.children
+        self.assertEqual(len(children), 2)
+
+        child_names = [c.name for c in children]
+        self.assertIn('Child1', child_names)
+        self.assertIn('Child2', child_names)
+
+    def test_self_reference_null_parent(self) -> None:
+        """测试自引用关系 - 根节点无父节点"""
+        root = self.Category.create(name='Root', parent_id=None)
+
+        root_obj = self.Category.get(root.id)
+        parent = root_obj.parent
+        self.assertIsNone(parent)
+
+
+class TestRelationshipMixedDefinition(unittest.TestCase):
+    """Relationship 混合定义测试（类引用 + 字符串引用）"""
+
+    def setUp(self) -> None:
+        """测试前设置"""
+        self.db = Storage(in_memory=True)
+        Base: Type[CRUDBaseModel] = declarative_base(self.db, crud=True)
+
+        # 先定义 Order（使用类引用），User 使用字符串引用
+        class Order(Base):
+            __tablename__ = 'orders'
+            id = Column(int, primary_key=True)
+            user_id = Column(int)
+            amount = Column(float)
+
+        class User(Base):
+            __tablename__ = 'users'
+            id = Column(int, primary_key=True)
+            name = Column(str)
+            # 使用类引用（Order 已定义）
+            orders = Relationship(Order, foreign_key='user_id')
+
+        # 动态添加反向关联（使用字符串引用）
+        Order.user = Relationship('users', foreign_key='user_id')
+
+        self.User = User
+        self.Order = Order
+
+    def tearDown(self) -> None:
+        """测试后清理"""
+        self.db.close()
+
+    def test_mixed_reference_works(self) -> None:
+        """测试混合引用方式"""
+        user = self.User.create(name='Alice')
+        order = self.Order.create(user_id=user.id, amount=100.0)
+
+        # 类引用：User → Orders
+        user_obj = self.User.get(user.id)
+        orders = user_obj.orders
+        self.assertEqual(len(orders), 1)
+
+        # 字符串引用：Order → User
         order_obj = self.Order.get(order.id)
         user_from_order = order_obj.user
         self.assertEqual(user_from_order.name, 'Alice')

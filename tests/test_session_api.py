@@ -22,6 +22,7 @@ from pytuck import (
     declarative_base, PureBaseModel,
     select, insert, update, delete,
 )
+from pytuck.common.exceptions import QueryError
 
 
 class TestSessionAPI(unittest.TestCase):
@@ -34,10 +35,10 @@ class TestSessionAPI(unittest.TestCase):
 
         class User(self.Base):
             __tablename__ = 'users'
-            id = Column('id', int, primary_key=True)
-            name = Column('name', str, nullable=False)
-            age = Column('age', int)
-            email = Column('email', str, nullable=True)
+            id = Column(int, primary_key=True)
+            name = Column(str, nullable=False)
+            age = Column(int)
+            email = Column(str, nullable=True)
 
         self.User = User
         self.session = Session(self.db)
@@ -72,7 +73,7 @@ class TestSessionAPI(unittest.TestCase):
         # 验证插入
         stmt = select(self.User)
         result = self.session.execute(stmt)
-        users = result.scalars().all()
+        users = result.all()
         self.assertEqual(len(users), 3)
 
     def test_select_all(self) -> None:
@@ -86,7 +87,7 @@ class TestSessionAPI(unittest.TestCase):
         # 查询所有
         stmt = select(self.User)
         result = self.session.execute(stmt)
-        users = result.scalars().all()
+        users = result.all()
 
         self.assertEqual(len(users), 3)
         self.assertEqual([u.name for u in users], ['Alice', 'Bob', 'Charlie'])
@@ -102,7 +103,7 @@ class TestSessionAPI(unittest.TestCase):
         # where 查询（年龄 >= 20）
         stmt = select(self.User).where(self.User.age >= 20)
         result = self.session.execute(stmt)
-        adults = result.scalars().all()
+        adults = result.all()
 
         self.assertEqual(len(adults), 2)
         self.assertIn('Alice', [u.name for u in adults])
@@ -118,7 +119,7 @@ class TestSessionAPI(unittest.TestCase):
         # filter_by 查询
         stmt = select(self.User).filter_by(name='Alice')
         result = self.session.execute(stmt)
-        alice = result.scalars().first()
+        alice = result.first()
 
         self.assertIsNotNone(alice)
         self.assertEqual(alice.name, 'Alice')
@@ -135,7 +136,7 @@ class TestSessionAPI(unittest.TestCase):
         # 混合查询
         stmt = select(self.User).filter_by(name='Alice').where(self.User.age >= 25)
         result = self.session.execute(stmt)
-        users = result.scalars().all()
+        users = result.all()
 
         self.assertEqual(len(users), 1)
         self.assertEqual(users[0].age, 30)
@@ -151,7 +152,7 @@ class TestSessionAPI(unittest.TestCase):
         # 多条件查询
         stmt = select(self.User).where(self.User.age >= 20, self.User.age < 30)
         result = self.session.execute(stmt)
-        users = result.scalars().all()
+        users = result.all()
 
         self.assertEqual(len(users), 2)
         self.assertEqual({u.name for u in users}, {'Alice', 'Bob'})
@@ -167,13 +168,13 @@ class TestSessionAPI(unittest.TestCase):
         # 按年龄升序
         stmt = select(self.User).order_by('age')
         result = self.session.execute(stmt)
-        users = result.scalars().all()
+        users = result.all()
         self.assertEqual([u.name for u in users], ['Alice', 'Bob', 'Charlie'])
 
         # 按年龄降序
         stmt = select(self.User).order_by('age', desc=True)
         result = self.session.execute(stmt)
-        users = result.scalars().all()
+        users = result.all()
         self.assertEqual([u.name for u in users], ['Charlie', 'Bob', 'Alice'])
 
     def test_select_limit_offset(self) -> None:
@@ -187,19 +188,19 @@ class TestSessionAPI(unittest.TestCase):
         # Limit
         stmt = select(self.User).limit(2)
         result = self.session.execute(stmt)
-        users = result.scalars().all()
+        users = result.all()
         self.assertEqual(len(users), 2)
 
         # Offset
         stmt = select(self.User).offset(2)
         result = self.session.execute(stmt)
-        users = result.scalars().all()
+        users = result.all()
         self.assertEqual(len(users), 3)
 
         # Limit + Offset
         stmt = select(self.User).offset(1).limit(2)
         result = self.session.execute(stmt)
-        users = result.scalars().all()
+        users = result.all()
         self.assertEqual(len(users), 2)
         self.assertEqual(users[0].name, 'User1')
 
@@ -220,7 +221,7 @@ class TestSessionAPI(unittest.TestCase):
         # 验证更新
         stmt = select(self.User).filter_by(name='Alice')
         result = self.session.execute(stmt)
-        alice = result.scalars().first()
+        alice = result.first()
         self.assertEqual(alice.age, 21)
 
     def test_update_batch(self) -> None:
@@ -256,7 +257,7 @@ class TestSessionAPI(unittest.TestCase):
         # 验证删除
         stmt = select(self.User)
         result = self.session.execute(stmt)
-        users = result.scalars().all()
+        users = result.all()
         self.assertEqual(len(users), 2)
         self.assertEqual({u.name for u in users}, {'Alice', 'Charlie'})
 
@@ -286,9 +287,9 @@ class TestResultFormats(unittest.TestCase):
 
         class User(Base):
             __tablename__ = 'users'
-            id = Column('id', int, primary_key=True)
-            name = Column('name', str)
-            age = Column('age', int)
+            id = Column(int, primary_key=True)
+            name = Column(str)
+            age = Column(int)
 
         self.User = User
         self.session = Session(self.db)
@@ -308,7 +309,7 @@ class TestResultFormats(unittest.TestCase):
         """测试 scalars().all() - 返回模型实例列表"""
         stmt = select(self.User)
         result = self.session.execute(stmt)
-        users = result.scalars().all()
+        users = result.all()
 
         self.assertEqual(len(users), 2)
         self.assertIsInstance(users[0], self.User)
@@ -318,7 +319,7 @@ class TestResultFormats(unittest.TestCase):
         """测试 scalars().first() - 返回第一个实例"""
         stmt = select(self.User).where(self.User.name == 'Alice')
         result = self.session.execute(stmt)
-        alice = result.scalars().first()
+        alice = result.first()
 
         self.assertIsNotNone(alice)
         self.assertEqual(alice.name, 'Alice')
@@ -328,15 +329,15 @@ class TestResultFormats(unittest.TestCase):
         """测试 scalars().one() - 必须恰好一条"""
         stmt = select(self.User).where(self.User.name == 'Alice')
         result = self.session.execute(stmt)
-        alice = result.scalars().one()
+        alice = result.one()
 
         self.assertEqual(alice.name, 'Alice')
 
         # 测试多条记录抛出异常
         stmt = select(self.User)
         result = self.session.execute(stmt)
-        with self.assertRaises(ValueError):
-            result.scalars().one()
+        with self.assertRaises(QueryError):
+            result.one()
 
     def test_all_rows(self) -> None:
         """测试 all() - 返回模型实例列表"""
@@ -347,13 +348,14 @@ class TestResultFormats(unittest.TestCase):
         self.assertEqual(len(users), 2)
         self.assertEqual(users[0].name, 'Alice')
         # 模型实例使用属性访问，不支持下标访问
-        # 如需下标访问，使用 result.rows() 或 result.fetchall()
+        # 如需下标访问，使用 result.all() 返回模型实例列表；若需要原始 dict 列表，请使用 result.all() 并结合 .to_dict() 或者其他 API（fetchall 已移除）
 
     def test_fetchall(self) -> None:
         """测试 fetchall() - 返回字典列表"""
         stmt = select(self.User)
         result = self.session.execute(stmt)
-        dicts = result.fetchall()
+        # fetchall() 已移除，使用 result.all() 并转换为 dict 列表
+        dicts = [r.to_dict() if hasattr(r, 'to_dict') else r for r in result.all()]
 
         self.assertEqual(len(dicts), 2)
         self.assertIsInstance(dicts[0], dict)
@@ -370,15 +372,15 @@ class TestRelations(unittest.TestCase):
 
         class Class(Base):
             __tablename__ = 'classes'
-            id = Column('id', int, primary_key=True)
-            name = Column('name', str, nullable=False)
+            id = Column(int, primary_key=True)
+            name = Column(str, nullable=False)
 
         class Student(Base):
             __tablename__ = 'students'
-            id = Column('id', int, primary_key=True)
-            name = Column('name', str, nullable=False)
-            age = Column('age', int)
-            class_id = Column('class_id', int, foreign_key=('classes', 'id'))
+            id = Column(int, primary_key=True)
+            name = Column(str, nullable=False)
+            age = Column(int)
+            class_id = Column(int, foreign_key=('classes', 'id'))
 
         self.Class = Class
         self.Student = Student
@@ -405,7 +407,7 @@ class TestRelations(unittest.TestCase):
         # 验证
         stmt = select(self.Student)
         result = self.session.execute(stmt)
-        students = result.scalars().all()
+        students = result.all()
         self.assertEqual(len(students), 1)
         self.assertEqual(students[0].class_id, class_id)
 
@@ -430,7 +432,7 @@ class TestRelations(unittest.TestCase):
         # 查询 Class A 的学生
         stmt = select(self.Student).where(self.Student.class_id == class_a_id)
         result = self.session.execute(stmt)
-        students = result.scalars().all()
+        students = result.all()
 
         self.assertEqual(len(students), 2)
         self.assertEqual({s.name for s in students}, {'Alice', 'Bob'})

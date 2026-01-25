@@ -280,7 +280,7 @@ class BinaryBackend(StorageBackend):
     ENGINE_NAME = 'binary'
     REQUIRED_DEPENDENCIES = []
 
-    # 文件格式常量 (v3 兼容)
+    # 文件格式常量
     MAGIC_NUMBER = b'PYTK'
     FORMAT_VERSION = get_format_version('binary')
     FILE_HEADER_SIZE = 64
@@ -374,7 +374,7 @@ class BinaryBackend(StorageBackend):
                 import io
                 data_buffer = io.BytesIO()
                 for table_name, table in tables.items():
-                    pk_offsets = self._write_table_data_v3(data_buffer, table)
+                    pk_offsets = self._write_table_data(data_buffer, table)
                     all_table_index_data[table_name] = {
                         'pk_offsets': pk_offsets,
                         'indexes': table.indexes
@@ -452,7 +452,7 @@ class BinaryBackend(StorageBackend):
             raise SerializationError(f"Failed to save binary file: {e}")
 
     def load(self) -> Dict[str, 'Table']:
-        """从二进制文件加载所有表数据（支持 v3/v4 格式和懒加载）"""
+        """从二进制文件加载所有表数据（v4 格式，支持懒加载）"""
         if not self.exists():
             raise FileNotFoundError(f"Binary file not found: {self.file_path}")
 
@@ -463,11 +463,11 @@ class BinaryBackend(StorageBackend):
                 f.seek(0)
 
                 if magic == self.MAGIC_V4:
-                    # v4 格式
                     return self._load_v4(f)
                 else:
-                    # v3 格式（向后兼容）
-                    return self._load_v3(f)
+                    raise SerializationError(
+                        f"不支持的文件格式: {magic!r}，请使用 v4 格式（PTK4）"
+                    )
 
         except EncryptionError:
             # 加密异常直接抛出，不包装
@@ -561,7 +561,7 @@ class BinaryBackend(StorageBackend):
         # 懒加载模式（加密时不支持懒加载，因为需要完整解密数据区）
         if self.options.lazy_load and index_data and not cipher:
             for schema in tables_schema:
-                table = self._create_lazy_table(schema, index_data)
+                table = self._create_lazy_table(schema, index_data, header.data_offset)
                 tables[table.name] = table
         else:
             if cipher:
@@ -572,55 +572,22 @@ class BinaryBackend(StorageBackend):
                 data_stream = io.BytesIO(decrypted_data)
 
                 for schema in tables_schema:
-                    table = self._read_table_data_v3(data_stream, schema, index_data)
+                    table = self._read_table_data(data_stream, schema, index_data)
                     tables[table.name] = table
             else:
                 # 完整加载模式
                 f.seek(header.data_offset)
                 for schema in tables_schema:
-                    table = self._read_table_data_v3(f, schema, index_data)
+                    table = self._read_table_data(f, schema, index_data)
                     tables[table.name] = table
-
-        return tables
-
-    def _load_v3(self, f: BinaryIO) -> Dict[str, 'Table']:
-        """加载 v3 格式文件（向后兼容）"""
-        # 读取文件头（v3 格式包含索引区信息）
-        table_count, index_offset, index_size = self._read_file_header_v3(f)
-
-        # 读取 Schema 区（所有表的元数据）
-        tables_schema = []
-        for _ in range(table_count):
-            schema = self._read_table_schema(f)
-            tables_schema.append(schema)
-
-        # 读取索引区（如果存在）
-        index_data: Dict[str, Dict[str, Any]] = {}
-        if index_offset > 0 and index_size > 0:
-            current_pos = f.tell()
-            f.seek(index_offset)
-            index_data = self._read_index_region(f)
-            f.seek(current_pos)
-
-        tables = {}
-
-        # 懒加载模式：只加载 schema 和索引，不加载数据
-        if self.options.lazy_load and index_data:
-            for schema in tables_schema:
-                table = self._create_lazy_table(schema, index_data)
-                tables[table.name] = table
-        else:
-            # 完整加载模式：读取所有数据
-            for schema in tables_schema:
-                table = self._read_table_data_v3(f, schema, index_data)
-                tables[table.name] = table
 
         return tables
 
     def _create_lazy_table(
         self,
         schema: Dict[str, Any],
-        index_data: Dict[str, Dict[str, Any]]
+        index_data: Dict[str, Dict[str, Any]],
+        data_offset: int
     ) -> 'Table':
         """
         创建懒加载表（只加载 schema 和索引，不加载数据）
@@ -628,6 +595,7 @@ class BinaryBackend(StorageBackend):
         Args:
             schema: 表结构信息
             index_data: 从索引区读取的索引数据
+            data_offset: 数据区在文件中的起始偏移量
 
         Returns:
             懒加载的 Table 对象
@@ -650,9 +618,14 @@ class BinaryBackend(StorageBackend):
         table._data_file = self.file_path
         table._backend = self
 
-        # 从索引区获取数据
+        # 从索引区获取数据，并修正偏移量为绝对偏移
         table_idx_data = index_data.get(table_name, {})
-        table._pk_offsets = table_idx_data.get('pk_offsets', {})
+        relative_pk_offsets = table_idx_data.get('pk_offsets', {})
+        # 将相对偏移量转换为绝对偏移量
+        table._pk_offsets = {
+            pk: relative_offset + data_offset
+            for pk, relative_offset in relative_pk_offsets.items()
+        }
 
         # 恢复索引
         idx_maps = table_idx_data.get('indexes', {})
@@ -673,6 +646,44 @@ class BinaryBackend(StorageBackend):
         """删除文件"""
         if self.file_path.exists():
             self.file_path.unlink()
+
+    def supports_lazy_loading(self) -> bool:
+        """
+        检查是否启用了懒加载模式
+
+        Returns:
+            True 如果 options.lazy_load=True
+        """
+        return self.options.lazy_load
+
+    def populate_tables_with_data(self, tables: Dict[str, 'Table']) -> None:
+        """
+        填充懒加载表的数据（用于迁移场景）
+
+        在懒加载模式下，load() 只加载 schema 和索引，此方法用于
+        在需要时（如迁移）填充实际数据。
+
+        Args:
+            tables: 需要填充数据的表字典
+        """
+        if not self.options.lazy_load:
+            return  # 非懒加载模式，数据已在 load() 时加载
+
+        for table in tables.values():
+            if table.data:  # 已有数据，跳过
+                continue
+
+            if not getattr(table, '_lazy_loaded', False):
+                continue
+
+            pk_offsets = getattr(table, '_pk_offsets', None)
+            if pk_offsets is None:
+                continue
+
+            # 通过 get() 逐条加载数据
+            for pk in pk_offsets:
+                record = table.get(pk)
+                table.data[pk] = record
 
     # ============== WAL 操作方法 ==============
 
@@ -896,10 +907,12 @@ class BinaryBackend(StorageBackend):
             if entry.op_type == WALOpType.DELETE:
                 # 删除操作
                 if pk in table.data:
+                    old_record = table.data[pk]
                     del table.data[pk]
                     # 更新索引
-                    for idx in table.indexes.values():
-                        idx.remove(pk)
+                    for col_name, idx in table.indexes.items():
+                        if col_name in old_record:
+                            idx.remove(old_record[col_name], pk)
 
             elif entry.op_type in (WALOpType.INSERT, WALOpType.UPDATE):
                 # 插入或更新操作
@@ -913,7 +926,7 @@ class BinaryBackend(StorageBackend):
                     # 更新索引
                     for col_name, idx in table.indexes.items():
                         if col_name in record:
-                            idx.add(record[col_name], pk)
+                            idx.insert(record[col_name], pk)
 
             count += 1
             self._current_lsn = max(self._current_lsn, entry.lsn)
@@ -997,94 +1010,6 @@ class BinaryBackend(StorageBackend):
             header = HeaderV4.unpack(header_data)
             return header.wal_size > 0
 
-    def _write_file_header(self, f: BinaryIO, table_count: int) -> None:
-        """向后兼容：旧版文件头写入（已弃用，仅供参考）"""
-        self._write_file_header_v3(f, table_count, 0, 0)
-
-    def _write_file_header_v3(
-        self,
-        f: BinaryIO,
-        table_count: int,
-        index_offset: int,
-        index_size: int
-    ) -> None:
-        """
-        写入文件头（64字节，v3 格式）
-
-        格式：
-        - Magic Number: b'PYTK' (4 bytes)
-        - Version: 3 (2 bytes)
-        - Table Count: N (4 bytes)
-        - Index Region Offset (8 bytes)
-        - Index Region Size (8 bytes)
-        - Checksum: CRC32 (4 bytes，占位）
-        - Reserved: (34 bytes)
-        """
-        header = bytearray(self.FILE_HEADER_SIZE)
-
-        # Magic Number
-        header[0:4] = self.MAGIC_NUMBER
-
-        # Version
-        struct.pack_into('<H', header, 4, self.FORMAT_VERSION)
-
-        # Table Count
-        struct.pack_into('<I', header, 6, table_count)
-
-        # Index Region Offset (8 bytes)
-        struct.pack_into('<Q', header, 10, index_offset)
-
-        # Index Region Size (8 bytes)
-        struct.pack_into('<Q', header, 18, index_size)
-
-        # Checksum (占位)
-        struct.pack_into('<I', header, 26, 0)
-
-        # Reserved (34 bytes, 30-63，填充0)
-
-        f.write(header)
-
-    def _read_file_header(self, f: BinaryIO) -> int:
-        """向后兼容：旧版文件头读取"""
-        table_count, _, _ = self._read_file_header_v3(f)
-        return table_count
-
-    def _read_file_header_v3(self, f: BinaryIO) -> Tuple[int, int, int]:
-        """
-        读取文件头（v3 格式）
-
-        Returns:
-            Tuple[table_count, index_offset, index_size]
-        """
-        header = f.read(self.FILE_HEADER_SIZE)
-
-        if len(header) < self.FILE_HEADER_SIZE:
-            raise SerializationError("Invalid file header size")
-
-        # 验证 Magic Number
-        magic = header[0:4]
-        if magic != self.MAGIC_NUMBER:
-            raise SerializationError(f"Invalid magic number: {magic!r}")
-
-        # 读取 Version
-        version = struct.unpack('<H', header[4:6])[0]
-        if version < 2:
-            raise SerializationError(f"Unsupported old version: {version}, please migrate to v3")
-        if version > self.FORMAT_VERSION:
-            raise SerializationError(f"Unsupported future version: {version}")
-
-        # 读取 Table Count
-        table_count = struct.unpack('<I', header[6:10])[0]
-
-        # 读取 Index Region 信息（v3+）
-        index_offset = 0
-        index_size = 0
-        if version >= 3:
-            index_offset = struct.unpack('<Q', header[10:18])[0]
-            index_size = struct.unpack('<Q', header[18:26])[0]
-
-        return table_count, index_offset, index_size
-
     def _write_table_schema(self, f: BinaryIO, table: 'Table') -> None:
         """
         写入单个表的 Schema（元数据）
@@ -1160,27 +1085,9 @@ class BinaryBackend(StorageBackend):
             'columns': columns
         }
 
-    def _write_table_data(self, f: BinaryIO, table: 'Table') -> None:
+    def _write_table_data(self, f: BinaryIO, table: 'Table') -> Dict[Any, int]:
         """
-        写入单个表的数据
-
-        格式：
-        - Record Count (4 bytes)
-        - Records Data
-        """
-        # Record Count
-        f.write(struct.pack('<I', len(table.data)))
-
-        # 预先构建列名到索引的映射，避免每条记录都 O(n) 查找
-        col_idx_map = {name: idx for idx, name in enumerate(table.columns.keys())}
-
-        # Records
-        for pk, record in table.data.items():
-            self._write_record(f, pk, record, table.columns, col_idx_map)
-
-    def _write_table_data_v3(self, f: BinaryIO, table: 'Table') -> Dict[Any, int]:
-        """
-        写入单个表的数据（v3 格式，记录 pk_offsets）
+        写入单个表的数据（记录 pk_offsets）
 
         格式：
         - Record Count (4 bytes)
@@ -1202,6 +1109,7 @@ class BinaryBackend(StorageBackend):
         pk_col = None
         pk_codec = None
         for col in table.columns.values():
+            assert col.name is not None, "Column name must be set"
             type_code, codec = TypeRegistry.get_codec(col.col_type)
             codec_cache[col.name] = (type_code, codec)
             if col.primary_key:
@@ -1260,47 +1168,14 @@ class BinaryBackend(StorageBackend):
 
         return pk_offsets
 
-    def _read_table_data(self, f: BinaryIO, schema: Dict[str, Any]) -> 'Table':
-        """根据 schema 读取表数据，返回 Table 对象"""
-        from ..core.storage import Table
-
-        # 创建 Table 对象
-        table = Table(
-            schema['table_name'],
-            schema['columns'],
-            schema['primary_key'],
-            comment=schema.get('table_comment')
-        )
-        table.next_id = schema['next_id']
-
-        # 构建 columns 字典用于记录读取
-        columns_dict = {col.name: col for col in schema['columns']}
-
-        # Record Count
-        record_count = struct.unpack('<I', f.read(4))[0]
-
-        # Records
-        for _ in range(record_count):
-            pk, record = self._read_record(f, columns_dict)
-            table.data[pk] = record
-
-        # 重建索引（清除构造函数创建的空索引）
-        for col_name, column in table.columns.items():
-            if column.index:
-                if col_name in table.indexes:
-                    del table.indexes[col_name]
-                table.build_index(col_name)
-
-        return table
-
-    def _read_table_data_v3(
+    def _read_table_data(
         self,
         f: BinaryIO,
         schema: Dict[str, Any],
         index_data: Dict[str, Dict[str, Any]]
     ) -> 'Table':
         """
-        根据 schema 读取表数据（v3 格式，从索引区恢复索引）
+        根据 schema 读取表数据（从索引区恢复索引）
 
         Args:
             f: 文件句柄
@@ -1339,19 +1214,22 @@ class BinaryBackend(StorageBackend):
                 pk_codec = codec
 
         # Record Count
-        record_count = struct.unpack('<I', f.read(4))[0]
-
-        # 批量读取所有记录数据
-        # 使用预读取的方式，一次性读取所有数据到内存
-        all_data = f.read()
-        offset = 0
+        record_count_bytes = f.read(4)
+        if len(record_count_bytes) < 4:
+            raise SerializationError(f"读取表 {table_name} 的记录数失败：文件意外结束")
+        record_count = struct.unpack('<I', record_count_bytes)[0]
 
         for _ in range(record_count):
             # Record Length
-            record_len = struct.unpack('<I', all_data[offset:offset+4])[0]
-            offset += 4
-            record_data = all_data[offset:offset+record_len]
-            offset += record_len
+            rec_len_bytes = f.read(4)
+            if len(rec_len_bytes) < 4:
+                raise SerializationError(f"读取表 {table_name} 的记录长度失败：文件意外结束")
+            record_len = struct.unpack('<I', rec_len_bytes)[0]
+
+            # Record Data
+            record_data = f.read(record_len)
+            if len(record_data) < record_len:
+                raise SerializationError(f"读取表 {table_name} 的记录数据失败：文件意外结束")
 
             # 解析记录
             pos = 0
@@ -1373,10 +1251,10 @@ class BinaryBackend(StorageBackend):
                 pos += 2
 
                 # Type Code
-                type_code = record_data[pos]
+                raw_type_code: int = record_data[pos]
                 pos += 1
 
-                if type_code == 0xFF:
+                if raw_type_code == 0xFF:
                     # NULL value
                     pos += 1  # 跳过长度字节（值为 0）
                     value = None
@@ -1388,11 +1266,11 @@ class BinaryBackend(StorageBackend):
                     pos += value_len
 
                     # 解码值
-                    if type_code in codec_cache:
-                        _, codec = codec_cache[type_code]
+                    if raw_type_code in codec_cache:
+                        _, codec = codec_cache[raw_type_code]
                         value, _ = codec.decode(value_bytes)
                     else:
-                        _, codec = TypeRegistry.get_codec_by_code(TypeCode(type_code))
+                        _, codec = TypeRegistry.get_codec_by_code(TypeCode(raw_type_code))
                         value, _ = codec.decode(value_bytes)
 
                 # 获取列名
@@ -1437,6 +1315,7 @@ class BinaryBackend(StorageBackend):
         - Column Comment (UTF-8)
         """
         # Column Name
+        assert column.name is not None, "Column name must be set"
         col_name_bytes = column.name.encode('utf-8')
         f.write(struct.pack('<H', len(col_name_bytes)))
         f.write(col_name_bytes)
@@ -1484,8 +1363,8 @@ class BinaryBackend(StorageBackend):
         comment = f.read(comment_len).decode('utf-8') if comment_len > 0 else None
 
         return Column(
-            col_name,
             col_type,
+            name=col_name,
             nullable=nullable,
             primary_key=primary_key,
             index=index,
@@ -1649,50 +1528,65 @@ class BinaryBackend(StorageBackend):
             if not file_path.exists():
                 return False, {'error': 'file_not_found'}
 
-            # 检查文件大小是否足够包含文件头
+            # 检查文件大小是否足够包含魔数
             file_stat = file_path.stat()
             file_size = file_stat.st_size
-            if file_size < cls.FILE_HEADER_SIZE:
+            if file_size < 4:
                 return False, {'error': 'file_too_small'}
 
             # 读取并检查文件头
             with open(file_path, 'rb') as f:
-                header = f.read(cls.FILE_HEADER_SIZE)
+                magic = f.read(4)
 
-            if len(header) < cls.FILE_HEADER_SIZE:
-                return False, {'error': 'header_incomplete'}
+                # 检查 v4 格式 (PTK4)
+                if magic == cls.MAGIC_V4:
+                    if file_size < cls.DUAL_HEADER_SIZE:
+                        return False, {'error': 'file_too_small_for_v4'}
 
-            # 检查魔数
-            magic = header[0:4]
-            if magic != cls.MAGIC_NUMBER:
+                    return True, {
+                        'engine': 'binary',
+                        'format_version': 4,
+                        'file_size': file_size,
+                        'modified': file_stat.st_mtime,
+                        'confidence': 'high'
+                    }
+
+                # 检查旧版格式 (PYTK)
+                if magic == cls.MAGIC_NUMBER:
+                    if file_size < cls.FILE_HEADER_SIZE:
+                        return False, {'error': 'file_too_small'}
+
+                    f.seek(0)
+                    header = f.read(cls.FILE_HEADER_SIZE)
+
+                    # 检查版本号
+                    try:
+                        version = struct.unpack('<H', header[4:6])[0]
+                    except struct.error:
+                        return False, {'error': 'invalid_version_format'}
+
+                    # 读取表数量
+                    try:
+                        table_count = struct.unpack('<I', header[6:10])[0]
+                    except struct.error:
+                        return False, {'error': 'invalid_table_count_format'}
+
+                    # 成功识别为 Binary 格式
+                    return True, {
+                        'engine': 'binary',
+                        'format_version': version,
+                        'table_count': table_count,
+                        'file_size': file_size,
+                        'modified': file_stat.st_mtime,
+                        'confidence': 'high'
+                    }
+
                 return False, None  # 不是错误，只是不匹配
-
-            # 检查版本号
-            try:
-                version = struct.unpack('<H', header[4:6])[0]
-            except struct.error:
-                return False, {'error': 'invalid_version_format'}
-
-            # 读取表数量
-            try:
-                table_count = struct.unpack('<I', header[6:10])[0]
-            except struct.error:
-                return False, {'error': 'invalid_table_count_format'}
-
-            # 成功识别为 Binary 格式
-            return True, {
-                'engine': 'binary',
-                'format_version': version,
-                'table_count': table_count,
-                'file_size': file_size,
-                'modified': file_stat.st_mtime,
-                'confidence': 'high'
-            }
 
         except Exception as e:
             return False, {'error': f'probe_exception: {str(e)}'}
 
-    # ========== 索引区读写方法（v3/v4 格式） ==========
+    # ========== 索引区读写方法 ==========
 
     def _write_index_region_compressed(
         self,

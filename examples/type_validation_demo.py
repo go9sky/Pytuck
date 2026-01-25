@@ -32,12 +32,12 @@ print("\n2. 宽松模式（默认）- 自动类型转换")
 
 class User(Base):
     __tablename__ = 'users'
-    id = Column('id', int, primary_key=True)
-    name = Column('name', str, nullable=False)
-    age = Column('age', int)
-    score = Column('score', float)
-    active = Column('active', bool)
-    avatar = Column('avatar', bytes, nullable=True)
+    id = Column(int, primary_key=True)
+    name = Column(str, nullable=False)
+    age = Column(int)
+    score = Column(float)
+    active = Column(bool)
+    avatar = Column(bytes, nullable=True)
 
 # 字符串 → int
 user1 = User(name='Alice', age='25', score=3.5, active=True)
@@ -73,11 +73,11 @@ print("\n3. 严格模式 - 类型不匹配报错")
 
 class StrictUser(Base):
     __tablename__ = 'strict_users'
-    id = Column('id', int, primary_key=True)
-    name = Column('name', str, nullable=False, strict=True)
-    age = Column('age', int, strict=True)
-    score = Column('score', float, strict=True)
-    active = Column('active', bool, strict=True)
+    id = Column(int, primary_key=True)
+    name = Column(str, nullable=False, strict=True)
+    age = Column(int, strict=True)
+    score = Column(float, strict=True)
+    active = Column(bool, strict=True)
 
 # 正确类型：成功
 user = StrictUser(name='George', age=30, score=3.14, active=True)
@@ -111,10 +111,10 @@ print("\n4. None 值处理")
 
 class Product(Base):
     __tablename__ = 'products'
-    id = Column('id', int, primary_key=True)
-    name = Column('name', str, nullable=False)  # NOT NULL
-    description = Column('description', str, nullable=True)  # NULL OK
-    price = Column('price', float, nullable=False)  # NOT NULL
+    id = Column(int, primary_key=True)
+    name = Column(str, nullable=False)  # NOT NULL
+    description = Column(str, nullable=True)  # NULL OK
+    price = Column(float, nullable=False)  # NOT NULL
 
 # nullable=True：允许 None
 product = Product(name='Product A', description=None, price=99.9)
@@ -157,9 +157,9 @@ print("\n6. int vs bool 类型分离")
 
 class Data(Base):
     __tablename__ = 'data'
-    id = Column('id', int, primary_key=True)
-    count = Column('count', int)
-    flag = Column('flag', bool)
+    id = Column(int, primary_key=True)
+    count = Column(int)
+    flag = Column(bool)
 
 # int 列接受 int
 data1 = Data(count=42, flag=True)

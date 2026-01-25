@@ -2,72 +2,40 @@
 
 本文件记录 Pytuck 项目的详细开发计划，供开发者参考。
 
+> 版本发布记录请查看：[CHANGELOG.md](./CHANGELOG.md) | [历史版本](./docs/changelog/)
+
+---
+
 ## 已完成
 
-### ✨ SQLAlchemy 2.0 风格对象状态管理（0.3.0）
-
-**实现日期**：2026-01-11
-**重要性**：🔥 高 - 核心 ORM 功能完善
-
-**技术实现**：
-
-1. **Identity Map（对象唯一性管理）**
-   - 同一 Session 中相同主键的对象保证是同一个 Python 实例
-   - 实现了 `Session._identity_map: Dict[Tuple[Type[PureBaseModel], Any], PureBaseModel]`
-   - 查询时先检查 identity map，避免重复对象
-   - 解决了 `session.get(User, 1)` 和 `session.execute(select(User).where(User.id == 1)).scalars().first()` 返回不同对象的问题
-
-2. **自动脏跟踪（Dirty Tracking）**
-   - 属性赋值（如 `user.name = "new"`）自动检测并在 `session.commit()` 时更新数据库
-   - 通过在模型基类中重写 `__setattr__` 方法实现透明拦截
-   - 检测 Column 属性修改，自动调用 `session._mark_dirty(instance)`
-   - 只在值真正改变时标记为 dirty，避免无意义的数据库写操作
-
-3. **查询实例自动注册**
-   - `session.execute(select(...))` 返回的实例自动关联到 Session
-   - 增强了 `ScalarResult._create_instance()` 方法，支持 identity map 查找和注册
-   - 实例自动获得 `_pytuck_session` 和 `_pytuck_state` 属性
-   - 修复了 `Session.flush()` 中的实例注册逻辑，统一使用 `_register_instance()` 方法
-
-4. **merge() 操作**
-   - 合并外部/detached 对象到 Session 中
-   - 智能处理：如果对象已存在则更新属性，否则从数据库加载或创建新对象
-   - 适用于 API 数据合并、序列化对象处理等场景
-   - 返回 Session 管理的实例（可能不是传入的同一个对象）
-
-5. **增强的上下文管理器**
-   - 完善的事务支持：`with session.begin():`
-   - 异常时自动回滚，成功时自动提交
-   - 支持嵌套的 Session 和 begin() 上下文
-
-**解决的问题**：
-- ❌ **之前**：`bob.age = 99; session.commit()` 不生效
-- ✅ **现在**：属性赋值自动检测并更新数据库
-- ❌ **之前**：`session.get()` 和 `execute(select())` 返回不同对象实例
-- ✅ **现在**：Identity Map 保证对象唯一性
-- ❌ **之前**：查询返回的实例未关联到 Session，无法脏跟踪
-- ✅ **现在**：自动注册，完整支持脏跟踪
-
-**向后兼容性**：
-- 100% 向后兼容，现有代码无需修改
-- 现有的 `update()` 语句和 CRUD 模式的 `save()` 方法继续正常工作
-- 新功能是增量增强，不破坏原有 API
-
-### 其他已完成功能
-
-- [x] 统一数据库连接器架构（`pytuck/connectors/` 模块）
-- [x] 数据迁移工具（`migrate_engine()`, `import_from_database()`）
-- [x] 从外部关系型数据库导入功能
-- [x] 统一引擎版本管理（`pytuck/backends/versions.py`）
-- [x] 表和列备注支持（`comment` 参数）
-- [x] 泛型类型提示系统，完整的 IDE 开发体验支持
+- [x] 核心 ORM 和内存存储
+- [x] 插件化多引擎持久化（Binary、JSON、CSV、SQLite、Excel、XML）
+- [x] SQLAlchemy 2.0 风格 API（select、insert、update、delete）
+- [x] 基础事务支持
+- [x] Identity Map（对象唯一性管理）
+- [x] 自动脏跟踪（Dirty Tracking）
+- [x] merge() 操作
+- [x] 统一数据库连接器架构（pytuck/connectors/）
+- [x] 数据迁移工具（migrate_engine、import_from_database）
+- [x] 统一引擎版本管理（pytuck/backends/versions.py）
+- [x] 表和列备注支持（comment 参数）
+- [x] 泛型类型提示系统
 - [x] 强类型配置选项系统（dataclass 替代 **kwargs）
+- [x] Schema 同步与迁移功能（SyncOptions、SyncResult、三层 API）
+- [x] Excel 行号映射功能（row_number_mapping）
+- [x] SQLite 原生 SQL 模式优化
+- [x] 异常系统重构（统一异常层次结构）
+- [x] 后端自动注册机制（__init_subclass__）
+- [x] 查询结果 API 简化（移除 scalars() 中间层）
+- [x] 迁移工具延迟加载后端支持
+
+---
 
 ## 计划中的功能
 
 ### Web UI 界面支持
 
-**目标**：为独立的 Web UI 库（如 Pytuck-LiteUI）提供 API 支持
+**目标**：为独立的 Web UI 库（如 Pytuck-view）提供 API 支持
 
 **核心技术特性**：
 - 数据库结构反射和元数据查询接口
@@ -246,15 +214,6 @@ results = session.query(
 - 预加载：批量加载避免 N+1 问题
 - 缓存机制：避免重复查询
 
-### Schema 迁移工具
-
-**目标**：提供数据库结构版本管理和迁移功能
-
-**功能需求**：
-- 自动检测 schema 变更
-- 生成迁移脚本
-- 版本控制和回滚支持
-
 ### 并发访问支持
 
 **目标**：支持多进程/多线程安全访问
@@ -263,6 +222,8 @@ results = session.query(
 - 文件锁机制
 - 事务隔离
 - 死锁检测和处理
+
+---
 
 ## 计划增加的引擎
 
@@ -289,6 +250,8 @@ results = session.query(
 - [ ] **PyDbLite3** - 纯 Python 内存数据库
   - 纯内存操作，高性能
   - 适合临时数据处理
+
+---
 
 ## 计划中的优化
 
@@ -319,11 +282,12 @@ results = session.query(
   - 批量加载优化
   - 循环引用检测
 
+---
+
 ## 技术债务
 
 ### 代码质量
 
-- [ ] 统一异常处理机制
 - [ ] 完善单元测试覆盖率
 - [ ] 性能基准测试自动化
 
@@ -332,6 +296,8 @@ results = session.query(
 - [ ] API 参考文档生成
 - [ ] 最佳实践指南
 - [ ] 性能调优指南
+
+---
 
 ## 生态系统
 
@@ -342,7 +308,7 @@ results = session.query(
   - 数据导入导出
   - Schema 迁移
 
-- [ ] **Pytuck-Admin** - Web 管理界面（即 Pytuck-LiteUI）
+- [ ] **Pytuck-Admin** - Web 管理界面（即 Pytuck-view）
   - 可视化数据库管理
   - 查询构建器
   - 实时监控
@@ -353,23 +319,6 @@ results = session.query(
 - [ ] **Django ORM 兼容层**
 - [ ] **Pandas 数据分析集成**
 
-## 版本规划
-
-### v0.3.0（下一版本）
-- Web UI 支持 API
-- ORM 事件钩子系统（第一阶段）
-- OR 条件支持
-
-### v0.4.0
-- JOIN 支持
-- 聚合函数
-- DuckDB 引擎
-
-### v0.5.0
-- Schema 迁移工具
-- 并发访问支持
-- 性能优化
-
 ---
 
-**注意**：此文档为开发者内部使用，功能优先级和时间规划可能根据实际情况调整。
+**注意**：此文档为开发者内部使用，功能优先级可能根据实际情况调整。

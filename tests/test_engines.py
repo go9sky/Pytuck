@@ -53,12 +53,12 @@ class BaseEngineTest(unittest.TestCase):
 
         class Student(Base):
             __tablename__ = 'students'
-            id = Column('id', int, primary_key=True)
-            name = Column('name', str, nullable=False, index=True)
-            age = Column('age', int)
-            email = Column('email', str, nullable=True)
-            active = Column('active', bool)
-            avatar = Column('avatar', bytes, nullable=True)
+            id = Column(int, primary_key=True)
+            name = Column(str, nullable=False, index=True)
+            age = Column(int)
+            email = Column(str, nullable=True)
+            active = Column(bool)
+            avatar = Column(bytes, nullable=True)
 
         self.Student = Student
         self.session = Session(self.db)
@@ -92,13 +92,13 @@ class BaseEngineTest(unittest.TestCase):
         # 查询所有
         stmt = select(self.Student)
         result = self.session.execute(stmt)
-        students = result.scalars().all()
+        students = result.all()
         self.assertEqual(len(students), 3)
 
         # 条件查询
         stmt = select(self.Student).where(self.Student.age >= 20)
         result = self.session.execute(stmt)
-        adults = result.scalars().all()
+        adults = result.all()
         self.assertEqual(len(adults), 2)
 
     def test_update(self) -> None:
@@ -116,7 +116,7 @@ class BaseEngineTest(unittest.TestCase):
         # 验证更新
         stmt = select(self.Student).filter_by(name='Alice')
         result = self.session.execute(stmt)
-        alice = result.scalars().first()
+        alice = result.first()
         self.assertEqual(alice.age, 21)
         self.assertEqual(alice.email, 'alice.new@example.com')
 
@@ -136,7 +136,7 @@ class BaseEngineTest(unittest.TestCase):
         # 验证删除
         stmt = select(self.Student)
         result = self.session.execute(stmt)
-        students = result.scalars().all()
+        students = result.all()
         self.assertEqual(len(students), 2)
         self.assertEqual({s.name for s in students}, {'Alice', 'Charlie'})
 
@@ -157,19 +157,19 @@ class BaseEngineTest(unittest.TestCase):
 
         class Student2(Base2):
             __tablename__ = 'students'
-            id = Column('id', int, primary_key=True)
-            name = Column('name', str, nullable=False, index=True)
-            age = Column('age', int)
-            email = Column('email', str, nullable=True)
-            active = Column('active', bool)
-            avatar = Column('avatar', bytes, nullable=True)
+            id = Column(int, primary_key=True)
+            name = Column(str, nullable=False, index=True)
+            age = Column(int)
+            email = Column(str, nullable=True)
+            active = Column(bool)
+            avatar = Column(bytes, nullable=True)
 
         session2 = Session(db2)
 
         # 验证数据
         stmt = select(Student2)
         result = session2.execute(stmt)
-        students = result.scalars().all()
+        students = result.all()
         self.assertEqual(len(students), 1)
         self.assertEqual(students[0].name, 'Alice')
         self.assertEqual(students[0].age, 20)
@@ -189,7 +189,7 @@ class BaseEngineTest(unittest.TestCase):
         # 查询验证
         stmt = select(self.Student).filter_by(name='Alice')
         result = self.session.execute(stmt)
-        alice = result.scalars().first()
+        alice = result.first()
         self.assertIsNone(alice.email)
         self.assertIsNone(alice.avatar)
 
@@ -206,7 +206,7 @@ class BaseEngineTest(unittest.TestCase):
         # 查询验证
         stmt = select(self.Student).filter_by(active=True)
         result = self.session.execute(stmt)
-        active_students = result.scalars().all()
+        active_students = result.all()
         self.assertEqual(len(active_students), 1)
         self.assertEqual(active_students[0].name, 'Alice')
 
@@ -221,7 +221,7 @@ class BaseEngineTest(unittest.TestCase):
         # 查询验证
         stmt = select(self.Student).filter_by(name='Alice')
         result = self.session.execute(stmt)
-        alice = result.scalars().first()
+        alice = result.first()
         self.assertEqual(alice.avatar, avatar_data)
 
 

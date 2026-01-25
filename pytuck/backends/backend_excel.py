@@ -7,7 +7,7 @@ Pytuck Excel存储引擎
 import json
 import base64
 from pathlib import Path
-from typing import Any, Dict, Union, TYPE_CHECKING, Tuple, Optional
+from typing import Any, Dict, List, Union, TYPE_CHECKING, Tuple, Optional
 from datetime import datetime
 from .base import StorageBackend
 from ..common.exceptions import SerializationError
@@ -80,6 +80,11 @@ class ExcelBackend(StorageBackend):
                     for col in table.columns.values()
                 ])
                 tables_sheet.append([table_name, table.primary_key, table.next_id, table.comment or '', columns_json])
+
+            # 根据配置隐藏元数据工作表
+            if self.options.hide_metadata_sheets:
+                metadata_sheet.sheet_state = 'hidden'
+                tables_sheet.sheet_state = 'hidden'
 
             # 为每个表创建数据工作表
             for table_name, table in tables.items():
@@ -166,12 +171,28 @@ class ExcelBackend(StorageBackend):
         # 确保主键列在列表中
         if table.primary_key not in columns:
             columns.insert(0, table.primary_key)
+
+        # 如果启用了 persist_row_number 且 mapping='field'，确保行号字段在列表中
+        persist_row_number = (
+            self.options.row_number_mapping == 'field' and
+            self.options.persist_row_number
+        )
+        row_number_field: Optional[str] = self.options.row_number_field_name if persist_row_number else None
+
+        if persist_row_number and row_number_field is not None and row_number_field not in columns:
+            columns.append(row_number_field)
+
         data_sheet.append(columns)
 
         # 写入数据行
-        for record in table.data.values():
-            row = []
+        for excel_row, record in enumerate(table.data.values(), start=2):
+            row: List[Any] = []
             for col_name in columns:
+                # 如果是行号字段且启用了持久化，写入当前行号
+                if persist_row_number and col_name == row_number_field:
+                    row.append(excel_row)
+                    continue
+
                 value = record.get(col_name)
                 column = table.columns.get(col_name)
 
@@ -194,26 +215,83 @@ class ExcelBackend(StorageBackend):
         from ..core.storage import Table
         from ..core.orm import Column
         from datetime import datetime, date, timedelta
+        from ..common.exceptions import SchemaError
 
         primary_key = schema.get('primary_key', 'id')
         next_id = schema.get('next_id', 1)
         table_comment = schema.get('comment')
         columns_data = schema.get('columns', [])
 
+        # 判断是否应用行号映射
+        # 只有在无 schema（外部 Excel）或显式设置 override 时才应用
+        mapping_allowed = (self.options.row_number_mapping is not None) and (
+            (not columns_data) or self.options.row_number_override
+        )
+
         # 重建列
         columns = []
 
-        for col_data in columns_data:
-            col_type = TypeRegistry.get_type_by_name(col_data['type'])
-            column = Column(
-                col_data['name'],
-                col_type,
-                nullable=col_data['nullable'],
-                primary_key=col_data['primary_key'],
-                index=col_data.get('index', False),
-                comment=col_data.get('comment')
-            )
-            columns.append(column)
+        if columns_data:
+            # 有 schema（Pytuck 创建的文件）
+            for col_data in columns_data:
+                col_type = TypeRegistry.get_type_by_name(col_data['type'])
+                column = Column(
+                    col_type,
+                    name=col_data['name'],
+                    nullable=col_data['nullable'],
+                    primary_key=col_data['primary_key'],
+                    index=col_data.get('index', False),
+                    comment=col_data.get('comment')
+                )
+                columns.append(column)
+        else:
+            # 无 schema（外部 Excel），从 headers 构建列
+            data_sheet = wb[table_name]
+            rows_preview = list(data_sheet.iter_rows(values_only=True, max_row=1))
+            if rows_preview:
+                headers = [h for h in rows_preview[0] if h]
+                for name in headers:
+                    columns.append(Column(str, name=name, nullable=True, primary_key=False))
+
+        # 应用行号映射 - 处理列定义
+        if mapping_allowed:
+            mapping = self.options.row_number_mapping
+            existing_col_names = [c.name for c in columns]
+
+            if mapping == 'as_pk':
+                # 确保主键列存在
+                if primary_key not in existing_col_names:
+                    pk_col = Column(int, name=primary_key, nullable=False, primary_key=True)
+                    columns.insert(0, pk_col)
+                else:
+                    # 主键列已存在，检查类型
+                    existing_col = next(c for c in columns if c.name == primary_key)
+                    if existing_col.col_type != int:
+                        raise SchemaError(
+                            f"Cannot use row number as primary key: column '{primary_key}' is not int type",
+                            details={'column_name': primary_key}
+                        )
+                    # 标记为主键
+                    existing_col.primary_key = True
+
+            elif mapping == 'field':
+                field_name = self.options.row_number_field_name
+                # 只有字段不存在时才添加
+                if field_name not in existing_col_names:
+                    columns.append(Column(int, name=field_name, nullable=True, primary_key=False))
+
+        # 确保有主键列（对于外部 Excel）
+        if not columns_data and not any(c.primary_key for c in columns):
+            # 如果没有主键列，创建 id 列
+            if primary_key not in [c.name for c in columns]:
+                pk_col = Column(int, name=primary_key, nullable=False, primary_key=True)
+                columns.insert(0, pk_col)
+            else:
+                # 将已有的同名列标记为主键
+                for c in columns:
+                    if c.name == primary_key:
+                        c.primary_key = True
+                        break
 
         # 创建表
         table = Table(table_name, columns, primary_key, comment=table_comment)
@@ -223,9 +301,12 @@ class ExcelBackend(StorageBackend):
         data_sheet = wb[table_name]
         rows = list(data_sheet.iter_rows(values_only=True))
 
+        max_int_pk = 0  # 用于更新 next_id
+
         if len(rows) > 1:
             headers = rows[0]
-            for row_data in rows[1:]:
+            # 使用 enumerate 获取 Excel 行号（数据行从第 2 行开始）
+            for excel_row, row_data in enumerate(rows[1:], start=2):
                 record = {}
                 for col_name, value in zip(headers, row_data):
                     if col_name not in table.columns:
@@ -254,8 +335,46 @@ class ExcelBackend(StorageBackend):
 
                     record[col_name] = value
 
-                pk = record[primary_key]
+                # 应用行号映射 - 处理数据
+                pk: Any = None
+                if mapping_allowed:
+                    mapping = self.options.row_number_mapping
+
+                    if mapping == 'as_pk':
+                        # 将行号作为主键值
+                        record[primary_key] = excel_row
+                        pk = excel_row
+
+                    elif mapping == 'field':
+                        field_name = self.options.row_number_field_name
+                        # 如果字段已有非空值且 override=False，则不覆盖
+                        if self.options.row_number_override or record.get(field_name) is None:
+                            record[field_name] = excel_row
+                        # 主键仍使用原有逻辑
+                        pk = record.get(primary_key)
+                        if pk is None:
+                            # 如果没有主键值，使用自增
+                            pk = table.next_id
+                            table.next_id += 1
+                            record[primary_key] = pk
+                else:
+                    # 不使用行号映射
+                    pk = record.get(primary_key)
+                    if pk is None and not columns_data:
+                        # 外部 Excel 没有主键值，使用自增
+                        pk = table.next_id
+                        table.next_id += 1
+                        record[primary_key] = pk
+
                 table.data[pk] = record
+
+                # 跟踪最大 int pk
+                if isinstance(pk, int) and pk > max_int_pk:
+                    max_int_pk = pk
+
+        # 更新 next_id（如果主键是 int 类型）
+        if max_int_pk >= table.next_id:
+            table.next_id = max_int_pk + 1
 
         # 重建索引
         for col_name, column in table.columns.items():

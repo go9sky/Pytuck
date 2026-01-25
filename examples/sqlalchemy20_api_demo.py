@@ -26,9 +26,9 @@ Base = declarative_base(db)
 
 class User(Base):
     __tablename__ = 'users'
-    id = Column('id', int, primary_key=True)
-    name = Column('name', str, nullable=False)
-    age = Column('age', int)
+    id = Column(int, primary_key=True)
+    name = Column(str, nullable=False)
+    age = Column(int)
 
 session = Session(db)
 
@@ -71,49 +71,49 @@ print("\n3. 查询数据（execute + select）")
 # 查询所有（IO 明确：execute() 处）
 stmt = select(User)
 result = session.execute(stmt)
-users = result.scalars().all()
+users = result.all()
 print(f"   ✓ 所有用户: {[u.name for u in users]}")
 
 # 条件查询（表达式语法）
 stmt = select(User).where(User.age >= 20)
 result = session.execute(stmt)
-adults = result.scalars().all()
+adults = result.all()
 print(f"   ✓ where(User.age >= 20): {[u.name for u in adults]}")
 
 # 简单等值查询（filter_by 语法）
 stmt = select(User).filter_by(name='Alice')
 result = session.execute(stmt)
-alice = result.scalars().first()
+alice = result.first()
 print(f"   ✓ filter_by(name='Alice'): {alice.name}, {alice.age}岁")
 
 # 多条件等值查询
 stmt = select(User).filter_by(age=20)
 result = session.execute(stmt)
-age_20 = result.scalars().all()
+age_20 = result.all()
 print(f"   ✓ filter_by(age=20): {[u.name for u in age_20]}")
 
 # 混合使用 filter_by 和 where
 stmt = select(User).filter_by(name='Bob').where(User.age >= 20)
 result = session.execute(stmt)
-bob = result.scalars().first()
+bob = result.first()
 print(f"   ✓ 混合查询 filter_by + where: {bob.name if bob else 'Not found'}")
 
 # 多条件（AND）
 stmt = select(User).where(User.age >= 20, User.age < 30)
 result = session.execute(stmt)
-young_adults = result.scalars().all()
+young_adults = result.all()
 print(f"   ✓ where(多条件): 20 <= 年龄 < 30: {[u.name for u in young_adults]}")
 
 # 排序和限制
 stmt = select(User).order_by('age', desc=True).limit(2)
 result = session.execute(stmt)
-top2 = result.scalars().all()
+top2 = result.all()
 print(f"   ✓ order_by + limit: 年龄最大的2人: {[f'{u.name}({u.age})' for u in top2]}")
 
 # 获取后访问
 stmt = select(User).where(User.id == 2)
 result = session.execute(stmt)
-user2 = result.scalars().first()
+user2 = result.first()
 print(f"   ✓ 获取后访问: ID=2 的用户是 {user2.name}, {user2.age}岁")
 session.close()
 print(f'   ✓ session 关闭后，user2 仍然可访问: {user2.name}, {user2.age}岁')
@@ -132,13 +132,13 @@ print(f"   ✓ 更新 Alice 年龄，影响 {result.rowcount()} 行")
 # 验证更新
 stmt = select(User).where(User.name == 'Alice')
 result = session.execute(stmt)
-alice = result.scalars().first()
+alice = result.first()
 print(f"   ✓ 验证：{alice.name} 现在 {alice.age} 岁")
 
 # 单条更新（通过模型实例）
 stmt = select(User).where(User.name == 'Bob')
 result = session.execute(stmt)
-bob = result.scalars().first()
+bob = result.first()
 print(f'   ✓ 原始数据: {bob.name}, 年龄 {bob.age}')
 bob.age = 99
 session.flush()
@@ -147,7 +147,7 @@ session.commit()
 # 验证更新
 stmt = select(User).where(User.name == 'Bob')
 result = session.execute(stmt)
-bob_reloaded = result.scalars().first()
+bob_reloaded = result.first()
 print(f"   ✓ 验证：{bob_reloaded.name} 现在 {bob_reloaded.age} 岁")
 
 # 批量更新
@@ -170,7 +170,7 @@ print(f"   ✓ 删除 David，影响 {result.rowcount()} 行")
 # 验证删除
 stmt = select(User)
 result = session.execute(stmt)
-remaining = result.scalars().all()
+remaining = result.all()
 print(f"   ✓ 剩余用户: {[u.name for u in remaining]}")
 
 # ============================================================
@@ -181,9 +181,9 @@ print("\n6. Result 对象的多种用法")
 stmt = select(User).where(User.age >= 20)
 result = session.execute(stmt)
 
-# 方式 1：scalars().all() - 返回模型实例列表
-users = result.scalars().all()
-print(f"   方式 1 - scalars().all(): {[u.name for u in users]}")
+# 方式 1：result.all() - 返回模型实例列表（直接返回模型实例）
+users = result.all()
+print(f"   方式 1 - result.all(): {[u.name for u in users]}")
 
 # 重新查询（Result 只能消费一次）
 result = session.execute(stmt)
@@ -195,8 +195,8 @@ print(f"   方式 2 - all(): {[row.name for row in rows]}")
 # 重新查询
 result = session.execute(stmt)
 
-# 方式 3：fetchall() - 返回字典列表
-dicts = result.fetchall()
+# 方式 3：result.all() - 返回字典列表（fetchall 已移除）
+dicts = result.all()
 print(f"   方式 3 - fetchall(): {[d['name'] for d in dicts]}")
 
 # ============================================================
@@ -212,7 +212,7 @@ print("  ✓ 灵活性：Result 提供多种数据提取方式")
 print("  ✓ 类型安全：IDE 友好，更好的代码补全")
 print("\n语法对比:")
 print("  旧：session.query(User).filter(User.age >= 20).all()")
-print("  新：session.execute(select(User).where(User.age >= 20)).scalars().all()")
+print("  新：session.execute(select(User).where(User.age >= 20)).all()")
 print("\n推荐：新项目使用 execute() 风格，旧项目逐步迁移")
 
 session.close()

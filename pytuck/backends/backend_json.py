@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any, Dict, Callable, Union, TYPE_CHECKING, Tuple, Optional
 from datetime import datetime
 from .base import StorageBackend
-from ..common.exceptions import SerializationError
+from ..common.exceptions import SerializationError, ConfigurationError
 from .versions import get_format_version
 from ..core.types import TypeRegistry
 
@@ -58,7 +58,7 @@ class JSONBackend(StorageBackend):
 
         # 检验内部私有方法是否已被正确赋值
         if not hasattr(self, '_dumps_func') or not hasattr(self, '_loads_func') or not hasattr(self, '_impl_name'):
-            raise ValueError(f"JSON implementation '{impl}' setup failed: _dumps_func, _loads_func, and _impl_name must be assigned")
+            raise ConfigurationError(f"JSON implementation '{impl}' setup failed: _dumps_func, _loads_func, and _impl_name must be assigned")
 
     def _setup_orjson(self) -> None:
         """设置orjson实现，参数不兼容时直接舍弃"""
@@ -94,7 +94,7 @@ class JSONBackend(StorageBackend):
                 if 'ensure_ascii' in sig.parameters:
                     kwargs['ensure_ascii'] = self.options.ensure_ascii
 
-                return ujson.dumps(obj, **kwargs)
+                return ujson.dumps(obj, **kwargs)  # type: ignore[arg-type]
             except Exception:
                 # 如果参数检查失败，就使用最简单的方式
                 return ujson.dumps(obj)
@@ -230,8 +230,8 @@ class JSONBackend(StorageBackend):
             col_type = TypeRegistry.get_type_by_name(col_data['type'])
 
             column = Column(
-                col_data['name'],
                 col_type,
+                name=col_data['name'],
                 nullable=col_data['nullable'],
                 primary_key=col_data['primary_key'],
                 index=col_data.get('index', False),
@@ -271,7 +271,7 @@ class JSONBackend(StorageBackend):
         """
         from datetime import datetime, date, timedelta
 
-        result = {}
+        result: Dict[str, Any] = {}
         for key, value in record.items():
             if value is None:
                 result[key] = None

@@ -1,138 +1,76 @@
 """
-Type checking tests for Pytuck generic type system
+Pytuck 类型检查测试
 
-This file is designed for mypy validation, not runtime execution.
-It demonstrates the improved type hints and validates type inference.
+本模块包含两部分：
+1. test_mypy_pytuck: 运行时测试，确保整个 pytuck 库通过 mypy 类型检查
+2. TYPE_CHECKING 块中的类型示例：仅供 mypy 静态分析验证泛型类型系统
 
-Run with: mypy --config-file mypy.ini tests/test_typing.py
+运行测试: pytest tests/test_typing.py -v
+运行 mypy: mypy --config-file mypy.ini pytuck
 """
 
+import subprocess
+import sys
 from typing import List, Optional, TYPE_CHECKING, cast
+
+
+def test_mypy_pytuck() -> None:
+    """确保整个 pytuck 库通过 mypy 类型检查"""
+    result = subprocess.run(
+        [sys.executable, '-m', 'mypy', 'pytuck', '--config-file', 'mypy.ini'],
+        capture_output=True,
+        text=True
+    )
+    assert result.returncode == 0, f"mypy errors:\n{result.stdout}\n{result.stderr}"
+
+
+# ============================================================================
+# 以下代码仅在 TYPE_CHECKING 时执行，用于 mypy 静态类型验证
+# 这些代码演示了 Pytuck 的泛型类型系统，确保类型推断正确
+# ============================================================================
 
 if TYPE_CHECKING:
     from pytuck import Storage, declarative_base, Session, Column
     from pytuck import select, insert, update, delete
-    from pytuck.query.result import Result, ScalarResult, CursorResult
+    from pytuck.query.result import Result, CursorResult
     from pytuck.query.statements import Select, Insert, Update, Delete
 
+    # 示例模型定义
+    db = Storage(':memory:')
+    Base = declarative_base(db)
 
-def test_statement_generics() -> None:
-    """Test that statement factory functions return properly typed objects"""
-    # 在类型检查时跳过实际导入，只进行类型验证
-    if TYPE_CHECKING:
-        from pytuck import Storage, declarative_base, Column
-        from pytuck import select, insert, update, delete
-        from pytuck.core.orm import PureBaseModel
+    class User(Base):  # type: ignore[valid-type,misc]
+        __tablename__ = 'users'
+        id = Column(int, primary_key=True)
+        name = Column(str)
+        age = Column(int)
 
-        db = Storage(':memory:')
-        Base = declarative_base(db)
+    # Statement 工厂函数应返回泛型类型
+    select_stmt: Select[User] = select(User)
+    insert_stmt: Insert[User] = insert(User)
+    update_stmt: Update[User] = update(User)
+    delete_stmt: Delete[User] = delete(User)
 
-        class User(Base):  # type: ignore[valid-type,misc]
-            __tablename__ = 'users'
-            id = Column('id', int, primary_key=True)
-            name = Column('name', str)
-            age = Column('age', int)
+    # 方法链应保持类型
+    filtered_stmt: Select[User] = select_stmt.where(User.age >= 18)
+    ordered_stmt: Select[User] = filtered_stmt.order_by('name')
+    limited_stmt: Select[User] = ordered_stmt.limit(10)
 
-        # Statement factory functions should return generic types
-        select_stmt = select(User)          # Should be Select[User]
-        insert_stmt = insert(User)          # Should be Insert[User]
-        update_stmt = update(User)          # Should be Update[User]
-        delete_stmt = delete(User)          # Should be Delete[User]
+    # Session.execute 应返回正确类型的结果
+    session = Session(db)
+    select_result: Result[User] = session.execute(select(User))
+    insert_result: CursorResult[User] = session.execute(
+        insert(User).values(name='Alice', age=25)
+    )
 
-        # Method chaining should preserve types
-        filtered_stmt = select_stmt.where(User.age >= 18)  # Should be Select[User]
-        ordered_stmt = filtered_stmt.order_by('name')      # Should be Select[User]
-        limited_stmt = ordered_stmt.limit(10)              # Should be Select[User]
+    # 直接使用 Result 的方法进行类型断言（不再依赖 ScalarResult）
+    users: List[User] = select_result.all()
+    user: Optional[User] = select_result.first()
+    one_user: User = select_result.one()
+    maybe_user: Optional[User] = select_result.one_or_none()
 
-
-def test_session_execute_overloads() -> None:
-    """Test that Session.execute returns properly typed results"""
-    if TYPE_CHECKING:
-        from pytuck import Storage, declarative_base, Session, Column
-        from pytuck import select, insert, update, delete
-        from pytuck.core.orm import PureBaseModel
-
-        db = Storage(':memory:')
-        Base = declarative_base(db)
-
-        class User(Base):  # type: ignore[valid-type,misc]
-            __tablename__ = 'users'
-            id = Column('id', int, primary_key=True)
-            name = Column('name', str)
-            age = Column('age', int)
-
-        session = Session(db)
-
-        # Select should return Result[User]
-        select_result = session.execute(select(User))  # Should be Result[User]
-
-        # Insert should return CursorResult[User]
-        insert_result = session.execute(
-            insert(User).values(name='Alice', age=25)
-        )  # Should be CursorResult[User]
-
-
-def test_result_scalars_typing() -> None:
-    """Test that result methods return properly typed objects"""
-    if TYPE_CHECKING:
-        from pytuck import Storage, declarative_base, Session, Column
-        from pytuck import select
-        from pytuck.core.orm import PureBaseModel
-
-        db = Storage(':memory:')
-        Base = declarative_base(db)
-
-        class User(Base):  # type: ignore[valid-type,misc]
-            __tablename__ = 'users'
-            id = Column('id', int, primary_key=True)
-            name = Column('name', str)
-            age = Column('age', int)
-
-        session = Session(db)
-        result = session.execute(select(User))  # Result[User]
-
-        # ScalarResult should be generic
-        scalar_result = result.scalars()        # Should be ScalarResult[User]
-
-        # ScalarResult methods should return User types
-        users = scalar_result.all()             # Should be List[User] ✅
-        user = scalar_result.first()            # Should be Optional[User] ✅
-        one_user = scalar_result.one()          # Should be User ✅
-        maybe_user = scalar_result.one_or_none()  # Should be Optional[User] ✅
-
-
-def test_type_safety_examples() -> None:
-    """Test examples that should pass/fail type checking"""
-    if TYPE_CHECKING:
-        from pytuck import Storage, declarative_base, Session, Column
-        from pytuck import select
-        from pytuck.core.orm import PureBaseModel
-
-        db = Storage(':memory:')
-        Base = declarative_base(db)
-
-        class User(Base):  # type: ignore[valid-type,misc]
-            __tablename__ = 'users'
-            id = Column('id', int, primary_key=True)
-            name = Column('name', str)
-            age = Column('age', int)
-
-        session = Session(db)
-        result = session.execute(select(User))
-
-        # These should pass type checking
-        users: List[User] = result.scalars().all()
-        user: Optional[User] = result.scalars().first()
-
-        # Access User attributes (should be recognized by IDE)
-        if user is not None:
-            # Use cast to help mypy understand attribute types
-            name_str: str = cast(str, user.name)
-            age_int: int = cast(int, user.age)
-            id_int: int = cast(int, user.id)
-
-
-if __name__ == '__main__':
-    # This file is for mypy validation, not runtime execution
-    print("This file is for mypy type checking validation.")
-    print("Run: mypy --config-file mypy.ini tests/test_typing.py")
+    # 属性访问类型验证
+    if user is not None:
+        name_str: str = cast(str, user.name)
+        age_int: int = cast(int, user.age)
+        id_int: int = cast(int, user.id)

@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Dict, Any, List, Optional, Union, TYPE_CHECKING, Tuple
 
 from ..common.options import BackendOptions
+from ..common.exceptions import ConfigurationError
 
 if TYPE_CHECKING:
     from ..core.storage import Table
@@ -22,10 +23,27 @@ class StorageBackend(ABC):
     """
 
     # 引擎标识符（用于注册和选择）
-    ENGINE_NAME: str = None  # type: ignore
+    ENGINE_NAME: str  # type: ignore
 
     # 所需的外部依赖列表（用于检查可用性）
     REQUIRED_DEPENDENCIES: List[str] = []
+
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        """
+        子类定义时自动注册到 BackendRegistry
+
+        只有定义了 ENGINE_NAME 的具体后端类才会被注册。
+        抽象基类或中间类不会被注册。
+        """
+        super().__init_subclass__(**kwargs)
+        # 必须设置 ENGINE_NAME，且不能重复
+        if getattr(cls, 'ENGINE_NAME', None) is None:
+            raise ConfigurationError('ENGINE_NAME must be set')
+
+        from .registry import BackendRegistry
+        if cls.ENGINE_NAME in BackendRegistry.list_engines():
+            raise ConfigurationError(f'The engine name is already registered: "{cls.ENGINE_NAME}"')
+        BackendRegistry.register(cls)
 
     def __init__(self, file_path: Union[str, Path], options: BackendOptions):
         """
@@ -44,6 +62,9 @@ class StorageBackend(ABC):
         # 输入兼容性处理：统一转为 Path 对象
         self.file_path: Path = Path(file_path).expanduser()
         self.options = options
+
+    def __repr__(self) -> str:
+        return f"{self.__class__.__name__}(file_path='{self.file_path}')"
 
     @abstractmethod
     def save(self, tables: Dict[str, 'Table']) -> None:
@@ -158,6 +179,62 @@ class StorageBackend(ABC):
         """
         return False
 
+    def supports_lazy_loading(self) -> bool:
+        """
+        检查后端是否支持延迟加载（即 load() 只加载 schema，数据按需加载）
+
+        Returns:
+            True 如果当前配置下 load() 只加载 schema，数据需要按需查询或填充
+            False 如果 load() 会加载所有数据到内存
+
+        用途：
+            - 迁移工具需要知道是否需要调用 populate_tables_with_data()
+            - 数据库类后端（如 SQLite 原生模式）可能只加载 schema
+
+        Note:
+            返回值可能依赖于当前的配置选项，而非静态属性。
+            例如 SQLite 后端在 use_native_sql=True 时返回 True。
+
+        后端实现说明：
+            - BinaryBackend (lazy_load=True): 通过 _pk_offsets 遍历主键，逐条读取文件
+            - SQLiteBackend (use_native_sql=True): 通过 SQL 查询获取全部数据
+            - 其他数据库后端: 根据具体实现决定
+        """
+        return False
+
+    def populate_tables_with_data(self, tables: Dict[str, 'Table']) -> None:
+        """
+        从持久化存储填充表数据（用于延迟加载模式）
+
+        当 supports_lazy_loading() 返回 True 时，load() 只加载 schema，
+        此方法用于在需要时（如迁移）填充实际数据。
+
+        Args:
+            tables: 需要填充数据的表字典（由 load() 返回）
+
+        Note:
+            - 如果 supports_lazy_loading() 返回 False，此方法通常什么都不做
+            - 子类应检查 table.data 是否已有数据，避免重复加载
+            - 此方法应该是幂等的（多次调用结果相同）
+        """
+        pass  # 默认实现：什么都不做
+
+    def save_full(self, tables: Dict[str, 'Table']) -> None:
+        """
+        全量保存所有表数据（用于迁移场景）
+
+        当 supports_lazy_loading() 返回 True 时，默认的 save() 可能只保存 schema，
+        此方法强制保存所有数据（包括 table.data 中的内容）。
+
+        Args:
+            tables: 要保存的表字典
+
+        Note:
+            - 默认实现直接调用 save()，对于非延迟加载后端足够
+            - 延迟加载后端（如 SQLite 原生模式）应覆盖此方法
+        """
+        self.save(tables)  # 默认实现：直接调用 save()
+
     def query_with_pagination(
             self,
             table_name: str,
@@ -195,9 +272,6 @@ class StorageBackend(ABC):
             f"{self.__class__.__name__} does not support server-side pagination. "
             f"Use storage.query() with memory-based pagination instead."
         )
-
-    def __repr__(self) -> str:
-        return f"{self.__class__.__name__}(file_path='{self.file_path}')"
 
     @classmethod
     def probe(cls, file_path: Union[str, Path]) -> Tuple[bool, Optional[Dict[str, Any]]]:

@@ -22,7 +22,7 @@ from pytuck import (
     declarative_base, PureBaseModel, CRUDBaseModel,
     select, insert, update, delete,
 )
-from pytuck.common.exceptions import ValidationError
+from pytuck.common.exceptions import ValidationError, SchemaError
 
 
 class TestColumn(unittest.TestCase):
@@ -30,43 +30,43 @@ class TestColumn(unittest.TestCase):
 
     def test_column_basic(self):
         """测试 Column 基本功能"""
-        col = Column('name', str, nullable=False)
-        self.assertEqual(col.name, 'name')
+        col = Column(str, name='username', nullable=False)
+        self.assertEqual(col.name, 'username')
         self.assertEqual(col.col_type, str)
         self.assertFalse(col.nullable)
         self.assertFalse(col.primary_key)
 
     def test_column_primary_key(self):
         """测试主键列"""
-        col = Column('id', int, primary_key=True)
+        col = Column(int, primary_key=True)
         self.assertTrue(col.primary_key)
 
     def test_column_validation_success(self):
         """测试列验证成功"""
-        col = Column('age', int)
+        col = Column(int, name='age')
         self.assertEqual(col.validate(25), 25)
         self.assertEqual(col.validate(None), None)  # nullable=True
 
     def test_column_validation_type_conversion(self):
         """测试类型转换"""
-        col = Column('age', int)
+        col = Column(int, name='age')
         self.assertEqual(col.validate("25"), 25)
 
     def test_column_validation_nullable_fail(self):
         """测试非空验证失败"""
-        col = Column('name', str, nullable=False)
+        col = Column(str, name='name', nullable=False)
         with self.assertRaises(ValidationError):
             col.validate(None)
 
     def test_column_validation_type_fail(self):
         """测试类型验证失败"""
-        col = Column('age', int)
+        col = Column(int, name='age')
         with self.assertRaises(ValidationError):
             col.validate("not_a_number")
 
     def test_column_to_dict(self):
         """测试转换为字典"""
-        col = Column('id', int, primary_key=True)
+        col = Column(int, name='id', primary_key=True)
         d = col.to_dict()
         self.assertEqual(d['name'], 'id')
         self.assertEqual(d['type'], 'int')
@@ -95,8 +95,8 @@ class TestDeclarativeBase(unittest.TestCase):
 
         class TestModel(Base):
             __tablename__ = 'test_default'
-            id = Column('id', int, primary_key=True)
-            name = Column('name', str)
+            id = Column(int, primary_key=True)
+            name = Column(str)
 
         # 验证没有 CRUD 方法
         self.assertFalse(hasattr(TestModel, 'create'))
@@ -109,7 +109,7 @@ class TestDeclarativeBase(unittest.TestCase):
 
         class TestModel(Base):
             __tablename__ = 'test_crud_false'
-            id = Column('id', int, primary_key=True)
+            id = Column(int, primary_key=True)
 
         self.assertFalse(hasattr(TestModel, 'create'))
 
@@ -119,8 +119,8 @@ class TestDeclarativeBase(unittest.TestCase):
 
         class TestModel(Base):
             __tablename__ = 'test_crud_true'
-            id = Column('id', int, primary_key=True)
-            name = Column('name', str)
+            id = Column(int, primary_key=True)
+            name = Column(str)
 
         # 验证有 CRUD 方法
         self.assertTrue(hasattr(TestModel, 'create'))
@@ -138,7 +138,7 @@ class TestDeclarativeBase(unittest.TestCase):
 
         class TestModel(Base):
             __tablename__ = 'test_binding'
-            id = Column('id', int, primary_key=True)
+            id = Column(int, primary_key=True)
 
         self.assertIs(TestModel.__storage__, self.db)
 
@@ -148,7 +148,7 @@ class TestDeclarativeBase(unittest.TestCase):
 
         with self.assertRaises(ValidationError):
             class TestModel(Base):
-                id = Column('id', int, primary_key=True)
+                id = Column(int, primary_key=True)
 
     def test_column_collection(self):
         """测试列收集"""
@@ -156,9 +156,9 @@ class TestDeclarativeBase(unittest.TestCase):
 
         class TestModel(Base):
             __tablename__ = 'test_columns'
-            id = Column('id', int, primary_key=True)
-            name = Column('name', str)
-            age = Column('age', int)
+            id = Column(int, primary_key=True)
+            name = Column(str)
+            age = Column(int)
 
         self.assertEqual(len(TestModel.__columns__), 3)
         self.assertIn('id', TestModel.__columns__)
@@ -171,10 +171,34 @@ class TestDeclarativeBase(unittest.TestCase):
 
         class TestModel(Base):
             __tablename__ = 'test_pk'
-            user_id = Column('user_id', int, primary_key=True)
-            name = Column('name', str)
+            user_id = Column(int, primary_key=True)
+            name = Column(str)
 
         self.assertEqual(TestModel.__primary_key__, 'user_id')
+
+    def test_primary_key_required(self):
+        """测试必须定义主键"""
+        Base = declarative_base(self.db)
+
+        with self.assertRaises(SchemaError) as context:
+            class TestModel(Base):
+                __tablename__ = 'test_no_pk'
+                name = Column(str)
+                age = Column(int)
+
+        self.assertIn('must have a primary key', str(context.exception))
+
+    def test_id_column_without_primary_key_raises_error(self):
+        """测试定义 id 列但不设置 primary_key=True 应抛出错误"""
+        Base = declarative_base(self.db)
+
+        with self.assertRaises(SchemaError) as context:
+            class TestModel(Base):
+                __tablename__ = 'test_id_no_pk'
+                id = Column(str)  # 没有 primary_key=True
+                name = Column(str)
+
+        self.assertIn('must have a primary key', str(context.exception))
 
 
 class TestPureBaseModel(unittest.TestCase):
@@ -191,9 +215,9 @@ class TestPureBaseModel(unittest.TestCase):
 
         class User(self.Base):
             __tablename__ = 'users'
-            id = Column('id', int, primary_key=True)
-            name = Column('name', str, nullable=False)
-            age = Column('age', int)
+            id = Column(int, primary_key=True)
+            name = Column(str, nullable=False)
+            age = Column(int)
 
         self.User = User
 
@@ -230,8 +254,8 @@ class TestPureBaseModel(unittest.TestCase):
 
         class TestModel(Base):
             __tablename__ = 'test_defaults'
-            id = Column('id', int, primary_key=True)
-            status = Column('status', str, default='active')
+            id = Column(int, primary_key=True)
+            status = Column(str, default='active')
 
         instance = TestModel()
         self.assertEqual(instance.status, 'active')
@@ -248,7 +272,7 @@ class TestPureBaseModel(unittest.TestCase):
         # 查询
         stmt = select(self.User).where(self.User.name == 'Alice')
         result = session.execute(stmt)
-        users = result.scalars().all()
+        users = result.all()
 
         self.assertEqual(len(users), 1)
         self.assertEqual(users[0].name, 'Alice')
@@ -268,9 +292,9 @@ class TestCRUDBaseModel(unittest.TestCase):
 
         class User(self.Base):
             __tablename__ = 'users'
-            id = Column('id', int, primary_key=True)
-            name = Column('name', str, nullable=False)
-            age = Column('age', int)
+            id = Column(int, primary_key=True)
+            name = Column(str, nullable=False)
+            age = Column(int)
 
         self.User = User
 
@@ -420,9 +444,9 @@ class TestMultipleEngines(unittest.TestCase):
 
             class Item(Base):
                 __tablename__ = 'items'
-                id = Column('id', int, primary_key=True)
-                name = Column('name', str)
-                value = Column('value', float)
+                id = Column(int, primary_key=True)
+                name = Column(str)
+                value = Column(float)
 
             # 创建
             item = Item.create(name='Test', value=3.14)
@@ -497,8 +521,8 @@ class TestTypeAnnotations(unittest.TestCase):
 
         class User(Base):
             __tablename__ = 'users'
-            id = Column('id', int, primary_key=True)
-            name = Column('name', str)
+            id = Column(int, primary_key=True)
+            name = Column(str)
 
         # 类型检查应该通过
         self.assertTrue(True)
@@ -509,8 +533,8 @@ class TestTypeAnnotations(unittest.TestCase):
 
         class User(Base):
             __tablename__ = 'users'
-            id = Column('id', int, primary_key=True)
-            name = Column('name', str)
+            id = Column(int, primary_key=True)
+            name = Column(str)
 
         # 类型检查应该通过
         self.assertTrue(True)
@@ -521,8 +545,8 @@ class TestTypeAnnotations(unittest.TestCase):
 
         class User(Base):
             __tablename__ = 'users_isinstance'
-            id = Column('id', int, primary_key=True)
-            name = Column('name', str)
+            id = Column(int, primary_key=True)
+            name = Column(str)
 
         user = User(name='Alice')
 
@@ -536,8 +560,8 @@ class TestTypeAnnotations(unittest.TestCase):
 
         class User(Base):
             __tablename__ = 'users_isinstance_crud'
-            id = Column('id', int, primary_key=True)
-            name = Column('name', str)
+            id = Column(int, primary_key=True)
+            name = Column(str)
 
         user = User.create(name='Alice')
 
@@ -554,11 +578,11 @@ class TestTypeAnnotations(unittest.TestCase):
 
         class PureUser(PureBase):
             __tablename__ = 'pure_users_sub'
-            id = Column('id', int, primary_key=True)
+            id = Column(int, primary_key=True)
 
         class CRUDUser(CRUDBase):
             __tablename__ = 'crud_users_sub'
-            id = Column('id', int, primary_key=True)
+            id = Column(int, primary_key=True)
 
         # issubclass 检查
         self.assertTrue(issubclass(PureUser, PureBaseModel))

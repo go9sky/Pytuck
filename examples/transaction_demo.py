@@ -29,18 +29,18 @@ class User(Base):
     """用户模型"""
     __tablename__ = 'users'
 
-    id = Column('id', int, primary_key=True)
-    name = Column('name', str, nullable=False)
-    balance = Column('balance', int)  # 账户余额
+    id = Column(int, primary_key=True)
+    name = Column(str, nullable=False)
+    balance = Column(int)  # 账户余额
 
 
 class Order(Base):
     """订单模型"""
     __tablename__ = 'orders'
 
-    id = Column('id', int, primary_key=True)
-    user_id = Column('user_id', int, index=True)
-    amount = Column('amount', int)
+    id = Column(int, primary_key=True)
+    user_id = Column(int, index=True)
+    amount = Column(int)
 
 
 # 创建 Session
@@ -59,13 +59,13 @@ session.commit()
 
 # 查询初始余额
 stmt = select(User).filter_by(id=alice_id)
-alice = session.execute(stmt).scalars().first()
+alice = session.execute(stmt).first()
 
 stmt = select(User).filter_by(id=bob_id)
-bob = session.execute(stmt).scalars().first()
+bob = session.execute(stmt).first()
 
 stmt = select(Order)
-orders = session.execute(stmt).scalars().all()
+orders = session.execute(stmt).all()
 
 print("初始状态:")
 print(f"  Alice 余额: {alice.balance}")
@@ -92,13 +92,13 @@ with session.begin():
 
 # 查询更新后的余额
 stmt = select(User).filter_by(id=alice_id)
-alice = session.execute(stmt).scalars().first()
+alice = session.execute(stmt).first()
 
 stmt = select(User).filter_by(id=bob_id)
-bob = session.execute(stmt).scalars().first()
+bob = session.execute(stmt).first()
 
 stmt = select(Order)
-orders = session.execute(stmt).scalars().all()
+orders = session.execute(stmt).all()
 
 print("✓ 转账成功！")
 print(f"  Alice 余额: {alice.balance}")
@@ -113,7 +113,7 @@ try:
     with session.begin():
         # 获取当前余额
         stmt = select(User).filter_by(id=alice_id)
-        alice = session.execute(stmt).scalars().first()
+        alice = session.execute(stmt).first()
 
         # Alice 尝试转账 2000 元（超过余额）
         new_balance = alice.balance - 2000
@@ -125,7 +125,7 @@ try:
         session.execute(stmt)
 
         stmt = select(User).filter_by(id=bob_id)
-        bob = session.execute(stmt).scalars().first()
+        bob = session.execute(stmt).first()
 
         stmt = update(User).where(User.id == bob_id).values(balance=bob.balance + 2000)
         session.execute(stmt)
@@ -138,13 +138,13 @@ except ValueError as e:
 
 # 验证回滚
 stmt = select(User).filter_by(id=alice_id)
-alice = session.execute(stmt).scalars().first()
+alice = session.execute(stmt).first()
 
 stmt = select(User).filter_by(id=bob_id)
-bob = session.execute(stmt).scalars().first()
+bob = session.execute(stmt).first()
 
 stmt = select(Order)
-orders = session.execute(stmt).scalars().all()
+orders = session.execute(stmt).all()
 
 print("✓ 事务自动回滚，数据保持一致:")
 print(f"  Alice 余额: {alice.balance}")
@@ -157,7 +157,7 @@ print("="*60)
 
 # 记录当前订单数
 stmt = select(Order)
-before_orders = session.execute(stmt).scalars().all()
+before_orders = session.execute(stmt).all()
 before_count = len(before_orders)
 
 try:
@@ -176,7 +176,7 @@ except Exception as e:
 
 # 验证回滚
 stmt = select(Order)
-after_orders = session.execute(stmt).scalars().all()
+after_orders = session.execute(stmt).all()
 after_count = len(after_orders)
 
 print("✓ 事务回滚，订单未创建:")
@@ -196,7 +196,7 @@ with Session(db) as s:
 
 # 验证自动提交
 stmt = select(Order)
-final_orders = session.execute(stmt).scalars().all()
+final_orders = session.execute(stmt).all()
 final_count = len(final_orders)
 
 print(f"✓ 自动提交成功，订单数: {final_count}")

@@ -33,12 +33,12 @@ class TestTypeConversionLooseMode(unittest.TestCase):
 
         class User(Base):
             __tablename__ = 'users'
-            id = Column('id', int, primary_key=True)
-            name = Column('name', str, nullable=False)
-            age = Column('age', int)
-            score = Column('score', float)
-            active = Column('active', bool)
-            avatar = Column('avatar', bytes, nullable=True)
+            id = Column(int, primary_key=True)
+            name = Column(str, nullable=False)
+            age = Column(int)
+            score = Column(float)
+            active = Column(bool)
+            avatar = Column(bytes, nullable=True)
 
         self.User = User
         self.session = Session(self.db)
@@ -119,11 +119,11 @@ class TestTypeValidationStrictMode(unittest.TestCase):
 
         class StrictUser(Base):
             __tablename__ = 'strict_users'
-            id = Column('id', int, primary_key=True)
-            name = Column('name', str, nullable=False, strict=True)
-            age = Column('age', int, strict=True)
-            score = Column('score', float, strict=True)
-            active = Column('active', bool, strict=True)
+            id = Column(int, primary_key=True)
+            name = Column(str, nullable=False, strict=True)
+            age = Column(int, strict=True)
+            score = Column(float, strict=True)
+            active = Column(bool, strict=True)
 
         self.StrictUser = StrictUser
 
@@ -174,10 +174,10 @@ class TestNullHandling(unittest.TestCase):
 
         class User(Base):
             __tablename__ = 'users'
-            id = Column('id', int, primary_key=True)
-            name = Column('name', str, nullable=False)  # NOT NULL
-            email = Column('email', str, nullable=True)  # NULL OK
-            age = Column('age', int, nullable=True)
+            id = Column(int, primary_key=True)
+            name = Column(str, nullable=False)  # NOT NULL
+            email = Column(str, nullable=True)  # NULL OK
+            age = Column(int, nullable=True)
 
         self.User = User
 
@@ -213,11 +213,11 @@ class TestValidationErrors(unittest.TestCase):
 
         class User(Base):
             __tablename__ = 'users'
-            id = Column('id', int, primary_key=True)
-            name = Column('name', str)
-            age = Column('age', int)
-            score = Column('score', float)
-            active = Column('active', bool)
+            id = Column(int, primary_key=True)
+            name = Column(str)
+            age = Column(int)
+            score = Column(float)
+            active = Column(bool)
 
         self.User = User
 
@@ -229,13 +229,13 @@ class TestValidationErrors(unittest.TestCase):
         """测试无效 int 转换"""
         with self.assertRaises(ValidationError) as cm:
             self.User(name='Alice', age='not_a_number', score=3.5, active=True)
-        self.assertIn('cannot convert', str(cm.exception))
+        self.assertIn('Cannot convert', str(cm.exception))
 
     def test_invalid_float_conversion(self) -> None:
         """测试无效 float 转换"""
         with self.assertRaises(ValidationError) as cm:
             self.User(name='Bob', age=25, score='not_a_float', active=True)
-        self.assertIn('cannot convert', str(cm.exception))
+        self.assertIn('Cannot convert', str(cm.exception))
 
     def test_invalid_bool_conversion(self) -> None:
         """测试无效 bool 转换"""
@@ -245,10 +245,10 @@ class TestValidationErrors(unittest.TestCase):
 
     def test_invalid_bytes_conversion(self) -> None:
         """测试无效 bytes 转换"""
-        column = Column('data', bytes)
+        column = Column(bytes, name='data')
         with self.assertRaises(ValidationError) as cm:
             column.validate(123)
-        self.assertIn('cannot convert', str(cm.exception))
+        self.assertIn('Cannot convert', str(cm.exception))
 
 
 class TestValidationInInsertUpdate(unittest.TestCase):
@@ -261,9 +261,9 @@ class TestValidationInInsertUpdate(unittest.TestCase):
 
         class User(Base):
             __tablename__ = 'users'
-            id = Column('id', int, primary_key=True)
-            name = Column('name', str)
-            age = Column('age', int)
+            id = Column(int, primary_key=True)
+            name = Column(str)
+            age = Column(int)
 
         self.User = User
         self.session = Session(self.db)
@@ -281,7 +281,7 @@ class TestValidationInInsertUpdate(unittest.TestCase):
 
         # 验证插入成功
         stmt = select(self.User).where(self.User.id == result.inserted_primary_key)
-        user = self.session.execute(stmt).scalars().first()
+        user = self.session.execute(stmt).first()
         self.assertEqual(user.age, 25)
         self.assertIsInstance(user.age, int)
 
@@ -297,7 +297,7 @@ class TestBoolConversionEdgeCases(unittest.TestCase):
 
     def setUp(self) -> None:
         """测试前设置"""
-        self.column = Column('active', bool)
+        self.column = Column(bool, name='active')
 
     def test_bool_true_values(self) -> None:
         """测试 True 值转换"""
@@ -320,7 +320,7 @@ class TestBoolConversionEdgeCases(unittest.TestCase):
 
     def test_bool_rejects_int_type_for_int_column(self) -> None:
         """测试 int 列拒绝 bool 类型（bool 是 int 子类）"""
-        int_column = Column('count', int)
+        int_column = Column(int, name='count')
         with self.assertRaises(ValidationError):
             int_column.validate(True)
 
@@ -335,9 +335,9 @@ class TestIntBoolSeparation(unittest.TestCase):
 
         class Data(Base):
             __tablename__ = 'data'
-            id = Column('id', int, primary_key=True)
-            count = Column('count', int)
-            flag = Column('flag', bool)
+            id = Column(int, primary_key=True)
+            count = Column(int)
+            flag = Column(bool)
 
         self.Data = Data
 
@@ -374,10 +374,10 @@ class TestDatetimeTypes(unittest.TestCase):
 
         class Event(Base):
             __tablename__ = 'events'
-            id = Column('id', int, primary_key=True)
-            created_at = Column('created_at', datetime, nullable=True)
-            event_date = Column('event_date', date, nullable=True)
-            duration = Column('duration', timedelta, nullable=True)
+            id = Column(int, primary_key=True)
+            created_at = Column(datetime, nullable=True)
+            event_date = Column(date, nullable=True)
+            duration = Column(timedelta, nullable=True)
 
         self.Event = Event
         self.session = Session(self.db)
@@ -469,9 +469,9 @@ class TestListDictTypes(unittest.TestCase):
 
         class Document(Base):
             __tablename__ = 'documents'
-            id = Column('id', int, primary_key=True)
-            tags = Column('tags', list, nullable=True)
-            metadata = Column('metadata', dict, nullable=True)
+            id = Column(int, primary_key=True)
+            tags = Column(list, nullable=True)
+            metadata = Column(dict, nullable=True)
 
         self.Document = Document
         self.session = Session(self.db)
@@ -542,13 +542,13 @@ class TestDatetimeTypePersistence(unittest.TestCase):
 
         class Task(Base):
             __tablename__ = 'tasks'
-            id = Column('id', int, primary_key=True)
-            title = Column('title', str)
-            created_at = Column('created_at', datetime, nullable=True)
-            due_date = Column('due_date', date, nullable=True)
-            duration = Column('duration', timedelta, nullable=True)
-            tags = Column('tags', list, nullable=True)
-            options = Column('options', dict, nullable=True)
+            id = Column(int, primary_key=True)
+            title = Column(str)
+            created_at = Column(datetime, nullable=True)
+            due_date = Column(date, nullable=True)
+            duration = Column(timedelta, nullable=True)
+            tags = Column(list, nullable=True)
+            options = Column(dict, nullable=True)
 
         self.Task = Task
         self.session = Session(self.db)
@@ -579,7 +579,7 @@ class TestDatetimeTypePersistence(unittest.TestCase):
 
         # 查询验证
         stmt = select(self.Task).where(self.Task.id == result.inserted_primary_key)
-        task = self.session.execute(stmt).scalars().first()
+        task = self.session.execute(stmt).first()
 
         self.assertIsNotNone(task)
         self.assertEqual(task.title, 'Test Task')

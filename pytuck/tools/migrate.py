@@ -110,6 +110,11 @@ def migrate_engine(
     # 加载源数据
     try:
         tables = source_backend.load()
+
+        # 处理延迟加载模式：load() 只加载 schema，需要额外填充数据
+        if source_backend.supports_lazy_loading():
+            source_backend.populate_tables_with_data(tables)
+
     except Exception as e:
         raise MigrationError(f"从源文件加载数据失败: {e}")
 
@@ -118,7 +123,8 @@ def migrate_engine(
 
     # 保存到目标
     try:
-        target_backend.save(tables)
+        # 使用 save_full() 确保所有数据被保存（处理延迟加载后端）
+        target_backend.save_full(tables)
     except Exception as e:
         raise MigrationError(f"保存数据到目标文件失败: {e}")
 
@@ -156,12 +162,12 @@ def get_available_engines() -> Dict[str, bool]:
             status = "✓" if available else "✗"
             print(f"{status} {name}")
     """
-    from ..backends.binary import BinaryBackend
-    from ..backends.json_backend import JSONBackend
-    from ..backends.csv_backend import CSVBackend
-    from ..backends.sqlite_backend import SQLiteBackend
-    from ..backends.excel_backend import ExcelBackend
-    from ..backends.xml_backend import XMLBackend
+    from ..backends.backend_binary import BinaryBackend
+    from ..backends.backend_json import JSONBackend
+    from ..backends.backend_csv import CSVBackend
+    from ..backends.backend_sqlite import SQLiteBackend
+    from ..backends.backend_excel import ExcelBackend
+    from ..backends.backend_xml import XMLBackend
 
     return {
         'binary': BinaryBackend.is_available(),
@@ -328,8 +334,8 @@ def import_from_database(
                 columns: List[Column] = []
                 for col_info in columns_info:
                     col = Column(
-                        col_info['name'],
                         col_info['type'],
+                        name=col_info['name'],
                         nullable=col_info.get('nullable', True),
                         primary_key=col_info.get('primary_key', False),
                         index=False  # 默认不创建索引

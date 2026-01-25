@@ -152,8 +152,9 @@ class CSVBackend(StorageBackend):
                 row = self._serialize_record(record, table.columns)
                 writer.writerow(row)
 
-        # 写入ZIP
-        zf.writestr(f'{table_name}.csv', csv_buffer.getvalue())
+        # 写入ZIP（使用配置的编码）
+        csv_bytes = csv_buffer.getvalue().encode(self.options.encoding)
+        zf.writestr(f'{table_name}.csv', csv_bytes)
 
     def _load_table_from_zip(
         self, zf: zipfile.ZipFile, table_name: str, schema: Dict[str, Any]
@@ -170,8 +171,8 @@ class CSVBackend(StorageBackend):
         for col_data in schema.get('columns', []):
             col_type = TypeRegistry.get_type_by_name(col_data['type'])
             column = Column(
-                col_data['name'],
                 col_type,
+                name=col_data['name'],
                 nullable=col_data['nullable'],
                 primary_key=col_data['primary_key'],
                 index=col_data.get('index', False),
@@ -193,6 +194,13 @@ class CSVBackend(StorageBackend):
             encoding = self.options.encoding
             text_stream = io.TextIOWrapper(f, encoding=encoding)
             reader = csv.DictReader(text_stream, delimiter=self.options.delimiter)
+
+            # 检查主键列是否存在于 CSV header 中
+            if reader.fieldnames and table.primary_key not in reader.fieldnames:
+                raise SerializationError(
+                    f"CSV 文件 '{csv_file}' 缺少主键列 '{table.primary_key}'，"
+                    f"可用列: {reader.fieldnames}"
+                )
 
             for row_data in reader:
                 record = self._deserialize_record(row_data, table.columns)

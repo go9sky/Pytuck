@@ -13,6 +13,7 @@ from typing import (
 from datetime import datetime, date, timedelta, timezone
 
 from ..common.exceptions import ValidationError, TypeConversionError
+from ..common.options import SyncOptions
 from .types import TypeCode, TypeRegistry
 
 if TYPE_CHECKING:
@@ -448,6 +449,7 @@ class PureBaseModel:
     __abstract__: bool = True
     __storage__: Optional['Storage'] = None
     __tablename__: Optional[str] = None
+    __table_comment__: Optional[str] = None
     __columns__: Dict[str, Column] = {}
     __primary_key__: str = 'id'
     __relationships__: Dict[str, 'Relationship'] = {}
@@ -691,7 +693,9 @@ class Relationship:
 def declarative_base(
     storage: 'Storage',
     *,
-    crud: Literal[False] = ...
+    crud: Literal[False] = ...,
+    sync_schema: bool = ...,
+    sync_options: Optional[SyncOptions] = ...
 ) -> Type[PureBaseModel]: ...
 
 
@@ -699,14 +703,18 @@ def declarative_base(
 def declarative_base(
     storage: 'Storage',
     *,
-    crud: Literal[True]
+    crud: Literal[True],
+    sync_schema: bool = ...,
+    sync_options: Optional[SyncOptions] = ...
 ) -> Type[CRUDBaseModel]: ...
 
 
 def declarative_base(
     storage: 'Storage',
     *,
-    crud: bool = False
+    crud: bool = False,
+    sync_schema: bool = False,
+    sync_options: Optional[SyncOptions] = None
 ) -> Union[Type[PureBaseModel], Type[CRUDBaseModel]]:
     """
     创建声明式基类工厂函数
@@ -719,6 +727,10 @@ def declarative_base(
         crud: 是否包含 CRUD 方法（默认 False）
             - False: 返回 PureBaseModel 类型（纯模型定义，通过 Session 操作）
             - True: 返回 CRUDBaseModel 类型（Active Record 模式，模型自带 CRUD）
+        sync_schema: 是否在表已存在时自动同步 schema（默认 False）
+            - False: 表已存在时直接使用，不同步
+            - True: 表已存在时自动同步备注、新增列等
+        sync_options: 同步选项，控制同步行为（仅当 sync_schema=True 时生效）
 
     Returns:
         基类类型
@@ -756,15 +768,28 @@ def declarative_base(
         post.title = 'Updated'
         post.save()
         post.delete()
+
+        # 自动同步 schema（第二次启动加载已有数据库时）
+        from pytuck import SyncOptions
+
+        Base = declarative_base(db, sync_schema=True)
+
+        # 或自定义同步选项
+        opts = SyncOptions(drop_missing_columns=False)
+        Base = declarative_base(db, sync_schema=True, sync_options=opts)
     """
 
     if crud:
-        return _create_crud_base(storage)
+        return _create_crud_base(storage, sync_schema, sync_options)
     else:
-        return _create_pure_base(storage)
+        return _create_pure_base(storage, sync_schema, sync_options)
 
 
-def _create_pure_base(storage: 'Storage') -> Type[PureBaseModel]:
+def _create_pure_base(
+    storage: 'Storage',
+    sync_schema: bool = False,
+    sync_options: Optional[SyncOptions] = None
+) -> Type[PureBaseModel]:
     """创建纯模型基类"""
 
     class DeclarativePureBase(PureBaseModel):
@@ -806,11 +831,25 @@ def _create_pure_base(storage: 'Storage') -> Type[PureBaseModel]:
                     cls.__relationships__[attr_name] = attr_value
                     attr_value.__set_name__(cls, attr_name)
 
-            # 自动创建表
+            # 自动创建或同步表
             if cls.__columns__:
                 columns_list = list(cls.__columns__.values())
                 table_comment = getattr(cls, '__table_comment__', None)
-                storage.create_table(cls.__tablename__, columns_list, table_comment)
+                table_name = cls.__tablename__
+
+                # 检查表是否已存在
+                if table_name in storage.tables:
+                    # 表已存在，根据 sync_schema 决定是否同步
+                    if sync_schema:
+                        storage.sync_table_schema(
+                            table_name,
+                            columns_list,
+                            table_comment,
+                            sync_options
+                        )
+                else:
+                    # 表不存在，创建新表
+                    storage.create_table(table_name, columns_list, table_comment)
 
         def __init__(self, **kwargs: Any):
             """初始化模型实例"""
@@ -866,7 +905,11 @@ def _create_pure_base(storage: 'Storage') -> Type[PureBaseModel]:
     return DeclarativePureBase  # type: ignore
 
 
-def _create_crud_base(storage: 'Storage') -> Type[CRUDBaseModel]:
+def _create_crud_base(
+    storage: 'Storage',
+    sync_schema: bool = False,
+    sync_options: Optional[SyncOptions] = None
+) -> Type[CRUDBaseModel]:
     """创建带 CRUD 方法的模型基类"""
 
     class DeclarativeCRUDBase(CRUDBaseModel):
@@ -908,11 +951,25 @@ def _create_crud_base(storage: 'Storage') -> Type[CRUDBaseModel]:
                     cls.__relationships__[attr_name] = attr_value
                     attr_value.__set_name__(cls, attr_name)
 
-            # 自动创建表
+            # 自动创建或同步表
             if cls.__columns__:
                 columns_list = list(cls.__columns__.values())
                 table_comment = getattr(cls, '__table_comment__', None)
-                storage.create_table(cls.__tablename__, columns_list, table_comment)
+                table_name = cls.__tablename__
+
+                # 检查表是否已存在
+                if table_name in storage.tables:
+                    # 表已存在，根据 sync_schema 决定是否同步
+                    if sync_schema:
+                        storage.sync_table_schema(
+                            table_name,
+                            columns_list,
+                            table_comment,
+                            sync_options
+                        )
+                else:
+                    # 表不存在，创建新表
+                    storage.create_table(table_name, columns_list, table_comment)
 
         def __init__(self, **kwargs: Any):
             """初始化模型实例"""

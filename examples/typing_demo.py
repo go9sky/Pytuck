@@ -25,10 +25,10 @@ def main() -> None:
 
     class User(Base):
         __tablename__ = 'users'
-        id = Column('id', int, primary_key=True)
-        name = Column('name', str)
-        age = Column('age', int)
-        email = Column('email', str)
+        id = Column(int, primary_key=True)
+        name = Column(str)
+        age = Column(int)
+        email = Column(str)
 
     # 创建会话
     session = Session(db)
@@ -152,10 +152,10 @@ def demonstrate_type_inference() -> None:
 
     class Product(Base):
         __tablename__ = 'products'
-        id = Column('id', int, primary_key=True)
-        name = Column('name', str)
-        price = Column('price', float)
-        in_stock = Column('in_stock', bool)
+        id = Column(int, primary_key=True)
+        name = Column(str)
+        price = Column(float)
+        in_stock = Column(bool)
 
     session = Session(db)
 

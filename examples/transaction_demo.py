@@ -29,18 +29,18 @@ class User(Base):
     """用户模型"""
     __tablename__ = 'users'
 
-    id = Column('id', int, primary_key=True)
-    name = Column('name', str, nullable=False)
-    balance = Column('balance', int)  # 账户余额
+    id = Column(int, primary_key=True)
+    name = Column(str, nullable=False)
+    balance = Column(int)  # 账户余额
 
 
 class Order(Base):
     """订单模型"""
     __tablename__ = 'orders'
 
-    id = Column('id', int, primary_key=True)
-    user_id = Column('user_id', int, index=True)
-    amount = Column('amount', int)
+    id = Column(int, primary_key=True)
+    user_id = Column(int, index=True)
+    amount = Column(int)
 
 
 # 创建 Session

@@ -28,10 +28,10 @@ Base: Type[PureBaseModel] = declarative_base(db)
 
 class User(Base):
     __tablename__ = 'users'
-    id = Column('id', int, primary_key=True)
-    name = Column('name', str)
-    age = Column('age', int)
-    email = Column('email', str, nullable=True)
+    id = Column(int, primary_key=True)
+    name = Column(str)
+    age = Column(int)
+    email = Column(str, nullable=True)
 
 session = Session(db)
 
@@ -69,9 +69,9 @@ Base2: Type[PureBaseModel] = declarative_base(db2)
 
 class User2(Base2):
     __tablename__ = 'users'
-    id = Column('id', int, primary_key=True)
-    name = Column('name', str)
-    age = Column('age', int)
+    id = Column(int, primary_key=True)
+    name = Column(str)
+    age = Column(int)
 
 session2 = Session(db2)
 stmt = insert(User2).values(name='David', age=35)
@@ -108,9 +108,9 @@ Base3: Type[PureBaseModel] = declarative_base(db3)
 
 class User3(Base3):
     __tablename__ = 'users'
-    id = Column('id', int, primary_key=True)
-    name = Column('name', str)
-    age = Column('age', int)
+    id = Column(int, primary_key=True)
+    name = Column(str)
+    age = Column(int)
 
 session3 = Session(db3)
 for name, age in [('Eve', 22), ('Frank', 28)]:

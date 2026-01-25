@@ -43,9 +43,9 @@ class Order(Base1):
     """订单模型"""
     __tablename__ = 'orders'
 
-    id = Column('id', int, primary_key=True)
-    user_id = Column('user_id', int)
-    amount = Column('amount', float)
+    id = Column(int, primary_key=True)
+    user_id = Column(int)
+    amount = Column(float)
 
     # 多对一：订单 -> 用户（使用表名引用，此时 User 类尚未定义）
     user = Relationship('users', foreign_key='user_id')
@@ -55,8 +55,8 @@ class User(Base1):
     """用户模型"""
     __tablename__ = 'users'
 
-    id = Column('id', int, primary_key=True)
-    name = Column('name', str)
+    id = Column(int, primary_key=True)
+    name = Column(str)
 
     # 一对多：用户 -> 订单（使用表名引用）
     orders = Relationship('orders', foreign_key='user_id', back_populates='user')
@@ -104,10 +104,10 @@ class UserProfile(Base2):
     """用户资料模型"""
     __tablename__ = 'user_profiles'
 
-    id = Column('id', int, primary_key=True)
-    user_id = Column('user_id', int)
-    bio = Column('bio', str)
-    avatar_url = Column('avatar_url', str, nullable=True)
+    id = Column(int, primary_key=True)
+    user_id = Column(int)
+    bio = Column(str)
+    avatar_url = Column(str, nullable=True)
 
     # 多对一：资料 -> 用户
     user = Relationship('users', foreign_key='user_id')
@@ -117,9 +117,9 @@ class User2(Base2):
     """用户模型"""
     __tablename__ = 'users'
 
-    id = Column('id', int, primary_key=True)
-    name = Column('name', str)
-    email = Column('email', str)
+    id = Column(int, primary_key=True)
+    name = Column(str)
+    email = Column(str)
 
     # 一对一：用户 -> 资料（实际是一对多，取第一个即可）
     profile = Relationship('user_profiles', foreign_key='user_id')
@@ -166,10 +166,10 @@ class Enrollment(Base3):
     """选课记录（中间表）"""
     __tablename__ = 'enrollments'
 
-    id = Column('id', int, primary_key=True)
-    student_id = Column('student_id', int)
-    course_id = Column('course_id', int)
-    grade = Column('grade', str, nullable=True)
+    id = Column(int, primary_key=True)
+    student_id = Column(int)
+    course_id = Column(int)
+    grade = Column(str, nullable=True)
 
     # 关联到两端
     student = Relationship('students', foreign_key='student_id')
@@ -180,8 +180,8 @@ class Student(Base3):
     """学生模型"""
     __tablename__ = 'students'
 
-    id = Column('id', int, primary_key=True)
-    name = Column('name', str)
+    id = Column(int, primary_key=True)
+    name = Column(str)
 
     # 学生 -> 选课记录
     enrollments = Relationship('enrollments', foreign_key='student_id')
@@ -191,9 +191,9 @@ class Course(Base3):
     """课程模型"""
     __tablename__ = 'courses'
 
-    id = Column('id', int, primary_key=True)
-    title = Column('title', str)
-    credits = Column('credits', int)
+    id = Column(int, primary_key=True)
+    title = Column(str)
+    credits = Column(int)
 
     # 课程 -> 选课记录
     enrollments = Relationship('enrollments', foreign_key='course_id')
@@ -250,9 +250,9 @@ class Category(Base4):
     """分类模型（树形结构）"""
     __tablename__ = 'categories'
 
-    id = Column('id', int, primary_key=True)
-    name = Column('name', str)
-    parent_id = Column('parent_id', int, nullable=True)
+    id = Column(int, primary_key=True)
+    name = Column(str)
+    parent_id = Column(int, nullable=True)
 
     # 自引用关系 - 需要用 uselist 明确指定方向
     parent = Relationship('categories', foreign_key='parent_id', uselist=False)
@@ -325,9 +325,9 @@ class Tag(Base5):
     """标签模型"""
     __tablename__ = 'tags'
 
-    id = Column('id', int, primary_key=True)
-    name = Column('name', str)
-    post_id = Column('post_id', int)
+    id = Column(int, primary_key=True)
+    name = Column(str)
+    post_id = Column(int)
 
     # 使用字符串引用（此时 Post 尚未定义）
     post = Relationship('posts', foreign_key='post_id')
@@ -337,8 +337,8 @@ class Post(Base5):
     """文章模型"""
     __tablename__ = 'posts'
 
-    id = Column('id', int, primary_key=True)
-    title = Column('title', str)
+    id = Column(int, primary_key=True)
+    title = Column(str)
 
     # 使用类引用（Tag 已定义）
     tags = Relationship(Tag, foreign_key='post_id')
@@ -390,9 +390,9 @@ class Comment(Base6):
     """评论模型"""
     __tablename__ = 'comments'
 
-    id = Column('id', int, primary_key=True)
-    article_id = Column('article_id', int)
-    content = Column('content', str)
+    id = Column(int, primary_key=True)
+    article_id = Column(int)
+    content = Column(str)
 
     # 多对一：评论 -> 文章
     # 直接声明返回类型为 Optional[Article]
@@ -406,8 +406,8 @@ class Article(Base6):
     """文章模型"""
     __tablename__ = 'articles'
 
-    id = Column('id', int, primary_key=True)
-    title = Column('title', str)
+    id = Column(int, primary_key=True)
+    title = Column(str)
 
     # 一对多：文章 -> 评论列表
     # 直接声明返回类型为 List[Comment]

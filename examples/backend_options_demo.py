@@ -54,9 +54,9 @@ def demo_json_options():
 
     class User(Base):
         __tablename__ = 'users'
-        id = Column('id', int, primary_key=True)
-        name = Column('name', str)
-        description = Column('description', str)
+        id = Column(int, primary_key=True)
+        name = Column(str)
+        description = Column(str)
 
     session = Session(db)
 
@@ -112,9 +112,9 @@ def demo_json_options():
 
         class FastUser(Base_orjson):
             __tablename__ = 'fast_users'
-            id = Column('id', int, primary_key=True)
-            name = Column('name', str)
-            data = Column('data', str)
+            id = Column(int, primary_key=True)
+            name = Column(str)
+            data = Column(str)
 
         session_orjson = Session(db_orjson)
 
@@ -177,8 +177,8 @@ def demo_json_options():
 
         class CustomUser(Base_custom):
             __tablename__ = 'custom_users'
-            id = Column('id', int, primary_key=True)
-            name = Column('name', str)
+            id = Column(int, primary_key=True)
+            name = Column(str)
 
         session_custom = Session(db_custom)
 
@@ -235,9 +235,9 @@ def demo_csv_options():
 
     class Product(Base):
         __tablename__ = 'products'
-        id = Column('id', int, primary_key=True)
-        name = Column('name', str)
-        price = Column('price', float)
+        id = Column(int, primary_key=True)
+        name = Column(str)
+        price = Column(float)
 
     session = Session(db)
 
@@ -290,9 +290,9 @@ def demo_sqlite_options():
 
     class Log(Base):
         __tablename__ = 'logs'
-        id = Column('id', int, primary_key=True)
-        message = Column('message', str)
-        level = Column('level', str)
+        id = Column(int, primary_key=True)
+        message = Column(str)
+        level = Column(str)
 
     session = Session(db)
 
@@ -342,9 +342,9 @@ def demo_binary_default():
 
     class Settings(Base):
         __tablename__ = 'settings'
-        id = Column('id', int, primary_key=True)
-        key = Column('key', str)
-        value = Column('value', str)
+        id = Column(int, primary_key=True)
+        key = Column(str)
+        value = Column(str)
 
     session = Session(db)
 
@@ -393,8 +393,8 @@ def demo_without_options():
 
     class Item(Base):
         __tablename__ = 'items'
-        id = Column('id', int, primary_key=True)
-        name = Column('name', str)
+        id = Column(int, primary_key=True)
+        name = Column(str)
 
     session = Session(db)
 

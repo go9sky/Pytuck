@@ -53,9 +53,9 @@ def demo_performance_comparison():
 
         class JsonUser(Base):
             __tablename__ = 'users'
-            id = Column('id', int, primary_key=True)
-            name = Column('name', str)
-            description = Column('description', str)
+            id = Column(int, primary_key=True)
+            name = Column(str)
+            description = Column(str)
 
         session_json = Session(db_json)
         for data in test_data:
@@ -87,9 +87,9 @@ def demo_performance_comparison():
 
             class OrjsonUser(Base_orjson):
                 __tablename__ = 'users'
-                id = Column('id', int, primary_key=True)
-                name = Column('name', str)
-                description = Column('description', str)
+                id = Column(int, primary_key=True)
+                name = Column(str)
+                description = Column(str)
 
             session_orjson = Session(db_orjson)
             for data in test_data:
@@ -126,9 +126,9 @@ def demo_performance_comparison():
 
             class UjsonUser(Base_ujson):
                 __tablename__ = 'users'
-                id = Column('id', int, primary_key=True)
-                name = Column('name', str)
-                description = Column('description', str)
+                id = Column(int, primary_key=True)
+                name = Column(str)
+                description = Column(str)
 
             session_ujson = Session(db_ujson)
             for data in test_data:
@@ -176,9 +176,9 @@ def demo_parameter_handling():
 
         class User(Base):
             __tablename__ = 'users'
-            id = Column('id', int, primary_key=True)
-            name = Column('name', str)
-            unicode_text = Column('unicode_text', str)
+            id = Column(int, primary_key=True)
+            name = Column(str)
+            unicode_text = Column(str)
 
         session = Session(db)
         stmt = insert(User).values(name='测试', unicode_text='中文测试 🎉')
@@ -206,9 +206,9 @@ def demo_parameter_handling():
 
             class OrjsonUser(Base_orjson):
                 __tablename__ = 'users'
-                id = Column('id', int, primary_key=True)
-                name = Column('name', str)
-                unicode_text = Column('unicode_text', str)
+                id = Column(int, primary_key=True)
+                name = Column(str)
+                unicode_text = Column(str)
 
             session_orjson = Session(db_orjson)
             stmt = insert(OrjsonUser).values(name='测试', unicode_text='中文测试 🎉')
@@ -279,9 +279,9 @@ def demo_custom_implementation():
 
         class CompactUser(Base_compact):
             __tablename__ = 'users'
-            id = Column('id', int, primary_key=True)
-            name = Column('name', str)
-            data = Column('data', str)
+            id = Column(int, primary_key=True)
+            name = Column(str)
+            data = Column(str)
 
         session_compact = Session(db_compact)
         stmt = insert(CompactUser).values(name='紧凑用户', data='紧凑数据存储')
@@ -311,9 +311,9 @@ def demo_custom_implementation():
 
         class PrettyUser(Base_pretty):
             __tablename__ = 'users'
-            id = Column('id', int, primary_key=True)
-            name = Column('name', str)
-            data = Column('data', str)
+            id = Column(int, primary_key=True)
+            name = Column(str)
+            data = Column(str)
 
         session_pretty = Session(db_pretty)
         stmt = insert(PrettyUser).values(name='美化用户', data='美化数据存储')

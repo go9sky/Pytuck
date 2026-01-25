@@ -43,17 +43,17 @@ def create_sample_database():
 
     class Employee(Base):
         __tablename__ = 'employees'
-        id = Column('id', int, primary_key=True)
-        name = Column('name', str, nullable=False)
-        department = Column('department', str)
-        salary = Column('salary', float)
-        active = Column('active', bool)
+        id = Column(int, primary_key=True)
+        name = Column(str, nullable=False)
+        department = Column(str)
+        salary = Column(float)
+        active = Column(bool)
 
     class Department(Base):
         __tablename__ = 'departments'
-        id = Column('id', int, primary_key=True)
-        name = Column('name', str, nullable=False)
-        budget = Column('budget', float)
+        id = Column(int, primary_key=True)
+        name = Column(str, nullable=False)
+        budget = Column(float)
 
     session = Session(db)
 
@@ -323,20 +323,20 @@ def demo_database_import():
 
     class ImportedUser(Base):
         __tablename__ = 'users'
-        user_id = Column('user_id', int, primary_key=True)
-        username = Column('username', str)
-        email = Column('email', str)
-        age = Column('age', int)
-        is_active = Column('is_active', bool)
-        created_at = Column('created_at', str)
+        user_id = Column(int, primary_key=True, name='user_id')
+        username = Column(str)
+        email = Column(str)
+        age = Column(int)
+        is_active = Column(bool)
+        created_at = Column(str)
 
     class ImportedProject(Base):
         __tablename__ = 'projects'
-        project_id = Column('project_id', int, primary_key=True)
-        name = Column('name', str)
-        description = Column('description', str)
-        budget = Column('budget', float)
-        status = Column('status', str)
+        project_id = Column(int, primary_key=True, name='project_id')
+        name = Column(str)
+        description = Column(str)
+        budget = Column(float)
+        status = Column(str)
 
     session = Session(db)
 

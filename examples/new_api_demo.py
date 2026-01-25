@@ -43,18 +43,18 @@ class Class(Base):
     """班级模型"""
     __tablename__ = 'classes'
 
-    id = Column('id', int, primary_key=True)
-    name = Column('name', str, nullable=False)
+    id = Column(int, primary_key=True)
+    name = Column(str, nullable=False)
 
 
 class Student(Base):
     """学生模型"""
     __tablename__ = 'students'
 
-    id = Column('id', int, primary_key=True)
-    name = Column('name', str, nullable=False, index=True)
-    age = Column('age', int)
-    class_id = Column('class_id', int, foreign_key=('classes', 'id'))
+    id = Column(int, primary_key=True)
+    name = Column(str, nullable=False, index=True)
+    age = Column(int)
+    class_id = Column(int, foreign_key=('classes', 'id'))
 
 
 print("   ✓ Class 模型定义完成")

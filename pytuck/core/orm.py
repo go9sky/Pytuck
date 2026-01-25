@@ -8,12 +8,13 @@ Pytuck ORM层
 import sys
 from typing import (
     Any, Dict, List, Optional, Type, Union, TYPE_CHECKING,
-    overload, Literal, Tuple
+    overload, Literal, Tuple, Generic, cast
 )
 from datetime import datetime, date, timedelta, timezone
 
 from ..common.exceptions import ValidationError, TypeConversionError
 from ..common.options import SyncOptions
+from ..common.types import RelationshipT
 from .types import TypeCode, TypeRegistry
 
 if TYPE_CHECKING:
@@ -592,8 +593,30 @@ class CRUDBaseModel(PureBaseModel):
         raise NotImplementedError("This method should be overridden by declarative_base")
 
 
-class Relationship:
-    """关联关系描述符（延迟加载）"""
+class Relationship(Generic[RelationshipT]):
+    """关联关系描述符（延迟加载，支持类型提示）
+
+    为获得精确的 IDE 类型提示，直接声明返回类型（需要 type: ignore）。
+
+    Usage:
+        # 一对多（返回列表）- 直接声明 List[Order]
+        orders: List[Order] = Relationship('orders', foreign_key='user_id')  # type: ignore
+
+        # 多对一（返回单个对象或 None）- 直接声明 Optional[User]
+        user: Optional[User] = Relationship('users', foreign_key='user_id')  # type: ignore
+
+        # 自引用（需要显式指定 uselist）
+        parent: Optional[Category] = Relationship(  # type: ignore
+            'categories', foreign_key='parent_id', uselist=False
+        )
+        children: List[Category] = Relationship(  # type: ignore
+            'categories', foreign_key='parent_id', uselist=True
+        )
+
+    Note:
+        由于 Python 类型系统限制，描述符的泛型参数无法自动推断返回类型。
+        因此推荐直接声明期望的返回类型，并使用 type: ignore 抑制类型警告。
+    """
 
     def __init__(self,
                  target_model: Union[str, Type[PureBaseModel]],
@@ -635,7 +658,17 @@ class Relationship:
         else:
             self.is_one_to_many = True
 
-    def __get__(self, instance: Optional[PureBaseModel], owner: Type[PureBaseModel]) -> Union['Relationship', Optional[PureBaseModel], List[PureBaseModel]]:
+    @overload
+    def __get__(self, instance: None, owner: Type[PureBaseModel]) -> 'Relationship[RelationshipT]': ...
+
+    @overload
+    def __get__(self, instance: PureBaseModel, owner: Type[PureBaseModel]) -> RelationshipT: ...
+
+    def __get__(
+        self,
+        instance: Optional[PureBaseModel],
+        owner: Type[PureBaseModel]
+    ) -> Union['Relationship[RelationshipT]', RelationshipT]:
         """获取关联对象"""
         if instance is None:
             return self
@@ -675,7 +708,7 @@ class Relationship:
 
         # 缓存结果
         setattr(instance, cache_key, results)
-        return results
+        return cast(RelationshipT, results)
 
     def _resolve_target_model(self, owner: Optional[Type[PureBaseModel]] = None) -> Type[PureBaseModel]:
         """

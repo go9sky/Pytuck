@@ -11,6 +11,8 @@
 
 纯Python实现的轻量级文档数据库，支持多种存储引擎，无SQL，通过对象和方法管理数据。
 
+> **设计初衷**：为 Ren'Py 等阉割版 Python 环境提供零依赖的关系型数据库方案，让任何受限环境都能享受 SQLAlchemy 风格的 Pythonic 数据操作体验。
+
 ## 仓库镜像
 
 - **GitHub**: https://github.com/go9sky/pytuck
@@ -877,7 +879,6 @@ Pytuck 是一个轻量级嵌入式数据库，设计目标是简单易用。以�
 | **无 OR 条件** | 查询条件仅支持 AND 逻辑，不支持 OR |
 | **无聚合函数** | 不支持 COUNT, SUM, AVG, MIN, MAX 等 |
 | **无关系加载** | 不支持延迟加载和预加载关联对象 |
-| **无迁移工具** | Schema 变更需要手动处理 |
 | **单写入者** | 不支持并发写入，适合单进程使用 |
 | **全量保存** | 非二进制/SQLite 后端每次保存完整重写文件 |
 | **无嵌套事务** | 仅支持单层事务，不支持嵌套 |
@@ -911,6 +912,32 @@ Pytuck 是一个轻量级嵌入式数据库，设计目标是简单易用。以�
 - [x] 表和列备注支持（`comment` 参数）
 - [x] 完整的泛型类型提示系统
 - [x] 强类型配置选项系统（dataclass 替代 **kwargs）
+- [x] **Schema 同步与迁移功能** ✨NEW✨
+  - [x] 支持程序重启时自动同步表结构（新增列、备注等）
+  - [x] `SyncOptions` 配置类控制同步行为
+  - [x] `SyncResult` 记录同步变更详情
+  - [x] 三层 API 设计：Table → Storage → Session
+  - [x] 支持 SQLite 原生 SQL 模式 DDL 操作
+  - [x] 纯表名 API 支持（无需模型类）
+- [x] **Excel 后端行号映射功能** ✨NEW✨
+  - [x] `row_number_mapping='as_pk'`：行号作为主键
+  - [x] `row_number_mapping='field'`：行号映射到指定字段
+  - [x] 支持读取外部 Excel 文件
+- [x] **SQLite 原生 SQL 模式优化** ✨NEW✨
+  - [x] 默认启用原生 SQL 模式（直接执行 SQL）
+  - [x] 完善类型映射（10 种 Pytuck 类型）
+  - [x] 多列排序支持
+- [x] **异常系统重构** ✨NEW✨
+  - [x] 统一的异常层次结构
+  - [x] 新增 TypeConversionError、ConfigurationError、SchemaError 等
+- [x] **后端自动注册机制** ✨NEW✨
+  - [x] 使用 `__init_subclass__` 实现自动注册
+  - [x] 自定义后端只需继承 `StorageBackend` 即可
+- [x] **查询结果 API 简化** ✨NEW✨
+  - [x] 移除 `Result.scalars()` 中间层
+  - [x] 直接使用 `result.all()`, `result.first()` 等
+- [x] **迁移工具延迟加载后端支持** ✨NEW✨
+  - [x] 修复延迟加载模式下数据迁移问题
 
 ### 计划中的功能
 
@@ -922,7 +949,6 @@ Pytuck 是一个轻量级嵌入式数据库，设计目标是简单易用。以�
 - [ ] **OR 条件支持** - 复杂逻辑查询条件
 - [ ] **聚合函数** - COUNT, SUM, AVG, MIN, MAX 等
 - [ ] **关系延迟加载** - 优化关联数据加载性能
-- [ ] **Schema 迁移工具** - 数据库结构版本管理
 - [ ] **并发访问支持** - 多进程/线程安全访问
 
 ### 计划增加的引擎

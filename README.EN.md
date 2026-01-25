@@ -11,6 +11,8 @@
 
 A lightweight, pure Python document database with multi-engine support. No SQL required - manage your data through Python objects and methods.
 
+> **Design Philosophy**: Provide a zero-dependency relational database solution for restricted Python environments like Ren'Py, enabling SQLAlchemy-style Pythonic data operations in any limited environment.
+
 ## Repository Mirrors
 
 - **GitHub**: https://github.com/go9sky/pytuck
@@ -927,7 +929,6 @@ Pytuck is a lightweight embedded database designed for simplicity. Here are the 
 | **No OR conditions** | Query conditions only support AND logic |
 | **No aggregate functions** | No COUNT, SUM, AVG, MIN, MAX support |
 | **No relationship loading** | No lazy loading or eager loading of related objects |
-| **No migration tools** | Schema changes require manual handling |
 | **Single writer** | No concurrent write support, suitable for single-process use |
 | **Full rewrite on save** | Non-binary/SQLite backends rewrite entire file on each save |
 | **No nested transactions** | Only single-level transactions supported |
@@ -961,6 +962,32 @@ Pytuck is a lightweight embedded database designed for simplicity. Here are the 
 - [x] Table and column comment support (`comment` parameter)
 - [x] Complete generic type hints system
 - [x] Strongly-typed configuration options system (dataclass replaces **kwargs)
+- [x] **Schema Sync & Migration** ✨NEW✨
+  - [x] Support automatic schema synchronization when loading existing database
+  - [x] `SyncOptions` configuration class to control sync behavior
+  - [x] `SyncResult` to record sync change details
+  - [x] Three-layer API design: Table → Storage → Session
+  - [x] Support SQLite native SQL mode DDL operations
+  - [x] Pure table-name API (no model class required)
+- [x] **Excel Row Number Mapping** ✨NEW✨
+  - [x] `row_number_mapping='as_pk'`: Use row number as primary key
+  - [x] `row_number_mapping='field'`: Map row number to a field
+  - [x] Support loading external Excel files
+- [x] **SQLite Native SQL Mode Optimization** ✨NEW✨
+  - [x] Native SQL mode enabled by default
+  - [x] Complete type mapping (10 Pytuck types)
+  - [x] Multi-column ORDER BY support
+- [x] **Exception System Refactoring** ✨NEW✨
+  - [x] Unified exception hierarchy
+  - [x] Added TypeConversionError, ConfigurationError, SchemaError, etc.
+- [x] **Backend Auto-Registration** ✨NEW✨
+  - [x] Automatic registration via `__init_subclass__`
+  - [x] Custom backends only need to inherit `StorageBackend`
+- [x] **Query Result API Simplification** ✨NEW✨
+  - [x] Removed `Result.scalars()` intermediate layer
+  - [x] Use `result.all()`, `result.first()` directly
+- [x] **Migration Tool Lazy Loading Support** ✨NEW✨
+  - [x] Fixed data migration issues with lazy loading backends
 
 ### Planned Features
 
@@ -972,7 +999,6 @@ Pytuck is a lightweight embedded database designed for simplicity. Here are the 
 - [ ] **OR Condition Support** - Complex logical query conditions
 - [ ] **Aggregate Functions** - COUNT, SUM, AVG, MIN, MAX, etc.
 - [ ] **Relationship Lazy Loading** - Optimize associated data loading performance
-- [ ] **Schema Migration Tools** - Database structure version management
 - [ ] **Concurrent Access Support** - Multi-process/thread-safe access
 
 ### Planned Engines

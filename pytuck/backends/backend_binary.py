@@ -1109,6 +1109,7 @@ class BinaryBackend(StorageBackend):
         pk_col = None
         pk_codec = None
         for col in table.columns.values():
+            assert col.name is not None, "Column name must be set"
             type_code, codec = TypeRegistry.get_codec(col.col_type)
             codec_cache[col.name] = (type_code, codec)
             if col.primary_key:
@@ -1314,6 +1315,7 @@ class BinaryBackend(StorageBackend):
         - Column Comment (UTF-8)
         """
         # Column Name
+        assert column.name is not None, "Column name must be set"
         col_name_bytes = column.name.encode('utf-8')
         f.write(struct.pack('<H', len(col_name_bytes)))
         f.write(col_name_bytes)
@@ -1361,8 +1363,8 @@ class BinaryBackend(StorageBackend):
         comment = f.read(comment_len).decode('utf-8') if comment_len > 0 else None
 
         return Column(
-            col_name,
             col_type,
+            name=col_name,
             nullable=nullable,
             primary_key=primary_key,
             index=index,

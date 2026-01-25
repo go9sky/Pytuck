@@ -236,8 +236,8 @@ class ExcelBackend(StorageBackend):
             for col_data in columns_data:
                 col_type = TypeRegistry.get_type_by_name(col_data['type'])
                 column = Column(
-                    col_data['name'],
                     col_type,
+                    name=col_data['name'],
                     nullable=col_data['nullable'],
                     primary_key=col_data['primary_key'],
                     index=col_data.get('index', False),
@@ -251,7 +251,7 @@ class ExcelBackend(StorageBackend):
             if rows_preview:
                 headers = [h for h in rows_preview[0] if h]
                 for name in headers:
-                    columns.append(Column(name, str, nullable=True, primary_key=False))
+                    columns.append(Column(str, name=name, nullable=True, primary_key=False))
 
         # 应用行号映射 - 处理列定义
         if mapping_allowed:
@@ -261,7 +261,7 @@ class ExcelBackend(StorageBackend):
             if mapping == 'as_pk':
                 # 确保主键列存在
                 if primary_key not in existing_col_names:
-                    pk_col = Column(primary_key, int, nullable=False, primary_key=True)
+                    pk_col = Column(int, name=primary_key, nullable=False, primary_key=True)
                     columns.insert(0, pk_col)
                 else:
                     # 主键列已存在，检查类型
@@ -278,13 +278,13 @@ class ExcelBackend(StorageBackend):
                 field_name = self.options.row_number_field_name
                 # 只有字段不存在时才添加
                 if field_name not in existing_col_names:
-                    columns.append(Column(field_name, int, nullable=True, primary_key=False))
+                    columns.append(Column(int, name=field_name, nullable=True, primary_key=False))
 
         # 确保有主键列（对于外部 Excel）
         if not columns_data and not any(c.primary_key for c in columns):
             # 如果没有主键列，创建 id 列
             if primary_key not in [c.name for c in columns]:
-                pk_col = Column(primary_key, int, nullable=False, primary_key=True)
+                pk_col = Column(int, name=primary_key, nullable=False, primary_key=True)
                 columns.insert(0, pk_col)
             else:
                 # 将已有的同名列标记为主键

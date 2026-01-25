@@ -89,6 +89,7 @@ class BinaryExpression:
 
     def to_condition(self) -> Condition:
         """转换为 Condition 对象"""
+        assert self.column.name is not None, "Column name must be set"
         return Condition(self.column.name, self.operator, self.value)
 
     def __repr__(self) -> str:

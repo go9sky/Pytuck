@@ -334,8 +334,8 @@ def import_from_database(
                 columns: List[Column] = []
                 for col_info in columns_info:
                     col = Column(
-                        col_info['name'],
                         col_info['type'],
+                        name=col_info['name'],
                         nullable=col_info.get('nullable', True),
                         primary_key=col_info.get('primary_key', False),
                         index=False  # 默认不创建索引

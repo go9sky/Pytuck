@@ -230,8 +230,8 @@ class JSONBackend(StorageBackend):
             col_type = TypeRegistry.get_type_by_name(col_data['type'])
 
             column = Column(
-                col_data['name'],
                 col_type,
+                name=col_data['name'],
                 nullable=col_data['nullable'],
                 primary_key=col_data['primary_key'],
                 index=col_data.get('index', False),

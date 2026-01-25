@@ -23,14 +23,25 @@ if TYPE_CHECKING:
 
 
 class Column:
-    """列定义"""
+    """列定义
+
+    用法:
+        # name 默认取变量名
+        id = Column(int, primary_key=True)       # name='id'
+        name = Column(str)                        # name='name'
+        age = Column(int, nullable=True)          # name='age'
+
+        # 显式指定列名（当列名与变量名不同时）
+        email = Column(str, name='user_email')    # name='user_email'
+    """
     __slots__ = ['name', 'col_type', 'nullable', 'primary_key',
                  'index', 'default', 'foreign_key', 'comment', '_type_code',
                  '_attr_name', '_owner_class', 'strict']
 
     def __init__(self,
-                 name: str,
                  col_type: Type,
+                 *,
+                 name: Optional[str] = None,
                  nullable: bool = True,
                  primary_key: bool = False,
                  index: bool = False,
@@ -42,8 +53,8 @@ class Column:
         初始化列定义
 
         Args:
-            name: 列名
-            col_type: Python类型（int, str, float, bool, bytes）
+            col_type: Python类型（int, str, float, bool, bytes, datetime, date, timedelta, list, dict）
+            name: 列名（可选，默认使用变量名）
             nullable: 是否可空
             primary_key: 是否为主键
             index: 是否建立索引
@@ -52,7 +63,7 @@ class Column:
             comment: 列备注/注释
             strict: 是否严格模式（不进行类型转换）
         """
-        self.name = name
+        self.name = name  # 可能为 None，将在 __set_name__ 中设置
         self.col_type = col_type
         self.nullable = nullable
         self.primary_key = primary_key
@@ -354,10 +365,14 @@ class Column:
         """
         在类定义时被调用，存储属性名和拥有者类
 
-        这允许 Column 知道它属于哪个模型类
+        这允许 Column 知道它属于哪个模型类。
+        如果 name 未显式指定，则使用变量名作为列名。
         """
         self._attr_name = name
         self._owner_class = owner
+        # 如果 name 未指定，使用变量名
+        if self.name is None:
+            self.name = name
 
     def __get__(self, instance: Optional['PureBaseModel'], owner: Type['PureBaseModel']) -> Union['Column', Any]:
         """
@@ -435,8 +450,8 @@ class PureBaseModel:
 
         class User(Base):
             __tablename__ = 'users'
-            id = Column('id', int, primary_key=True)
-            name = Column('name', str)
+            id = Column(int, primary_key=True)
+            name = Column(str)
 
         user = User(name='Alice')
         isinstance(user, PureBaseModel)  # True
@@ -490,8 +505,8 @@ class CRUDBaseModel(PureBaseModel):
 
         class User(Base):
             __tablename__ = 'users'
-            id = Column('id', int, primary_key=True)
-            name = Column('name', str)
+            id = Column(int, primary_key=True)
+            name = Column(str)
 
         user = User.create(name='Alice')
         isinstance(user, CRUDBaseModel)  # True
@@ -809,8 +824,8 @@ def declarative_base(
 
         class User(Base):
             __tablename__ = 'users'
-            id = Column('id', int, primary_key=True)
-            name = Column('name', str)
+            id = Column(int, primary_key=True)
+            name = Column(str)
 
         # 通过 Session 操作
         session = Session(db)
@@ -825,8 +840,8 @@ def declarative_base(
 
         class Post(Base):
             __tablename__ = 'posts'
-            id = Column('id', int, primary_key=True)
-            title = Column('title', str)
+            id = Column(int, primary_key=True)
+            title = Column(str)
 
         # 直接在模型上操作
         post = Post.create(title='Hello')

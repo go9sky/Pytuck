@@ -345,25 +345,27 @@ class Session:
                 where_parts = []
                 params = []
                 for expr in statement._where_clauses:
+                    assert expr.column.name is not None, "Column name must be set"
+                    col_name = expr.column.name  # 类型为 str
                     op = compiler._convert_op(expr.operator)
                     if expr.operator == 'IN':
                         if isinstance(expr.value, (list, tuple)):
                             placeholders = ', '.join(['?' for _ in expr.value])
-                            where_parts.append(f'`{expr.column.name}` IN ({placeholders})')
+                            where_parts.append(f'`{col_name}` IN ({placeholders})')
                             for v in expr.value:
-                                params.append(compiler._serialize_param(v, statement.model_class, expr.column.name))
+                                params.append(compiler._serialize_param(v, statement.model_class, col_name))
                     elif expr.value is None:
                         # NULL 值需要特殊处理：使用 IS NULL 或 IS NOT NULL
                         if op in ('=', '=='):
-                            where_parts.append(f'`{expr.column.name}` IS NULL')
+                            where_parts.append(f'`{col_name}` IS NULL')
                         elif op in ('!=', '<>'):
-                            where_parts.append(f'`{expr.column.name}` IS NOT NULL')
+                            where_parts.append(f'`{col_name}` IS NOT NULL')
                         else:
                             # 其他操作符与 NULL 比较无意义，跳过
                             pass
                     else:
-                        where_parts.append(f'`{expr.column.name}` {op} ?')
-                        params.append(compiler._serialize_param(expr.value, statement.model_class, expr.column.name))
+                        where_parts.append(f'`{col_name}` {op} ?')
+                        params.append(compiler._serialize_param(expr.value, statement.model_class, col_name))
 
                 where_clause = ' AND '.join(where_parts) if where_parts else None
 
@@ -740,13 +742,13 @@ class Session:
             from pytuck import Column
 
             # 通过模型类
-            session.add_column(User, Column('age', int, nullable=True))
+            session.add_column(User, Column(int, nullable=True, name='age'))
 
             # 通过表名
-            session.add_column('users', Column('age', int, nullable=True))
+            session.add_column('users', Column(int, nullable=True, name='age'))
 
             # 带默认值
-            session.add_column(User, Column('status', str), default_value='active')
+            session.add_column(User, Column(str, name='status'), default_value='active')
         """
         table_name = self._resolve_table_name(model_or_table)
         self.storage.add_column(table_name, column, default_value)

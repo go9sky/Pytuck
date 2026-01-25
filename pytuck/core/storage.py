@@ -89,7 +89,10 @@ class Table:
             comment: 表备注/注释
         """
         self.name = name
-        self.columns: Dict[str, Column] = {col.name: col for col in columns}
+        self.columns: Dict[str, Column] = {}
+        for col in columns:
+            assert col.name is not None, "Column name must be set"
+            self.columns[col.name] = col
         self.primary_key = primary_key
         self.comment = comment
         self.data: Dict[Any, Dict[str, Any]] = {}  # {pk: record}
@@ -105,6 +108,7 @@ class Table:
         # 自动为标记了index的列创建索引
         for col in columns:
             if col.index:
+                assert col.name is not None, "Column name must be set"
                 self.build_index(col.name)
 
     def insert(self, record: Dict[str, Any]) -> Any:
@@ -327,8 +331,11 @@ class Table:
         Raises:
             SchemaError: 列已存在或非空列无默认值
         """
-        if column.name in self.columns:
-            raise SchemaError(f"Column '{column.name}' already exists in table '{self.name}'")
+        assert column.name is not None, "Column name must be set"
+        col_name = column.name  # 创建局部变量，类型为 str
+
+        if col_name in self.columns:
+            raise SchemaError(f"Column '{col_name}' already exists in table '{self.name}'")
 
         # 检查非空约束：如果表中有数据，新增非空列必须有默认值
         has_data = len(self.data) > 0
@@ -336,22 +343,22 @@ class Table:
 
         if has_data and not column.nullable and fill_value is None:
             raise SchemaError(
-                f"Cannot add non-nullable column '{column.name}' to table '{self.name}' "
+                f"Cannot add non-nullable column '{col_name}' to table '{self.name}' "
                 "without default value when table has existing data"
             )
 
         # 添加到 columns
-        self.columns[column.name] = column
+        self.columns[col_name] = column
 
         # 为现有记录填充默认值
         if has_data:
             for record in self.data.values():
-                if column.name not in record:
-                    record[column.name] = fill_value
+                if col_name not in record:
+                    record[col_name] = fill_value
 
         # 如果需要索引，构建索引
         if column.index:
-            self.build_index(column.name)
+            self.build_index(col_name)
 
     def drop_column(self, column_name: str) -> None:
         """
@@ -559,7 +566,7 @@ class Storage:
             raise SchemaError(
                 f"Table '{name}' must have a primary key column. "
                 f"Add primary_key=True to one of your Column definitions. "
-                f"Example: Column('id', int, primary_key=True)",
+                f"Example: Column(int, primary_key=True)",
                 table_name=name
             )
 
@@ -669,7 +676,10 @@ class Storage:
         result = SyncResult(table_name=table_name)
 
         # 构建新列名到列的映射
-        new_columns_map = {col.name: col for col in columns}
+        new_columns_map: Dict[str, Column] = {}
+        for col in columns:
+            assert col.name is not None, "Column name must be set"
+            new_columns_map[col.name] = col
         old_columns_set = set(table.columns.keys())
         new_columns_set = set(new_columns_map.keys())
 

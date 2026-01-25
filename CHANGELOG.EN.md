@@ -11,9 +11,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [0.5.0] - 2026-01-24
+## [0.5.0] - 2026-01-25
 
 ### Added
+
+- **Schema Sync & Migration**
+  - Support automatic schema synchronization when loading existing database on program restart
+  - Added `SyncOptions` configuration class to control sync behavior:
+    - `sync_table_comment`: Whether to sync table comments (default: True)
+    - `sync_column_comments`: Whether to sync column comments (default: True)
+    - `add_new_columns`: Whether to add new columns (default: True)
+    - `drop_missing_columns`: Whether to drop missing columns (default: False, dangerous)
+  - Added `SyncResult` result class to record sync change details
+  - `declarative_base()` now supports `sync_schema` and `sync_options` parameters for automatic sync at model definition
+  - Three-layer API design for different use cases:
+    - **Table layer**: `table.add_column()`, `table.drop_column()`, `table.update_comment()`, etc.
+    - **Storage layer**: `storage.sync_table_schema()`, `storage.add_column()`, `storage.drop_table()`, `storage.rename_table()`, etc.
+    - **Session layer**: `session.sync_schema()`, `session.add_column()`, `session.drop_column()`, etc.
+  - Support for SQLite native SQL mode DDL operations (ALTER TABLE)
+  - Support for pure table-name API (no model class required), convenient for Pytuck-view and other external tools
+  - Added 26 test cases
+  - Example:
+    ```python
+    from pytuck import Storage, declarative_base, SyncOptions, Column
+
+    # Automatic sync mode
+    db = Storage(file_path='existing.db')
+    Base = declarative_base(db, sync_schema=True)
+
+    class User(Base):
+        __tablename__ = 'users'
+        id = Column('id', int, primary_key=True)
+        name = Column('name', str)
+        age = Column('age', int, nullable=True)  # New column, auto synced
+
+    # Manual sync mode
+    from pytuck import Session
+    session = Session(db)
+    result = session.sync_schema(User)
+    if result.has_changes:
+        print(f"Added columns: {result.columns_added}")
+
+    # Storage layer API (for Pytuck-view)
+    db.add_column('users', Column('email', str, nullable=True))
+    db.sync_table_schema('users', columns, comment='User table')
+    ```
 
 - **Excel Row Number Mapping**
   - Added `row_number_mapping` option to use Excel physical row numbers as primary key or map to a field

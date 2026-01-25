@@ -8,9 +8,51 @@ This file documents all notable changes. Format based on [Keep a Changelog](http
 
 ---
 
-## [0.5.0] - 2026-01-24
+## [0.5.0] - 2026-01-25
 
 ### 新增 / Added
+
+- **Schema 同步与迁移功能 / Schema Sync & Migration**
+  - 支持在程序第二次启动加载已有数据库时自动同步表结构
+  - 新增 `SyncOptions` 配置类，控制同步行为：
+    - `sync_table_comment`：是否同步表备注（默认 True）
+    - `sync_column_comments`：是否同步列备注（默认 True）
+    - `add_new_columns`：是否添加新列（默认 True）
+    - `drop_missing_columns`：是否删除缺失的列（默认 False，危险操作）
+  - 新增 `SyncResult` 结果类，记录同步变更详情
+  - `declarative_base()` 新增 `sync_schema` 和 `sync_options` 参数，支持模型定义时自动同步
+  - 三层 API 设计，支持不同使用场景：
+    - **Table 层**：`table.add_column()`, `table.drop_column()`, `table.update_comment()` 等
+    - **Storage 层**：`storage.sync_table_schema()`, `storage.add_column()`, `storage.drop_table()`, `storage.rename_table()` 等
+    - **Session 层**：`session.sync_schema()`, `session.add_column()`, `session.drop_column()` 等
+  - 支持 SQLite 原生 SQL 模式下的 DDL 操作（ALTER TABLE）
+  - 支持纯表名 API（无需模型类），便于 Pytuck-view 等外部工具调用
+  - 新增 26 个测试用例
+  - 示例 / Example：
+    ```python
+    from pytuck import Storage, declarative_base, SyncOptions, Column
+
+    # 自动同步模式
+    db = Storage(file_path='existing.db')
+    Base = declarative_base(db, sync_schema=True)
+
+    class User(Base):
+        __tablename__ = 'users'
+        id = Column('id', int, primary_key=True)
+        name = Column('name', str)
+        age = Column('age', int, nullable=True)  # 新增列，自动同步
+
+    # 手动同步模式
+    from pytuck import Session
+    session = Session(db)
+    result = session.sync_schema(User)
+    if result.has_changes:
+        print(f"Added columns: {result.columns_added}")
+
+    # Storage 层 API（面向 Pytuck-view）
+    db.add_column('users', Column('email', str, nullable=True))
+    db.sync_table_schema('users', columns, comment='用户表')
+    ```
 
 - **Excel 后端行号映射功能 / Excel Row Number Mapping**
   - 新增 `row_number_mapping` 选项，支持将 Excel 物理行号用作主键或映射到指定字段

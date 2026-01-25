@@ -124,6 +124,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     # Automatically registered on class definition
     ```
 
+- **Relationship Enhancement**
+  - Support defining bidirectional relationships using table name strings, no need to assign reverse relationship after class definition
+  - Added Storage-level model registry (`_model_registry`) to map models by table name
+  - Added `uselist` parameter for self-referential relationships to explicitly specify return type:
+    - `uselist=True`: Force return list (one-to-many)
+    - `uselist=False`: Force return single object (many-to-one)
+    - `uselist=None` (default): Auto-detect based on foreign key position
+  - IDE type hint support: Get precise code completion by directly declaring return type
+  - Added comprehensive Relationship tests (one-to-one, many-to-one, many-to-many, self-reference, string reference)
+  - Added `examples/relationship_demo.py` comprehensive example
+  - Example:
+    ```python
+    from typing import List, Optional
+
+    class Order(Base):
+        __tablename__ = 'orders'
+        id = Column('id', int, primary_key=True)
+        user_id = Column('user_id', int)
+        # Define relationship using table name (no need to consider class definition order)
+        user: Optional[User] = Relationship('users', foreign_key='user_id')  # type: ignore
+
+    class User(Base):
+        __tablename__ = 'users'
+        id = Column('id', int, primary_key=True)
+        # Bidirectional relationship, declare return type for IDE hints
+        orders: List[Order] = Relationship('orders', foreign_key='user_id')  # type: ignore
+
+    # Self-reference (tree structure)
+    class Category(Base):
+        __tablename__ = 'categories'
+        id = Column('id', int, primary_key=True)
+        parent_id = Column('parent_id', int, nullable=True)
+        parent: Optional['Category'] = Relationship(  # type: ignore
+            'categories', foreign_key='parent_id', uselist=False
+        )
+        children: List['Category'] = Relationship(  # type: ignore
+            'categories', foreign_key='parent_id', uselist=True
+        )
+    ```
+
 ### Refactored
 
 - **Backend Module Structure Optimization**

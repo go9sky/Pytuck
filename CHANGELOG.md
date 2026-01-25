@@ -123,6 +123,46 @@ This file documents all notable changes. Format based on [Keep a Changelog](http
     # Automatically registered on class definition
     ```
 
+- **Relationship 关联关系优化 / Relationship Enhancement**
+  - 支持使用表名字符串定义双向关联，无需在类定义后手动赋值反向关联
+  - 新增 Storage 级别模型注册表（`_model_registry`），按表名映射模型类
+  - 新增 `uselist` 参数，支持自引用场景显式指定返回类型：
+    - `uselist=True`：强制返回列表（一对多）
+    - `uselist=False`：强制返回单个对象（多对一）
+    - `uselist=None`（默认）：根据外键位置自动判断
+  - 支持 IDE 类型提示：通过直接声明返回类型获得精确的代码补全
+  - 新增全面的 Relationship 测试（一对一、多对一、多对多、自引用、字符串引用）
+  - 新增 `examples/relationship_demo.py` 综合示例
+  - 示例 / Example：
+    ```python
+    from typing import List, Optional
+
+    class Order(Base):
+        __tablename__ = 'orders'
+        id = Column('id', int, primary_key=True)
+        user_id = Column('user_id', int)
+        # 使用表名定义关联（无需考虑类定义顺序）
+        user: Optional[User] = Relationship('users', foreign_key='user_id')  # type: ignore
+
+    class User(Base):
+        __tablename__ = 'users'
+        id = Column('id', int, primary_key=True)
+        # 双向关联，直接声明返回类型获得 IDE 提示
+        orders: List[Order] = Relationship('orders', foreign_key='user_id')  # type: ignore
+
+    # 自引用（树形结构）
+    class Category(Base):
+        __tablename__ = 'categories'
+        id = Column('id', int, primary_key=True)
+        parent_id = Column('parent_id', int, nullable=True)
+        parent: Optional['Category'] = Relationship(  # type: ignore
+            'categories', foreign_key='parent_id', uselist=False
+        )
+        children: List['Category'] = Relationship(  # type: ignore
+            'categories', foreign_key='parent_id', uselist=True
+        )
+    ```
+
 ### 重构 / Refactored
 
 - **后端模块结构优化 / Backend Module Structure**

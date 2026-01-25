@@ -41,9 +41,9 @@ if TYPE_CHECKING:
 
     class User(Base):  # type: ignore[valid-type,misc]
         __tablename__ = 'users'
-        id = Column('id', int, primary_key=True)
-        name = Column('name', str)
-        age = Column('age', int)
+        id = Column(int, primary_key=True)
+        name = Column(str)
+        age = Column(int)
 
     # Statement 工厂函数应返回泛型类型
     select_stmt: Select[User] = select(User)

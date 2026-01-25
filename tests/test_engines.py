@@ -53,12 +53,12 @@ class BaseEngineTest(unittest.TestCase):
 
         class Student(Base):
             __tablename__ = 'students'
-            id = Column('id', int, primary_key=True)
-            name = Column('name', str, nullable=False, index=True)
-            age = Column('age', int)
-            email = Column('email', str, nullable=True)
-            active = Column('active', bool)
-            avatar = Column('avatar', bytes, nullable=True)
+            id = Column(int, primary_key=True)
+            name = Column(str, nullable=False, index=True)
+            age = Column(int)
+            email = Column(str, nullable=True)
+            active = Column(bool)
+            avatar = Column(bytes, nullable=True)
 
         self.Student = Student
         self.session = Session(self.db)
@@ -157,12 +157,12 @@ class BaseEngineTest(unittest.TestCase):
 
         class Student2(Base2):
             __tablename__ = 'students'
-            id = Column('id', int, primary_key=True)
-            name = Column('name', str, nullable=False, index=True)
-            age = Column('age', int)
-            email = Column('email', str, nullable=True)
-            active = Column('active', bool)
-            avatar = Column('avatar', bytes, nullable=True)
+            id = Column(int, primary_key=True)
+            name = Column(str, nullable=False, index=True)
+            age = Column(int)
+            email = Column(str, nullable=True)
+            active = Column(bool)
+            avatar = Column(bytes, nullable=True)
 
         session2 = Session(db2)
 

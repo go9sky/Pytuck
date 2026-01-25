@@ -120,10 +120,10 @@ class TestRowNumberAsPrimaryKey:
 
         class Person(Base):
             __tablename__ = 'Sheet1'
-            id = Column('id', int, primary_key=True)
-            name = Column('name', str)
-            age = Column('age', str)  # 外部 Excel 默认都是 str
-            city = Column('city', str)
+            id = Column(int, primary_key=True)
+            name = Column(str)
+            age = Column(str)  # 外部 Excel 默认都是 str
+            city = Column(str)
 
         session = Session(db)
 
@@ -256,8 +256,8 @@ class TestPytuckExcelWithMapping:
 
         class User(Base1):
             __tablename__ = 'users'
-            id = Column('id', int, primary_key=True)
-            name = Column('name', str)
+            id = Column(int, primary_key=True)
+            name = Column(str)
 
         session1 = Session(db1)
         session1.execute(insert(User).values(name='Alice'))
@@ -290,8 +290,8 @@ class TestPytuckExcelWithMapping:
 
         class User(Base1):
             __tablename__ = 'users'
-            id = Column('id', int, primary_key=True)
-            name = Column('name', str)
+            id = Column(int, primary_key=True)
+            name = Column(str)
 
         session1 = Session(db1)
         session1.execute(insert(User).values(name='Alice'))
@@ -340,11 +340,11 @@ class TestPersistRowNumber:
 
         class Person(Base):
             __tablename__ = 'Sheet1'
-            id = Column('id', int, primary_key=True)
-            name = Column('name', str)
-            age = Column('age', str)
-            city = Column('city', str)
-            row_num = Column('row_num', int)
+            id = Column(int, primary_key=True)
+            name = Column(str)
+            age = Column(str)
+            city = Column(str)
+            row_num = Column(int)
 
         session = Session(db)
         session.execute(insert(Person).values(name='Dave', age='40', city='Shenzhen'))

@@ -30,9 +30,9 @@ class TestTransactionCommit(unittest.TestCase):
 
         class User(Base):
             __tablename__ = 'users'
-            id = Column('id', int, primary_key=True)
-            name = Column('name', str)
-            balance = Column('balance', int)
+            id = Column(int, primary_key=True)
+            name = Column(str)
+            balance = Column(int)
 
         self.User = User
         self.session = Session(self.db)
@@ -93,15 +93,15 @@ class TestTransactionRollback(unittest.TestCase):
 
         class User(Base):
             __tablename__ = 'users'
-            id = Column('id', int, primary_key=True)
-            name = Column('name', str)
-            balance = Column('balance', int)
+            id = Column(int, primary_key=True)
+            name = Column(str)
+            balance = Column(int)
 
         class Order(Base):
             __tablename__ = 'orders'
-            id = Column('id', int, primary_key=True)
-            user_id = Column('user_id', int)
-            amount = Column('amount', int)
+            id = Column(int, primary_key=True)
+            user_id = Column(int)
+            amount = Column(int)
 
         self.User = User
         self.Order = Order
@@ -207,8 +207,8 @@ class TestTransactionNesting(unittest.TestCase):
 
         class User(Base):
             __tablename__ = 'users'
-            id = Column('id', int, primary_key=True)
-            name = Column('name', str)
+            id = Column(int, primary_key=True)
+            name = Column(str)
 
         self.User = User
         self.session = Session(self.db)
@@ -241,8 +241,8 @@ class TestSessionContextManager(unittest.TestCase):
 
         class User(self.Base):
             __tablename__ = 'users'
-            id = Column('id', int, primary_key=True)
-            name = Column('name', str)
+            id = Column(int, primary_key=True)
+            name = Column(str)
 
         self.User = User
 
@@ -292,16 +292,16 @@ class TestTransactionComplex(unittest.TestCase):
 
         class Account(Base):
             __tablename__ = 'accounts'
-            id = Column('id', int, primary_key=True)
-            name = Column('name', str)
-            balance = Column('balance', int)
+            id = Column(int, primary_key=True)
+            name = Column(str)
+            balance = Column(int)
 
         class Transaction(Base):
             __tablename__ = 'transactions'
-            id = Column('id', int, primary_key=True)
-            from_account = Column('from_account', int)
-            to_account = Column('to_account', int)
-            amount = Column('amount', int)
+            id = Column(int, primary_key=True)
+            from_account = Column(int)
+            to_account = Column(int)
+            amount = Column(int)
 
         self.Account = Account
         self.Transaction = Transaction

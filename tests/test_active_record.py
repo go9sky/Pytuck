@@ -29,10 +29,10 @@ class TestActiveRecordBasic(unittest.TestCase):
 
         class User(Base):
             __tablename__ = 'users'
-            id = Column('id', int, primary_key=True)
-            name = Column('name', str, nullable=False)
-            age = Column('age', int)
-            email = Column('email', str, nullable=True)
+            id = Column(int, primary_key=True)
+            name = Column(str, nullable=False)
+            age = Column(int)
+            email = Column(str, nullable=True)
 
         self.User = User
 
@@ -112,10 +112,10 @@ class TestActiveRecordQuery(unittest.TestCase):
 
         class User(Base):
             __tablename__ = 'users'
-            id = Column('id', int, primary_key=True)
-            name = Column('name', str, nullable=False)
-            age = Column('age', int)
-            active = Column('active', bool)
+            id = Column(int, primary_key=True)
+            name = Column(str, nullable=False)
+            age = Column(int)
+            active = Column(bool)
 
         self.User = User
 
@@ -233,9 +233,9 @@ class TestActiveRecordComparison(unittest.TestCase):
 
         class User(Base):
             __tablename__ = 'users'
-            id = Column('id', int, primary_key=True)
-            name = Column('name', str)
-            age = Column('age', int)
+            id = Column(int, primary_key=True)
+            name = Column(str)
+            age = Column(int)
 
         self.User = User
 
@@ -300,10 +300,10 @@ class TestActiveRecordToDict(unittest.TestCase):
 
         class User(Base):
             __tablename__ = 'users'
-            id = Column('id', int, primary_key=True)
-            name = Column('name', str)
-            age = Column('age', int)
-            email = Column('email', str, nullable=True)
+            id = Column(int, primary_key=True)
+            name = Column(str)
+            age = Column(int)
+            email = Column(str, nullable=True)
 
         self.User = User
 

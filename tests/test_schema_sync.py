@@ -75,8 +75,8 @@ class TestTableLayerMethods:
 
             class User(Base):
                 __tablename__ = 'users'
-                id = Column('id', int, primary_key=True)
-                name = Column('name', str)
+                id = Column(int, primary_key=True)
+                name = Column(str)
 
             # 插入数据
             session = Session(db)
@@ -86,7 +86,7 @@ class TestTableLayerMethods:
 
             # 添加新列
             table = db.get_table('users')
-            new_col = Column('age', int, nullable=True)
+            new_col = Column(int, nullable=True, name='age')
             table.add_column(new_col)
 
             # 验证列已添加
@@ -107,8 +107,8 @@ class TestTableLayerMethods:
 
             class User(Base):
                 __tablename__ = 'users'
-                id = Column('id', int, primary_key=True)
-                name = Column('name', str)
+                id = Column(int, primary_key=True)
+                name = Column(str)
 
             # 插入数据
             session = Session(db)
@@ -118,7 +118,7 @@ class TestTableLayerMethods:
 
             # 添加带默认值的列
             table = db.get_table('users')
-            new_col = Column('status', str, nullable=False, default='active')
+            new_col = Column(str, nullable=False, default='active', name='status')
             table.add_column(new_col, default_value='active')
 
             # 验证现有记录的新列值为默认值
@@ -136,8 +136,8 @@ class TestTableLayerMethods:
 
             class User(Base):
                 __tablename__ = 'users'
-                id = Column('id', int, primary_key=True)
-                name = Column('name', str)
+                id = Column(int, primary_key=True)
+                name = Column(str)
 
             # 插入数据
             session = Session(db)
@@ -147,7 +147,7 @@ class TestTableLayerMethods:
 
             # 尝试添加非空列无默认值
             table = db.get_table('users')
-            new_col = Column('age', int, nullable=False)
+            new_col = Column(int, nullable=False, name='age')
 
             with pytest.raises(SchemaError):
                 table.add_column(new_col)
@@ -163,9 +163,9 @@ class TestTableLayerMethods:
 
             class User(Base):
                 __tablename__ = 'users'
-                id = Column('id', int, primary_key=True)
-                name = Column('name', str)
-                age = Column('age', int, nullable=True)
+                id = Column(int, primary_key=True)
+                name = Column(str)
+                age = Column(int, nullable=True)
 
             # 插入数据
             session = Session(db)
@@ -195,8 +195,8 @@ class TestTableLayerMethods:
 
             class User(Base):
                 __tablename__ = 'users'
-                id = Column('id', int, primary_key=True)
-                name = Column('name', str)
+                id = Column(int, primary_key=True)
+                name = Column(str)
 
             table = db.get_table('users')
 
@@ -214,8 +214,8 @@ class TestTableLayerMethods:
 
             class User(Base):
                 __tablename__ = 'users'
-                id = Column('id', int, primary_key=True)
-                name = Column('name', str)
+                id = Column(int, primary_key=True)
+                name = Column(str)
 
             table = db.get_table('users')
             table.update_comment('用户信息表')
@@ -233,8 +233,8 @@ class TestTableLayerMethods:
 
             class User(Base):
                 __tablename__ = 'users'
-                id = Column('id', int, primary_key=True)
-                name = Column('name', str)
+                id = Column(int, primary_key=True)
+                name = Column(str)
 
             table = db.get_table('users')
             table.update_column_comment('name', '用户名')
@@ -256,8 +256,8 @@ class TestStorageLayerMethods:
 
             class User(Base):
                 __tablename__ = 'users'
-                id = Column('id', int, primary_key=True)
-                name = Column('name', str)
+                id = Column(int, primary_key=True)
+                name = Column(str)
 
             # 插入数据
             session = Session(db)
@@ -267,10 +267,10 @@ class TestStorageLayerMethods:
 
             # 模拟第二次启动，模型增加了新列
             new_columns = [
-                Column('id', int, primary_key=True),
-                Column('name', str),
-                Column('age', int, nullable=True),
-                Column('email', str, nullable=True)
+                Column(int, primary_key=True, name='id'),
+                Column(str, name='name'),
+                Column(int, nullable=True, name='age'),
+                Column(str, nullable=True, name='email')
             ]
 
             result = db.sync_table_schema('users', new_columns, '用户表')
@@ -297,13 +297,13 @@ class TestStorageLayerMethods:
             class User(Base):
                 __tablename__ = 'users'
                 __table_comment__ = '旧备注'
-                id = Column('id', int, primary_key=True)
-                name = Column('name', str, comment='旧名称备注')
+                id = Column(int, primary_key=True)
+                name = Column(str, comment='旧名称备注')
 
             # 同步更新备注
             new_columns = [
-                Column('id', int, primary_key=True),
-                Column('name', str, comment='新名称备注')
+                Column(int, primary_key=True, name='id'),
+                Column(str, comment='新名称备注', name='name')
             ]
 
             result = db.sync_table_schema('users', new_columns, '新表备注')
@@ -326,9 +326,9 @@ class TestStorageLayerMethods:
 
             class User(Base):
                 __tablename__ = 'users'
-                id = Column('id', int, primary_key=True)
-                name = Column('name', str)
-                age = Column('age', int, nullable=True)
+                id = Column(int, primary_key=True)
+                name = Column(str)
+                age = Column(int, nullable=True)
 
             # 插入数据
             session = Session(db)
@@ -338,8 +338,8 @@ class TestStorageLayerMethods:
 
             # 新模型没有 age 列
             new_columns = [
-                Column('id', int, primary_key=True),
-                Column('name', str)
+                Column(int, primary_key=True, name='id'),
+                Column(str, name='name')
             ]
 
             # 默认不删除
@@ -365,8 +365,8 @@ class TestStorageLayerMethods:
 
             class User(Base):
                 __tablename__ = 'users'
-                id = Column('id', int, primary_key=True)
-                name = Column('name', str)
+                id = Column(int, primary_key=True)
+                name = Column(str)
 
             assert 'users' in db.tables
 
@@ -385,8 +385,8 @@ class TestStorageLayerMethods:
 
             class User(Base):
                 __tablename__ = 'users'
-                id = Column('id', int, primary_key=True)
-                name = Column('name', str)
+                id = Column(int, primary_key=True)
+                name = Column(str)
 
             # 插入数据
             session = Session(db)
@@ -420,8 +420,8 @@ class TestSessionLayerMethods:
             class User(Base):
                 __tablename__ = 'users'
                 __table_comment__ = '用户表'
-                id = Column('id', int, primary_key=True)
-                name = Column('name', str, comment='用户名')
+                id = Column(int, primary_key=True)
+                name = Column(str, comment='用户名')
 
             session = Session(db)
             result = session.sync_schema(User)
@@ -440,19 +440,19 @@ class TestSessionLayerMethods:
 
             class User(Base):
                 __tablename__ = 'users'
-                id = Column('id', int, primary_key=True)
-                name = Column('name', str)
+                id = Column(int, primary_key=True)
+                name = Column(str)
 
             session = Session(db)
 
             # 通过模型类添加列
-            session.add_column(User, Column('age', int, nullable=True))
+            session.add_column(User, Column(int, nullable=True, name='age'))
 
             table = db.get_table('users')
             assert 'age' in table.columns
 
             # 通过表名添加列
-            session.add_column('users', Column('email', str, nullable=True))
+            session.add_column('users', Column(str, nullable=True, name='email'))
             assert 'email' in table.columns
 
             db.close()
@@ -466,9 +466,9 @@ class TestSessionLayerMethods:
 
             class User(Base):
                 __tablename__ = 'users'
-                id = Column('id', int, primary_key=True)
-                name = Column('name', str)
-                age = Column('age', int, nullable=True)
+                id = Column(int, primary_key=True)
+                name = Column(str)
+                age = Column(int, nullable=True)
 
             session = Session(db)
             session.drop_column(User, 'age')
@@ -493,8 +493,8 @@ class TestDeclarativeBaseSyncSchema:
 
             class UserV1(Base):
                 __tablename__ = 'users'
-                id = Column('id', int, primary_key=True)
-                name = Column('name', str)
+                id = Column(int, primary_key=True)
+                name = Column(str)
 
             session = Session(db)
             from pytuck import insert
@@ -509,9 +509,9 @@ class TestDeclarativeBaseSyncSchema:
             class UserV2(Base2):
                 __tablename__ = 'users'
                 __table_comment__ = '用户表'
-                id = Column('id', int, primary_key=True)
-                name = Column('name', str, comment='用户名')
-                age = Column('age', int, nullable=True, comment='年龄')
+                id = Column(int, primary_key=True)
+                name = Column(str, comment='用户名')
+                age = Column(int, nullable=True, comment='年龄')
 
             # 验证新列已添加
             table = db2.get_table('users')
@@ -537,8 +537,8 @@ class TestDeclarativeBaseSyncSchema:
 
             class UserV1(Base):
                 __tablename__ = 'users'
-                id = Column('id', int, primary_key=True)
-                name = Column('name', str, comment='原始备注')
+                id = Column(int, primary_key=True)
+                name = Column(str, comment='原始备注')
 
             db.close()
 
@@ -549,8 +549,8 @@ class TestDeclarativeBaseSyncSchema:
 
             class UserV2(Base2):
                 __tablename__ = 'users'
-                id = Column('id', int, primary_key=True)
-                name = Column('name', str, comment='新备注')
+                id = Column(int, primary_key=True)
+                name = Column(str, comment='新备注')
 
             # 验证备注未更新
             table = db2.get_table('users')
@@ -569,8 +569,8 @@ class TestDeclarativeBaseSyncSchema:
 
             class UserV1(Base):
                 __tablename__ = 'users'
-                id = Column('id', int, primary_key=True)
-                name = Column('name', str)
+                id = Column(int, primary_key=True)
+                name = Column(str)
 
             UserV1.create(name='Alice')
             db.close()
@@ -581,9 +581,9 @@ class TestDeclarativeBaseSyncSchema:
 
             class UserV2(Base2):
                 __tablename__ = 'users'
-                id = Column('id', int, primary_key=True)
-                name = Column('name', str)
-                email = Column('email', str, nullable=True)
+                id = Column(int, primary_key=True)
+                name = Column(str)
+                email = Column(str, nullable=True)
 
             # 验证新列已添加
             table = db2.get_table('users')
@@ -609,11 +609,11 @@ class TestPytuckViewAPI:
 
             class User(Base):
                 __tablename__ = 'users'
-                id = Column('id', int, primary_key=True)
-                name = Column('name', str)
+                id = Column(int, primary_key=True)
+                name = Column(str)
 
             # Pytuck-view 调用方式（无需模型类）
-            db.add_column('users', Column('age', int, nullable=True))
+            db.add_column('users', Column(int, nullable=True, name='age'))
 
             table = db.get_table('users')
             assert 'age' in table.columns
@@ -629,8 +629,8 @@ class TestPytuckViewAPI:
 
             class User(Base):
                 __tablename__ = 'users'
-                id = Column('id', int, primary_key=True)
-                name = Column('name', str)
+                id = Column(int, primary_key=True)
+                name = Column(str)
 
             # 插入数据
             session = Session(db)
@@ -640,9 +640,9 @@ class TestPytuckViewAPI:
 
             # Pytuck-view 调用方式（提供列定义）
             new_columns = [
-                Column('id', int, primary_key=True),
-                Column('name', str, comment='用户名'),
-                Column('age', int, nullable=True)
+                Column(int, primary_key=True, name='id'),
+                Column(str, comment='用户名', name='name'),
+                Column(int, nullable=True, name='age')
             ]
             result = db.sync_table_schema('users', new_columns, comment='用户信息表')
 
@@ -660,8 +660,8 @@ class TestPytuckViewAPI:
 
             class User(Base):
                 __tablename__ = 'users'
-                id = Column('id', int, primary_key=True)
-                name = Column('name', str)
+                id = Column(int, primary_key=True)
+                name = Column(str)
 
             # 更新列备注
             db.update_column('users', 'name', comment='用户名')

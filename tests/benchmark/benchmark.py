@@ -248,12 +248,12 @@ class EngineBenchmark:
         class BenchmarkUser(Base):
             __tablename__ = 'benchmark_users'
 
-            id = Column('id', int, primary_key=True)
-            name = Column('name', str, nullable=False, index=True)
-            email = Column('email', str, nullable=True)
-            age = Column('age', int, nullable=True)
-            score = Column('score', float, nullable=True)
-            active = Column('active', bool, nullable=True)
+            id = Column(int, primary_key=True)
+            name = Column(str, nullable=False, index=True)
+            email = Column(str, nullable=True)
+            age = Column(int, nullable=True)
+            score = Column(float, nullable=True)
+            active = Column(bool, nullable=True)
 
         session = Session(db)
         return db, session, BenchmarkUser
@@ -391,12 +391,12 @@ class EngineBenchmark:
 
         class BenchmarkUser(Base):
             __tablename__ = 'benchmark_users'
-            id = Column('id', int, primary_key=True)
-            name = Column('name', str, nullable=False, index=True)
-            email = Column('email', str, nullable=True)
-            age = Column('age', int, nullable=True)
-            score = Column('score', float, nullable=True)
-            active = Column('active', bool, nullable=True)
+            id = Column(int, primary_key=True)
+            name = Column(str, nullable=False, index=True)
+            email = Column(str, nullable=True)
+            age = Column(int, nullable=True)
+            score = Column(float, nullable=True)
+            active = Column(bool, nullable=True)
 
         session = Session(db)
 

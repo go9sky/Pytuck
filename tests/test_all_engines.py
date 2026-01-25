@@ -85,12 +85,12 @@ class TestAllEngines:
 
         class Student(Base):
             __tablename__ = 'students'
-            id = Column('id', int, primary_key=True)
-            name = Column('name', str, nullable=False, index=True)
-            age = Column('age', int)
-            email = Column('email', str, nullable=True)
-            active = Column('active', bool)
-            avatar = Column('avatar', bytes, nullable=True)
+            id = Column(int, primary_key=True)
+            name = Column(str, nullable=False, index=True)
+            age = Column(int)
+            email = Column(str, nullable=True)
+            active = Column(bool)
+            avatar = Column(bytes, nullable=True)
 
         session = Session(db)
 
@@ -170,12 +170,12 @@ class TestAllEngines:
 
         class Student2(Base2):
             __tablename__ = 'students'
-            id = Column('id', int, primary_key=True)
-            name = Column('name', str, nullable=False, index=True)
-            age = Column('age', int)
-            email = Column('email', str, nullable=True)
-            active = Column('active', bool)
-            avatar = Column('avatar', bytes, nullable=True)
+            id = Column(int, primary_key=True)
+            name = Column(str, nullable=False, index=True)
+            age = Column(int)
+            email = Column(str, nullable=True)
+            active = Column(bool)
+            avatar = Column(bytes, nullable=True)
 
         session2 = Session(db2)
 
@@ -227,10 +227,10 @@ class TestAllEngines:
 
         class NullTest(Base):
             __tablename__ = 'null_test'
-            id = Column('id', int, primary_key=True)
-            str_field = Column('str_field', str, nullable=True)
-            int_field = Column('int_field', int, nullable=True)
-            bytes_field = Column('bytes_field', bytes, nullable=True)
+            id = Column(int, primary_key=True)
+            str_field = Column(str, nullable=True)
+            int_field = Column(int, nullable=True)
+            bytes_field = Column(bytes, nullable=True)
 
         session = Session(db)
 
@@ -277,9 +277,9 @@ class TestAllEngines:
 
         class IndexTest(Base):
             __tablename__ = 'index_test'
-            id = Column('id', int, primary_key=True)
-            indexed_name = Column('indexed_name', str, index=True)
-            non_indexed_value = Column('non_indexed_value', str)
+            id = Column(int, primary_key=True)
+            indexed_name = Column(str, index=True)
+            non_indexed_value = Column(str)
 
         session = Session(db)
 
@@ -328,13 +328,13 @@ class TestAllEngines:
 
         class Task(Base):
             __tablename__ = 'tasks'
-            id = Column('id', int, primary_key=True)
-            title = Column('title', str)
-            created_at = Column('created_at', datetime, nullable=True)
-            due_date = Column('due_date', date, nullable=True)
-            duration = Column('duration', timedelta, nullable=True)
-            tags = Column('tags', list, nullable=True)
-            options = Column('options', dict, nullable=True)
+            id = Column(int, primary_key=True)
+            title = Column(str)
+            created_at = Column(datetime, nullable=True)
+            due_date = Column(date, nullable=True)
+            duration = Column(timedelta, nullable=True)
+            tags = Column(list, nullable=True)
+            options = Column(dict, nullable=True)
 
         session = Session(db)
 
@@ -381,13 +381,13 @@ class TestAllEngines:
 
         class Task2(Base2):
             __tablename__ = 'tasks'
-            id = Column('id', int, primary_key=True)
-            title = Column('title', str)
-            created_at = Column('created_at', datetime, nullable=True)
-            due_date = Column('due_date', date, nullable=True)
-            duration = Column('duration', timedelta, nullable=True)
-            tags = Column('tags', list, nullable=True)
-            options = Column('options', dict, nullable=True)
+            id = Column(int, primary_key=True)
+            title = Column(str)
+            created_at = Column(datetime, nullable=True)
+            due_date = Column(date, nullable=True)
+            duration = Column(timedelta, nullable=True)
+            tags = Column(list, nullable=True)
+            options = Column(dict, nullable=True)
 
         session2 = Session(db2)
 

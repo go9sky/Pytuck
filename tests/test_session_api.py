@@ -35,10 +35,10 @@ class TestSessionAPI(unittest.TestCase):
 
         class User(self.Base):
             __tablename__ = 'users'
-            id = Column('id', int, primary_key=True)
-            name = Column('name', str, nullable=False)
-            age = Column('age', int)
-            email = Column('email', str, nullable=True)
+            id = Column(int, primary_key=True)
+            name = Column(str, nullable=False)
+            age = Column(int)
+            email = Column(str, nullable=True)
 
         self.User = User
         self.session = Session(self.db)
@@ -287,9 +287,9 @@ class TestResultFormats(unittest.TestCase):
 
         class User(Base):
             __tablename__ = 'users'
-            id = Column('id', int, primary_key=True)
-            name = Column('name', str)
-            age = Column('age', int)
+            id = Column(int, primary_key=True)
+            name = Column(str)
+            age = Column(int)
 
         self.User = User
         self.session = Session(self.db)
@@ -372,15 +372,15 @@ class TestRelations(unittest.TestCase):
 
         class Class(Base):
             __tablename__ = 'classes'
-            id = Column('id', int, primary_key=True)
-            name = Column('name', str, nullable=False)
+            id = Column(int, primary_key=True)
+            name = Column(str, nullable=False)
 
         class Student(Base):
             __tablename__ = 'students'
-            id = Column('id', int, primary_key=True)
-            name = Column('name', str, nullable=False)
-            age = Column('age', int)
-            class_id = Column('class_id', int, foreign_key=('classes', 'id'))
+            id = Column(int, primary_key=True)
+            name = Column(str, nullable=False)
+            age = Column(int)
+            class_id = Column(int, foreign_key=('classes', 'id'))
 
         self.Class = Class
         self.Student = Student

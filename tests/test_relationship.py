@@ -33,14 +33,14 @@ class TestRelationshipBasic(unittest.TestCase):
         # 先定义 Order 类（前向引用）
         class Order(Base):
             __tablename__ = 'orders'
-            id = Column('id', int, primary_key=True)
-            user_id = Column('user_id', int)
-            amount = Column('amount', float)
+            id = Column(int, primary_key=True)
+            user_id = Column(int)
+            amount = Column(float)
 
         class User(Base):
             __tablename__ = 'users'
-            id = Column('id', int, primary_key=True)
-            name = Column('name', str)
+            id = Column(int, primary_key=True)
+            name = Column(str)
             # 一对多：一个用户有多个订单（使用类而不是字符串）
             orders = Relationship(Order, foreign_key='user_id')
 
@@ -102,14 +102,14 @@ class TestRelationshipAfterClose(unittest.TestCase):
 
         class Order(Base):
             __tablename__ = 'orders'
-            id = Column('id', int, primary_key=True)
-            user_id = Column('user_id', int)
-            amount = Column('amount', float)
+            id = Column(int, primary_key=True)
+            user_id = Column(int)
+            amount = Column(float)
 
         class User(Base):
             __tablename__ = 'users'
-            id = Column('id', int, primary_key=True)
-            name = Column('name', str)
+            id = Column(int, primary_key=True)
+            name = Column(str)
             orders = Relationship(Order, foreign_key='user_id')
 
         # 插入数据
@@ -139,14 +139,14 @@ class TestRelationshipAfterClose(unittest.TestCase):
 
         class Order(Base):
             __tablename__ = 'orders'
-            id = Column('id', int, primary_key=True)
-            user_id = Column('user_id', int)
-            amount = Column('amount', float)
+            id = Column(int, primary_key=True)
+            user_id = Column(int)
+            amount = Column(float)
 
         class User(Base):
             __tablename__ = 'users'
-            id = Column('id', int, primary_key=True)
-            name = Column('name', str)
+            id = Column(int, primary_key=True)
+            name = Column(str)
             orders = Relationship(Order, foreign_key='user_id')
 
         # 插入数据
@@ -172,14 +172,14 @@ class TestRelationshipAfterClose(unittest.TestCase):
 
         class Order(Base):
             __tablename__ = 'orders'
-            id = Column('id', int, primary_key=True)
-            user_id = Column('user_id', int)
-            amount = Column('amount', float)
+            id = Column(int, primary_key=True)
+            user_id = Column(int)
+            amount = Column(float)
 
         class User(Base):
             __tablename__ = 'users'
-            id = Column('id', int, primary_key=True)
-            name = Column('name', str)
+            id = Column(int, primary_key=True)
+            name = Column(str)
             orders = Relationship(Order, foreign_key='user_id')
 
         Order.user = Relationship(User, foreign_key='user_id')
@@ -217,14 +217,14 @@ class TestRelationshipCache(unittest.TestCase):
 
         class Order(Base):
             __tablename__ = 'orders'
-            id = Column('id', int, primary_key=True)
-            user_id = Column('user_id', int)
-            amount = Column('amount', float)
+            id = Column(int, primary_key=True)
+            user_id = Column(int)
+            amount = Column(float)
 
         class User(Base):
             __tablename__ = 'users'
-            id = Column('id', int, primary_key=True)
-            name = Column('name', str)
+            id = Column(int, primary_key=True)
+            name = Column(str)
             orders = Relationship(Order, foreign_key='user_id')
 
         self.User = User
@@ -273,14 +273,14 @@ class TestRelationshipNullForeignKey(unittest.TestCase):
 
         class User(Base):
             __tablename__ = 'users'
-            id = Column('id', int, primary_key=True)
-            name = Column('name', str)
+            id = Column(int, primary_key=True)
+            name = Column(str)
 
         class Order(Base):
             __tablename__ = 'orders'
-            id = Column('id', int, primary_key=True)
-            user_id = Column('user_id', int, nullable=True)
-            amount = Column('amount', float)
+            id = Column(int, primary_key=True)
+            user_id = Column(int, nullable=True)
+            amount = Column(float)
             user = Relationship(User, foreign_key='user_id')
 
         self.User = User
@@ -312,14 +312,14 @@ class TestRelationshipBidirectional(unittest.TestCase):
 
         class Order(Base):
             __tablename__ = 'orders'
-            id = Column('id', int, primary_key=True)
-            user_id = Column('user_id', int)
-            amount = Column('amount', float)
+            id = Column(int, primary_key=True)
+            user_id = Column(int)
+            amount = Column(float)
 
         class User(Base):
             __tablename__ = 'users'
-            id = Column('id', int, primary_key=True)
-            name = Column('name', str)
+            id = Column(int, primary_key=True)
+            name = Column(str)
             orders = Relationship(Order, foreign_key='user_id', back_populates='user')
 
         Order.user = Relationship(User, foreign_key='user_id', back_populates='orders')
@@ -359,16 +359,16 @@ class TestRelationshipStringReference(unittest.TestCase):
         # 使用字符串（表名）定义双向关联 - 无需在类外赋值
         class Order(Base):
             __tablename__ = 'orders'
-            id = Column('id', int, primary_key=True)
-            user_id = Column('user_id', int)
-            amount = Column('amount', float)
+            id = Column(int, primary_key=True)
+            user_id = Column(int)
+            amount = Column(float)
             # 使用表名引用 User 模型
             user = Relationship('users', foreign_key='user_id')
 
         class User(Base):
             __tablename__ = 'users'
-            id = Column('id', int, primary_key=True)
-            name = Column('name', str)
+            id = Column(int, primary_key=True)
+            name = Column(str)
             # 使用表名引用 Order 模型
             orders = Relationship('orders', foreign_key='user_id', back_populates='user')
 
@@ -425,16 +425,16 @@ class TestRelationshipOneToOne(unittest.TestCase):
         # 一对一：用户 - 用户资料
         class UserProfile(Base):
             __tablename__ = 'user_profiles'
-            id = Column('id', int, primary_key=True)
-            user_id = Column('user_id', int)
-            bio = Column('bio', str)
+            id = Column(int, primary_key=True)
+            user_id = Column(int)
+            bio = Column(str)
             # 多对一：资料 → 用户
             user = Relationship('users', foreign_key='user_id')
 
         class User(Base):
             __tablename__ = 'users'
-            id = Column('id', int, primary_key=True)
-            name = Column('name', str)
+            id = Column(int, primary_key=True)
+            name = Column(str)
             # 一对一：用户 → 资料（实际是一对多，但只取第一个）
             profiles = Relationship('user_profiles', foreign_key='user_id')
 
@@ -472,23 +472,23 @@ class TestRelationshipManyToMany(unittest.TestCase):
         # 多对多：学生 - 课程（通过中间表 enrollments）
         class Enrollment(Base):
             __tablename__ = 'enrollments'
-            id = Column('id', int, primary_key=True)
-            student_id = Column('student_id', int)
-            course_id = Column('course_id', int)
+            id = Column(int, primary_key=True)
+            student_id = Column(int)
+            course_id = Column(int)
             # 关联
             student = Relationship('students', foreign_key='student_id')
             course = Relationship('courses', foreign_key='course_id')
 
         class Student(Base):
             __tablename__ = 'students'
-            id = Column('id', int, primary_key=True)
-            name = Column('name', str)
+            id = Column(int, primary_key=True)
+            name = Column(str)
             enrollments = Relationship('enrollments', foreign_key='student_id')
 
         class Course(Base):
             __tablename__ = 'courses'
-            id = Column('id', int, primary_key=True)
-            title = Column('title', str)
+            id = Column(int, primary_key=True)
+            title = Column(str)
             enrollments = Relationship('enrollments', foreign_key='course_id')
 
         self.Student = Student
@@ -544,9 +544,9 @@ class TestRelationshipSelfReference(unittest.TestCase):
         # 自引用：分类树（parent_id 指向自己）
         class Category(Base):
             __tablename__ = 'categories'
-            id = Column('id', int, primary_key=True)
-            name = Column('name', str)
-            parent_id = Column('parent_id', int, nullable=True)
+            id = Column(int, primary_key=True)
+            name = Column(str)
+            parent_id = Column(int, nullable=True)
             # 自引用关系 - 需要用 uselist 明确指定
             parent = Relationship('categories', foreign_key='parent_id', uselist=False)
             children = Relationship('categories', foreign_key='parent_id', uselist=True)
@@ -603,14 +603,14 @@ class TestRelationshipMixedDefinition(unittest.TestCase):
         # 先定义 Order（使用类引用），User 使用字符串引用
         class Order(Base):
             __tablename__ = 'orders'
-            id = Column('id', int, primary_key=True)
-            user_id = Column('user_id', int)
-            amount = Column('amount', float)
+            id = Column(int, primary_key=True)
+            user_id = Column(int)
+            amount = Column(float)
 
         class User(Base):
             __tablename__ = 'users'
-            id = Column('id', int, primary_key=True)
-            name = Column('name', str)
+            id = Column(int, primary_key=True)
+            name = Column(str)
             # 使用类引用（Order 已定义）
             orders = Relationship(Order, foreign_key='user_id')
 

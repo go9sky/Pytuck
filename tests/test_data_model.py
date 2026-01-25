@@ -30,9 +30,9 @@ class TestSessionCloseAccess(unittest.TestCase):
 
         class User(Base):
             __tablename__ = 'users'
-            id = Column('id', int, primary_key=True)
-            name = Column('name', str)
-            age = Column('age', int)
+            id = Column(int, primary_key=True)
+            name = Column(str)
+            age = Column(int)
 
         self.User = User
         self.session = Session(self.db)
@@ -109,9 +109,9 @@ class TestStorageCloseAccess(unittest.TestCase):
 
         class User(Base):
             __tablename__ = 'users'
-            id = Column('id', int, primary_key=True)
-            name = Column('name', str)
-            age = Column('age', int)
+            id = Column(int, primary_key=True)
+            name = Column(str)
+            age = Column(int)
 
         session = Session(db)
 
@@ -148,10 +148,10 @@ class TestModelSerialization(unittest.TestCase):
 
         class User(Base):
             __tablename__ = 'users'
-            id = Column('id', int, primary_key=True)
-            name = Column('name', str)
-            age = Column('age', int)
-            email = Column('email', str, nullable=True)
+            id = Column(int, primary_key=True)
+            name = Column(str)
+            age = Column(int)
+            email = Column(str, nullable=True)
 
         self.User = User
         self.session = Session(self.db)
@@ -228,9 +228,9 @@ class TestMultiSessionIndependence(unittest.TestCase):
 
         class User(Base):
             __tablename__ = 'users'
-            id = Column('id', int, primary_key=True)
-            name = Column('name', str)
-            age = Column('age', int)
+            id = Column(int, primary_key=True)
+            name = Column(str)
+            age = Column(int)
 
         self.User = User
 
@@ -301,9 +301,9 @@ class TestModelAsDataContainer(unittest.TestCase):
 
         class User(Base):
             __tablename__ = 'users'
-            id = Column('id', int, primary_key=True)
-            name = Column('name', str)
-            age = Column('age', int)
+            id = Column(int, primary_key=True)
+            name = Column(str)
+            age = Column(int)
 
         self.User = User
         self.session = Session(self.db)

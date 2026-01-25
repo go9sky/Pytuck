@@ -77,11 +77,11 @@ def benchmark_encryption(
 
     class User(Base):
         __tablename__ = 'users'
-        id = Column('id', int, primary_key=True)
-        name = Column('name', str)
-        age = Column('age', int)
-        email = Column('email', str)
-        bio = Column('bio', str)
+        id = Column(int, primary_key=True)
+        name = Column(str)
+        age = Column(int)
+        email = Column(str)
+        bio = Column(str)
 
     session = Session(db)
 
@@ -114,11 +114,11 @@ def benchmark_encryption(
 
     class User2(Base2):
         __tablename__ = 'users'
-        id = Column('id', int, primary_key=True)
-        name = Column('name', str)
-        age = Column('age', int)
-        email = Column('email', str)
-        bio = Column('bio', str)
+        id = Column(int, primary_key=True)
+        name = Column(str)
+        age = Column(int)
+        email = Column(str)
+        bio = Column(str)
 
     session = Session(db)
     result = session.execute(select(User2))

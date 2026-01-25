@@ -63,19 +63,19 @@ class TestNativeSqlAllTypes:
 
         class AllTypesModel(Base):
             __tablename__ = 'all_types'
-            id = Column('id', int, primary_key=True)
+            id = Column(int, primary_key=True)
             # 基础类型
-            int_field = Column('int_field', int)
-            str_field = Column('str_field', str)
-            float_field = Column('float_field', float)
-            bool_field = Column('bool_field', bool)
-            bytes_field = Column('bytes_field', bytes)
+            int_field = Column(int)
+            str_field = Column(str)
+            float_field = Column(float)
+            bool_field = Column(bool)
+            bytes_field = Column(bytes)
             # 扩展类型
-            datetime_field = Column('datetime_field', datetime)
-            date_field = Column('date_field', date)
-            timedelta_field = Column('timedelta_field', timedelta)
-            list_field = Column('list_field', list)
-            dict_field = Column('dict_field', dict)
+            datetime_field = Column(datetime)
+            date_field = Column(date)
+            timedelta_field = Column(timedelta)
+            list_field = Column(list)
+            dict_field = Column(dict)
 
         session = Session(db)
 
@@ -130,9 +130,9 @@ class TestNativeSqlAllTypes:
 
         class TypesModel(Base):
             __tablename__ = 'types'
-            id = Column('id', int, primary_key=True)
-            datetime_field = Column('datetime_field', datetime)
-            list_field = Column('list_field', list)
+            id = Column(int, primary_key=True)
+            datetime_field = Column(datetime)
+            list_field = Column(list)
 
         session = Session(db)
 
@@ -170,8 +170,8 @@ class TestNativeSqlAllTypes:
 
         class SimpleModel(Base):
             __tablename__ = 'simple'
-            id = Column('id', int, primary_key=True)
-            name = Column('name', str)
+            id = Column(int, primary_key=True)
+            name = Column(str)
 
         session = Session(db)
 
@@ -205,9 +205,9 @@ class TestNativeSqlNullHandling:
 
         class NullModel(Base):
             __tablename__ = 'null_test'
-            id = Column('id', int, primary_key=True)
-            name = Column('name', str, nullable=True)
-            value = Column('value', int, nullable=True)
+            id = Column(int, primary_key=True)
+            name = Column(str, nullable=True)
+            value = Column(int, nullable=True)
 
         session = Session(db)
 
@@ -242,12 +242,12 @@ class TestNativeSqlNullHandling:
 
         class NullableTypes(Base):
             __tablename__ = 'nullable_types'
-            id = Column('id', int, primary_key=True)
-            dt = Column('dt', datetime, nullable=True)
-            d = Column('d', date, nullable=True)
-            td = Column('td', timedelta, nullable=True)
-            lst = Column('lst', list, nullable=True)
-            dct = Column('dct', dict, nullable=True)
+            id = Column(int, primary_key=True)
+            dt = Column(datetime, nullable=True)
+            d = Column(date, nullable=True)
+            td = Column(timedelta, nullable=True)
+            lst = Column(list, nullable=True)
+            dct = Column(dict, nullable=True)
 
         session = Session(db)
 
@@ -283,12 +283,12 @@ class TestNativeSqlPersistence:
 
         class PersistModel(Base1):
             __tablename__ = 'persist'
-            id = Column('id', int, primary_key=True)
-            dt = Column('dt', datetime)
-            d = Column('d', date)
-            td = Column('td', timedelta)
-            lst = Column('lst', list)
-            dct = Column('dct', dict)
+            id = Column(int, primary_key=True)
+            dt = Column(datetime)
+            d = Column(date)
+            td = Column(timedelta)
+            lst = Column(list)
+            dct = Column(dict)
 
         session1 = Session(db1)
 
@@ -311,12 +311,12 @@ class TestNativeSqlPersistence:
 
         class PersistModel2(Base2):
             __tablename__ = 'persist'
-            id = Column('id', int, primary_key=True)
-            dt = Column('dt', datetime)
-            d = Column('d', date)
-            td = Column('td', timedelta)
-            lst = Column('lst', list)
-            dct = Column('dct', dict)
+            id = Column(int, primary_key=True)
+            dt = Column(datetime)
+            d = Column(date)
+            td = Column(timedelta)
+            lst = Column(list)
+            dct = Column(dict)
 
         session2 = Session(db2)
         result = session2.execute(select(PersistModel2)).first()
@@ -349,9 +349,9 @@ class TestNativeSqlModeConsistency:
 
         class NativeModel(NativeBase):
             __tablename__ = 'test'
-            id = Column('id', int, primary_key=True)
-            name = Column('name', str)
-            value = Column('value', int)
+            id = Column(int, primary_key=True)
+            name = Column(str)
+            value = Column(int)
 
         native_session = Session(native_db)
         native_session.execute(insert(NativeModel).values(name='a', value=1))
@@ -377,9 +377,9 @@ class TestNativeSqlModeConsistency:
 
         class MemoryModel(MemoryBase):
             __tablename__ = 'test'
-            id = Column('id', int, primary_key=True)
-            name = Column('name', str)
-            value = Column('value', int)
+            id = Column(int, primary_key=True)
+            name = Column(str)
+            value = Column(int)
 
         memory_session = Session(memory_db)
         memory_session.execute(insert(MemoryModel).values(name='a', value=1))
@@ -412,8 +412,8 @@ class TestNativeSqlSchemaOnlyLoad:
 
         class DataModel(Base1):
             __tablename__ = 'data'
-            id = Column('id', int, primary_key=True)
-            value = Column('value', str)
+            id = Column(int, primary_key=True)
+            value = Column(str)
 
         session1 = Session(db1)
         for i in range(100):
@@ -437,8 +437,8 @@ class TestNativeSqlSchemaOnlyLoad:
 
         class DataModel2(Base2):
             __tablename__ = 'data'
-            id = Column('id', int, primary_key=True)
-            value = Column('value', str)
+            id = Column(int, primary_key=True)
+            value = Column(str)
 
         session2 = Session(db2)
         results = session2.execute(select(DataModel2)).all()
@@ -459,10 +459,10 @@ class TestNativeSqlMultiColumnOrderBy:
 
         class OrderModel(Base):
             __tablename__ = 'orders'
-            id = Column('id', int, primary_key=True)
-            category = Column('category', str)
-            priority = Column('priority', int)
-            name = Column('name', str)
+            id = Column(int, primary_key=True)
+            category = Column(str)
+            priority = Column(int)
+            name = Column(str)
 
         session = Session(db)
 

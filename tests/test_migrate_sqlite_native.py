@@ -34,9 +34,9 @@ class TestMigrateSqliteNativeToJson:
 
         class User(Base):
             __tablename__ = 'users'
-            id = Column('id', int, primary_key=True)
-            name = Column('name', str)
-            age = Column('age', int)
+            id = Column(int, primary_key=True)
+            name = Column(str)
+            age = Column(int)
 
         session = Session(db)
         session.execute(insert(User).values(name='Alice', age=25))
@@ -93,9 +93,9 @@ class TestMigrateChainWithNativeSqlite:
 
         class Person(Base):
             __tablename__ = 'people'
-            id = Column('id', int, primary_key=True)
-            name = Column('name', str)
-            score = Column('score', float)
+            id = Column(int, primary_key=True)
+            name = Column(str)
+            score = Column(float)
 
         session = Session(db)
         session.execute(insert(Person).values(name='Alice', score=95.5))
@@ -168,8 +168,8 @@ class TestMigrateSqliteNativeEmptyTable:
 
         class EmptyTable(Base):
             __tablename__ = 'empty'
-            id = Column('id', int, primary_key=True)
-            value = Column('value', str)
+            id = Column(int, primary_key=True)
+            value = Column(str)
 
         # 不插入任何数据，只创建表结构
         db.flush()
@@ -210,15 +210,15 @@ class TestMigrateSqliteNativeWithTypes:
 
         class TypedRecord(Base):
             __tablename__ = 'typed'
-            id = Column('id', int, primary_key=True)
-            name = Column('name', str)
-            score = Column('score', float)
-            active = Column('active', bool)
-            created = Column('created', datetime)
-            birth_date = Column('birth_date', date)
-            duration = Column('duration', timedelta)
-            tags = Column('tags', list)
-            metadata = Column('metadata', dict)
+            id = Column(int, primary_key=True)
+            name = Column(str)
+            score = Column(float)
+            active = Column(bool)
+            created = Column(datetime)
+            birth_date = Column(date)
+            duration = Column(timedelta)
+            tags = Column(list)
+            metadata = Column(dict)
 
         session = Session(db)
 
@@ -281,20 +281,20 @@ class TestMigrateSqliteNativeMultipleTables:
 
         class Users(Base):
             __tablename__ = 'users'
-            id = Column('id', int, primary_key=True)
-            name = Column('name', str)
+            id = Column(int, primary_key=True)
+            name = Column(str)
 
         class Products(Base):
             __tablename__ = 'products'
-            id = Column('id', int, primary_key=True)
-            title = Column('title', str)
-            price = Column('price', float)
+            id = Column(int, primary_key=True)
+            title = Column(str)
+            price = Column(float)
 
         class Orders(Base):
             __tablename__ = 'orders'
-            id = Column('id', int, primary_key=True)
-            user_id = Column('user_id', int)
-            product_id = Column('product_id', int)
+            id = Column(int, primary_key=True)
+            user_id = Column(int)
+            product_id = Column(int)
 
         session = Session(db)
         session.execute(insert(Users).values(name='Alice'))
@@ -347,9 +347,9 @@ class TestMigrateBinaryLazyLoadToJson:
 
         class User(Base):
             __tablename__ = 'users'
-            id = Column('id', int, primary_key=True)
-            name = Column('name', str)
-            age = Column('age', int)
+            id = Column(int, primary_key=True)
+            name = Column(str)
+            age = Column(int)
 
         session = Session(db)
         session.execute(insert(User).values(name='Alice', age=25))
@@ -403,14 +403,14 @@ class TestMigrateBinaryLazyLoadMultipleTables:
 
         class Users(Base):
             __tablename__ = 'users'
-            id = Column('id', int, primary_key=True)
-            name = Column('name', str)
+            id = Column(int, primary_key=True)
+            name = Column(str)
 
         class Products(Base):
             __tablename__ = 'products'
-            id = Column('id', int, primary_key=True)
-            title = Column('title', str)
-            price = Column('price', float)
+            id = Column(int, primary_key=True)
+            title = Column(str)
+            price = Column(float)
 
         session = Session(db)
         session.execute(insert(Users).values(name='Alice'))
@@ -461,9 +461,9 @@ class TestMigrateBinaryLazyLoadChain:
 
         class Person(Base):
             __tablename__ = 'people'
-            id = Column('id', int, primary_key=True)
-            name = Column('name', str)
-            score = Column('score', float)
+            id = Column(int, primary_key=True)
+            name = Column(str)
+            score = Column(float)
 
         session = Session(db)
         session.execute(insert(Person).values(name='Alice', score=95.5))

@@ -41,9 +41,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
     class User(Base):
         __tablename__ = 'users'
-        id = Column('id', int, primary_key=True)
-        name = Column('name', str)
-        age = Column('age', int, nullable=True)  # New column, auto synced
+        id = Column(int, primary_key=True)
+        name = Column(str)
+        age = Column(int, nullable=True)  # New column, auto synced
 
     # Manual sync mode
     from pytuck import Session
@@ -53,7 +53,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
         print(f"Added columns: {result.columns_added}")
 
     # Storage layer API (for Pytuck-view)
-    db.add_column('users', Column('email', str, nullable=True))
+    db.add_column('users', Column(str, nullable=True, name='email'))
     db.sync_table_schema('users', columns, comment='User table')
     ```
 
@@ -140,22 +140,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
     class Order(Base):
         __tablename__ = 'orders'
-        id = Column('id', int, primary_key=True)
-        user_id = Column('user_id', int)
+        id = Column(int, primary_key=True)
+        user_id = Column(int)
         # Define relationship using table name (no need to consider class definition order)
         user: Optional[User] = Relationship('users', foreign_key='user_id')  # type: ignore
 
     class User(Base):
         __tablename__ = 'users'
-        id = Column('id', int, primary_key=True)
+        id = Column(int, primary_key=True)
         # Bidirectional relationship, declare return type for IDE hints
         orders: List[Order] = Relationship('orders', foreign_key='user_id')  # type: ignore
 
     # Self-reference (tree structure)
     class Category(Base):
         __tablename__ = 'categories'
-        id = Column('id', int, primary_key=True)
-        parent_id = Column('parent_id', int, nullable=True)
+        id = Column(int, primary_key=True)
+        parent_id = Column(int, nullable=True)
         parent: Optional['Category'] = Relationship(  # type: ignore
             'categories', foreign_key='parent_id', uselist=False
         )
@@ -209,6 +209,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     ```
 
 ### Breaking Changes
+
+- **Column Definition API Simplification**
+  - `Column` constructor signature changed: `col_type` is now the first positional argument, `name` becomes an optional keyword argument
+  - `name` parameter defaults to the variable name (automatically obtained via Python descriptor protocol `__set_name__`)
+  - All other parameters now must be passed as keyword arguments
+  - Migration Guide:
+    ```python
+    # Old usage
+    id = Column('id', int, primary_key=True)
+    name = Column('name', str)
+    email = Column('user_email', str)
+
+    # New usage
+    id = Column(int, primary_key=True)       # name auto-set to 'id'
+    name = Column(str)                        # name auto-set to 'name'
+    email = Column(str, name='user_email')   # Explicit name when different from variable
+    ```
+  - New Signature:
+    ```python
+    Column(
+        col_type: Type,              # Required, first positional argument
+        *,                           # Force keyword arguments after this
+        name: Optional[str] = None,  # Optional, defaults to variable name
+        nullable: bool = True,
+        primary_key: bool = False,
+        index: bool = False,
+        default: Any = None,
+        foreign_key: Optional[tuple] = None,
+        comment: Optional[str] = None,
+        strict: bool = False
+    )
+    ```
 
 - **Query Result API Simplification**
   - Removed `Result.scalars()` method, use `Result.all()`/`first()`/`one()`/`one_or_none()` directly

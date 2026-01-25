@@ -73,10 +73,10 @@ Base: Type[PureBaseModel] = declarative_base(db)
 class Student(Base):
     __tablename__ = 'students'
 
-    id = Column('id', int, primary_key=True)
-    name = Column('name', str, nullable=False, index=True)
-    age = Column('age', int)
-    email = Column('email', str, nullable=True)
+    id = Column(int, primary_key=True)
+    name = Column(str, nullable=False, index=True)
+    age = Column(int)
+    email = Column(str, nullable=True)
 
 # 创建 Session
 session = Session(db)
@@ -151,9 +151,9 @@ Base: Type[CRUDBaseModel] = declarative_base(db, crud=True)  # 注意 crud=True
 class Student(Base):
     __tablename__ = 'students'
 
-    id = Column('id', int, primary_key=True)
-    name = Column('name', str, nullable=False)
-    age = Column('age', int)
+    id = Column(int, primary_key=True)
+    name = Column(str, nullable=False)
+    age = Column(int)
 
 # 创建记录（自动保存）
 alice = Student.create(name='Alice', age=20)
@@ -334,9 +334,9 @@ Base = declarative_base(db)
 
 class User(Base):
     __tablename__ = 'users'
-    id = Column('id', int, primary_key=True)
-    name = Column('name', str)
-    age = Column('age', int)
+    id = Column(int, primary_key=True)
+    name = Column(str)
+    age = Column(int)
 
 session = Session(db)
 
@@ -427,8 +427,8 @@ Base = declarative_base(db, crud=True)
 
 class User(Base):
     __tablename__ = 'users'
-    id = Column('id', int, primary_key=True)
-    name = Column('name', str)
+    id = Column(int, primary_key=True)
+    name = Column(str)
 
 # create/save/delete 只修改内存
 user = User.create(name='Alice')
@@ -544,7 +544,7 @@ session.commit()
 ```python
 class Student(Base):
     __tablename__ = 'students'
-    name = Column('name', str, index=True)  # 创建索引
+    name = Column(str, index=True)  # 创建索引
 
 # 索引查询（自动优化）
 stmt = select(Student).filter_by(name='Bob')
@@ -621,8 +621,8 @@ Base = declarative_base(db)
 
 class User(Base):
     __tablename__ = 'users'
-    id = Column('id', int, primary_key=True)
-    name = Column('name', str)
+    id = Column(int, primary_key=True)
+    name = Column(str)
 
 session = Session(db)
 stmt = select(User).where(User.id == 1)
@@ -647,58 +647,43 @@ print(user.to_dict())  # ✅ 正常工作
 
 ### 关联关系（Relationship）
 
-Pytuck 支持一对多和多对一关联关系，具有延迟加载和缓存机制：
+Pytuck 支持一对多、多对一、自引用等关联关系：
 
 ```python
 from pytuck.core.orm import Relationship
+from typing import List, Optional
 
-# 定义关联关系
 class User(Base):
     __tablename__ = 'users'
-    id = Column('id', int, primary_key=True)
-    name = Column('name', str)
-    # 一对多：一个用户有多个订单
-    orders = Relationship('Order', foreign_key='user_id')
+    id = Column(int, primary_key=True)
+    name = Column(str)
+    # 一对多：使用表名引用（推荐）
+    orders: List['Order'] = Relationship('orders', foreign_key='user_id')  # type: ignore
 
 class Order(Base):
     __tablename__ = 'orders'
-    id = Column('id', int, primary_key=True)
-    user_id = Column('user_id', int)
-    amount = Column('amount', float)
-    # 多对一：一个订单属于一个用户
-    user = Relationship(User, foreign_key='user_id')
+    id = Column(int, primary_key=True)
+    user_id = Column(int)
+    amount = Column(float)
+    # 多对一
+    user: Optional[User] = Relationship('users', foreign_key='user_id')  # type: ignore
 
-# 使用关联
-user = User.get(1)
-orders = user.orders  # 延迟加载，首次访问时查询
-for order in orders:
-    print(f"Order: {order.amount}")
-
-# 反向访问
-order = Order.get(1)
-user = order.user  # 多对一查询
-print(f"User: {user.name}")
+# 自引用（树形结构）- 使用 uselist 指定方向
+class Category(Base):
+    __tablename__ = 'categories'
+    id = Column(int, primary_key=True)
+    parent_id = Column(int, nullable=True)
+    parent: Optional['Category'] = Relationship('categories', foreign_key='parent_id', uselist=False)  # type: ignore
+    children: List['Category'] = Relationship('categories', foreign_key='parent_id', uselist=True)  # type: ignore
 ```
 
-**Relationship 特性**：
+**特性**：
+- ✅ **表名引用**：使用表名字符串，支持前向引用
+- ✅ **延迟加载**：首次访问时查询，自动缓存
+- ✅ **uselist 参数**：自引用场景显式指定返回类型
+- ✅ **类型提示**：直接声明返回类型获得 IDE 补全
 
-- ✅ **延迟加载**：首次访问时才查询数据库
-- ✅ **自动缓存**：加载后缓存结果，避免重复查询
-- ✅ **双向关联**：支持 back_populates 参数
-- ✅ **Storage 关闭后**：已加载的关联仍可访问（使用缓存）
-- ⚠️ **需要预加载**：Storage 关闭前访问一次以触发加载
-
-```python
-# 预加载策略
-user = User.get(1)
-orders = user.orders  # 在 storage 关闭前访问，触发加载并缓存
-
-db.close()
-
-# 关闭后仍可访问（使用缓存）
-for order in orders:
-    print(order.amount)  # ✅ 正常工作
-```
+> 完整示例见 `examples/relationship_demo.py`
 
 ### 类型验证与转换
 
@@ -707,8 +692,8 @@ Pytuck 提供零依赖的自动类型验证和转换：
 ```python
 class User(Base):
     __tablename__ = 'users'
-    id = Column('id', int, primary_key=True)
-    age = Column('age', int)  # 声明为 int
+    id = Column(int, primary_key=True)
+    age = Column(int)  # 声明为 int
 
 # 宽松模式（默认）：自动转换
 user = User(age='25')  # ✅ 自动转换 '25' → 25
@@ -716,8 +701,8 @@ user = User(age='25')  # ✅ 自动转换 '25' → 25
 # 严格模式：不转换，类型错误抛出异常
 class StrictUser(Base):
     __tablename__ = 'strict_users'
-    id = Column('id', int, primary_key=True)
-    age = Column('age', int, strict=True)  # 严格模式
+    id = Column(int, primary_key=True)
+    age = Column(int, strict=True)  # 严格模式
 
 user = StrictUser(age='25')  # ❌ ValidationError
 ```

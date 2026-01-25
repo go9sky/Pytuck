@@ -38,9 +38,9 @@ This file documents all notable changes. Format based on [Keep a Changelog](http
 
     class User(Base):
         __tablename__ = 'users'
-        id = Column('id', int, primary_key=True)
-        name = Column('name', str)
-        age = Column('age', int, nullable=True)  # 新增列，自动同步
+        id = Column(int, primary_key=True)
+        name = Column(str)
+        age = Column(int, nullable=True)  # 新增列，自动同步
 
     # 手动同步模式
     from pytuck import Session
@@ -50,7 +50,7 @@ This file documents all notable changes. Format based on [Keep a Changelog](http
         print(f"Added columns: {result.columns_added}")
 
     # Storage 层 API（面向 Pytuck-view）
-    db.add_column('users', Column('email', str, nullable=True))
+    db.add_column('users', Column(str, nullable=True, name='email'))
     db.sync_table_schema('users', columns, comment='用户表')
     ```
 
@@ -139,22 +139,22 @@ This file documents all notable changes. Format based on [Keep a Changelog](http
 
     class Order(Base):
         __tablename__ = 'orders'
-        id = Column('id', int, primary_key=True)
-        user_id = Column('user_id', int)
+        id = Column(int, primary_key=True)
+        user_id = Column(int)
         # 使用表名定义关联（无需考虑类定义顺序）
         user: Optional[User] = Relationship('users', foreign_key='user_id')  # type: ignore
 
     class User(Base):
         __tablename__ = 'users'
-        id = Column('id', int, primary_key=True)
+        id = Column(int, primary_key=True)
         # 双向关联，直接声明返回类型获得 IDE 提示
         orders: List[Order] = Relationship('orders', foreign_key='user_id')  # type: ignore
 
     # 自引用（树形结构）
     class Category(Base):
         __tablename__ = 'categories'
-        id = Column('id', int, primary_key=True)
-        parent_id = Column('parent_id', int, nullable=True)
+        id = Column(int, primary_key=True)
+        parent_id = Column(int, nullable=True)
         parent: Optional['Category'] = Relationship(  # type: ignore
             'categories', foreign_key='parent_id', uselist=False
         )
@@ -208,6 +208,38 @@ This file documents all notable changes. Format based on [Keep a Changelog](http
     ```
 
 ### 破坏性变更 / Breaking Changes
+
+- **Column 定义 API 简化 / Column Definition API Simplification**
+  - `Column` 构造函数签名变更：`col_type` 现在是第一个位置参数，`name` 变为可选关键字参数
+  - `name` 参数默认使用变量名（通过 Python 描述符协议 `__set_name__` 自动获取）
+  - 所有其他参数现在必须使用关键字形式传递
+  - 迁移指南 / Migration Guide：
+    ```python
+    # 旧用法 / Old usage
+    id = Column('id', int, primary_key=True)
+    name = Column('name', str)
+    email = Column('user_email', str)
+
+    # 新用法 / New usage
+    id = Column(int, primary_key=True)       # name 自动取 'id'
+    name = Column(str)                        # name 自动取 'name'
+    email = Column(str, name='user_email')   # 显式指定列名（当与变量名不同时）
+    ```
+  - 新签名 / New Signature：
+    ```python
+    Column(
+        col_type: Type,              # 必填，第一个位置参数
+        *,                           # 强制后续为关键字参数
+        name: Optional[str] = None,  # 可选，默认取变量名
+        nullable: bool = True,
+        primary_key: bool = False,
+        index: bool = False,
+        default: Any = None,
+        foreign_key: Optional[tuple] = None,
+        comment: Optional[str] = None,
+        strict: bool = False
+    )
+    ```
 
 - **查询结果 API 简化 / Query Result API Simplification**
   - 移除 `Result.scalars()` 方法，直接使用 `Result.all()`/`first()`/`one()`/`one_or_none()`

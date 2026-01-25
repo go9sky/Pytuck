@@ -72,10 +72,10 @@ Base: Type[PureBaseModel] = declarative_base(db)
 class Student(Base):
     __tablename__ = 'students'
 
-    id = Column('id', int, primary_key=True)
-    name = Column('name', str, nullable=False, index=True)
-    age = Column('age', int)
-    email = Column('email', str, nullable=True)
+    id = Column(int, primary_key=True)
+    name = Column(str, nullable=False, index=True)
+    age = Column(int)
+    email = Column(str, nullable=True)
 
 # Create Session
 session = Session(db)
@@ -150,9 +150,9 @@ Base: Type[CRUDBaseModel] = declarative_base(db, crud=True)  # Note: crud=True
 class Student(Base):
     __tablename__ = 'students'
 
-    id = Column('id', int, primary_key=True)
-    name = Column('name', str, nullable=False)
-    age = Column('age', int)
+    id = Column(int, primary_key=True)
+    name = Column(str, nullable=False)
+    age = Column(int)
 
 # Create record (auto-save)
 alice = Student.create(name='Alice', age=20)
@@ -333,9 +333,9 @@ Base = declarative_base(db)
 
 class User(Base):
     __tablename__ = 'users'
-    id = Column('id', int, primary_key=True)
-    name = Column('name', str)
-    age = Column('age', int)
+    id = Column(int, primary_key=True)
+    name = Column(str)
+    age = Column(int)
 
 session = Session(db)
 
@@ -426,8 +426,8 @@ Base = declarative_base(db, crud=True)
 
 class User(Base):
     __tablename__ = 'users'
-    id = Column('id', int, primary_key=True)
-    name = Column('name', str)
+    id = Column(int, primary_key=True)
+    name = Column(str)
 
 # create/save/delete only modify memory
 user = User.create(name='Alice')
@@ -543,7 +543,7 @@ Add indexes to fields to accelerate queries:
 ```python
 class Student(Base):
     __tablename__ = 'students'
-    name = Column('name', str, index=True)  # Create index
+    name = Column(str, index=True)  # Create index
 
 # Index query (automatically optimized)
 stmt = select(Student).filter_by(name='Bob')
@@ -620,8 +620,8 @@ Base = declarative_base(db)
 
 class User(Base):
     __tablename__ = 'users'
-    id = Column('id', int, primary_key=True)
-    name = Column('name', str)
+    id = Column(int, primary_key=True)
+    name = Column(str)
 
 session = Session(db)
 stmt = select(User).where(User.id == 1)
@@ -646,58 +646,43 @@ print(user.to_dict())  # ✅ Works
 
 ### Relationships
 
-Pytuck supports one-to-many and many-to-one relationships with lazy loading and caching:
+Pytuck supports one-to-many, many-to-one, and self-referential relationships:
 
 ```python
 from pytuck.core.orm import Relationship
+from typing import List, Optional
 
-# Define relationships
 class User(Base):
     __tablename__ = 'users'
-    id = Column('id', int, primary_key=True)
-    name = Column('name', str)
-    # One-to-many: one user has many orders
-    orders = Relationship('Order', foreign_key='user_id')
+    id = Column(int, primary_key=True)
+    name = Column(str)
+    # One-to-many: use table name reference (recommended)
+    orders: List['Order'] = Relationship('orders', foreign_key='user_id')  # type: ignore
 
 class Order(Base):
     __tablename__ = 'orders'
-    id = Column('id', int, primary_key=True)
-    user_id = Column('user_id', int)
-    amount = Column('amount', float)
-    # Many-to-one: one order belongs to one user
-    user = Relationship(User, foreign_key='user_id')
+    id = Column(int, primary_key=True)
+    user_id = Column(int)
+    amount = Column(float)
+    # Many-to-one
+    user: Optional[User] = Relationship('users', foreign_key='user_id')  # type: ignore
 
-# Use relationships
-user = User.get(1)
-orders = user.orders  # Lazy loaded on first access
-for order in orders:
-    print(f"Order: {order.amount}")
-
-# Reverse access
-order = Order.get(1)
-user = order.user  # Many-to-one query
-print(f"User: {user.name}")
+# Self-reference (tree structure) - use uselist to specify direction
+class Category(Base):
+    __tablename__ = 'categories'
+    id = Column(int, primary_key=True)
+    parent_id = Column(int, nullable=True)
+    parent: Optional['Category'] = Relationship('categories', foreign_key='parent_id', uselist=False)  # type: ignore
+    children: List['Category'] = Relationship('categories', foreign_key='parent_id', uselist=True)  # type: ignore
 ```
 
-**Relationship Features**:
+**Features**:
+- ✅ **Table Name Reference**: Use table name string for forward references
+- ✅ **Lazy Loading**: Queries on first access, auto-cached
+- ✅ **uselist Parameter**: Explicitly specify return type for self-reference
+- ✅ **Type Hints**: Declare return type for IDE completion
 
-- ✅ **Lazy Loading**: Queries database only on first access
-- ✅ **Auto Caching**: Caches results to avoid repeated queries
-- ✅ **Bidirectional**: Supports back_populates parameter
-- ✅ **After Storage Close**: Already loaded relationships remain accessible (uses cache)
-- ⚠️ **Requires Eager Loading**: Access once before storage close to trigger loading
-
-```python
-# Eager loading strategy
-user = User.get(1)
-orders = user.orders  # Access before storage close to load and cache
-
-db.close()
-
-# Still accessible after close (uses cache)
-for order in orders:
-    print(order.amount)  # ✅ Works
-```
+> See `examples/relationship_demo.py` for complete examples
 
 ### Type Validation and Conversion
 
@@ -706,8 +691,8 @@ Pytuck provides zero-dependency automatic type validation and conversion:
 ```python
 class User(Base):
     __tablename__ = 'users'
-    id = Column('id', int, primary_key=True)
-    age = Column('age', int)  # Declared as int
+    id = Column(int, primary_key=True)
+    age = Column(int)  # Declared as int
 
 # Loose mode (default): auto conversion
 user = User(age='25')  # ✅ Automatically converts '25' → 25
@@ -715,8 +700,8 @@ user = User(age='25')  # ✅ Automatically converts '25' → 25
 # Strict mode: no conversion, raises error on type mismatch
 class StrictUser(Base):
     __tablename__ = 'strict_users'
-    id = Column('id', int, primary_key=True)
-    age = Column('age', int, strict=True)  # Strict mode
+    id = Column(int, primary_key=True)
+    age = Column(int, strict=True)  # Strict mode
 
 user = StrictUser(age='25')  # ❌ ValidationError
 ```

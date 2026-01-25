@@ -622,8 +622,8 @@ Base: Type[PureBaseModel] = declarative_base(db)
 
 class User(Base):
     __tablename__ = 'users'
-    id = Column('id', int, primary_key=True)
-    name = Column('name', str)
+    id = Column(int, primary_key=True)
+    name = Column(str)
 
 session = Session(db)
 
@@ -649,8 +649,8 @@ Base: Type[CRUDBaseModel] = declarative_base(db, crud=True)
 
 class User(Base):
     __tablename__ = 'users'
-    id = Column('id', int, primary_key=True)
-    name = Column('name', str)
+    id = Column(int, primary_key=True)
+    name = Column(str)
 
 # 创建
 user = User.create(name='Alice')

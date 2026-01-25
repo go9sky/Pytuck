@@ -369,6 +369,80 @@ print(f"   - {tag_obj.name} 标签所属文章: {tag_obj.post.title}")
 db5.close()
 
 # ============================================================================
+# 6. 类型提示支持（IDE 友好）
+# ============================================================================
+
+print("\n" + "=" * 70)
+print("6. 类型提示支持（IDE 友好）")
+print("=" * 70)
+
+# 导入类型提示所需模块
+from typing import List, Optional
+
+db6 = Storage(in_memory=True)
+Base6: Type[CRUDBaseModel] = declarative_base(db6, crud=True)
+
+
+# 为了让 IDE 提供精确的类型提示，直接声明返回类型
+# 注意：由于 Python 类型系统限制，需要使用 type: ignore 抑制类型警告
+
+class Comment(Base6):
+    """评论模型"""
+    __tablename__ = 'comments'
+
+    id = Column('id', int, primary_key=True)
+    article_id = Column('article_id', int)
+    content = Column('content', str)
+
+    # 多对一：评论 -> 文章
+    # 直接声明返回类型为 Optional[Article]
+    article: Optional['Article'] = Relationship(  # type: ignore[assignment]
+        'articles',
+        foreign_key='article_id'
+    )
+
+
+class Article(Base6):
+    """文章模型"""
+    __tablename__ = 'articles'
+
+    id = Column('id', int, primary_key=True)
+    title = Column('title', str)
+
+    # 一对多：文章 -> 评论列表
+    # 直接声明返回类型为 List[Comment]
+    comments: List[Comment] = Relationship(  # type: ignore[assignment]
+        'comments',
+        foreign_key='article_id'
+    )
+
+
+# 创建测试数据
+article = Article.create(title='Python Type Hints Guide')
+Comment.create(article_id=article.id, content='Great article!')
+Comment.create(article_id=article.id, content='Very helpful!')
+
+print("\n   创建的数据：")
+print(f"   - 文章: {article.title}")
+print(f"   - 评论: 2条")
+
+# 访问关联数据 - IDE 现在能提供正确的类型提示
+article_obj = Article.get(article.id)
+
+print(f"\n   类型提示示例：")
+print(f"   - article_obj.comments 的类型提示为 List[Comment]")
+print(f"   - 评论数量: {len(article_obj.comments)}")
+
+# IDE 知道 comments 是 List[Comment]，可以获得正确的代码补全
+for comment in article_obj.comments:
+    # IDE 知道 comment 是 Comment 类型
+    # IDE 知道 comment.article 是 Optional[Article] 类型
+    print(f"     - {comment.content}")
+    print(f"       (来自文章: {comment.article.title if comment.article else 'N/A'})")
+
+db6.close()
+
+# ============================================================================
 # 总结
 # ============================================================================
 
@@ -403,6 +477,15 @@ Relationship 使用要点：
    - 一对一：一对多 + 业务约束
    - 多对多：通过中间表实现
    - 自引用：使用 uselist 明确指定方向
+
+6. 类型提示（IDE 友好）
+   - 直接声明返回类型获得精确 IDE 提示
+   - 一对多：List[TargetModel]
+   - 多对一：Optional[TargetModel]
+   - 需要使用 type: ignore 抑制类型警告
+   - 示例：
+     comments: List[Comment] = Relationship('comments', ...)  # type: ignore
+     user: Optional[User] = Relationship('users', ...)  # type: ignore
 """)
 
 print("=" * 70)

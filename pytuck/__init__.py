@@ -21,9 +21,9 @@ Pytuck - 轻量级 Python 文档数据库
 
     class User(Base):
         __tablename__ = 'users'
-        id = Column('id', int, primary_key=True)
-        name = Column('name', str)
-        age = Column('age', int)
+        id = Column(int, primary_key=True)
+        name = Column(str)
+        age = Column(int)
 
     session = Session(db)
 
@@ -47,8 +47,8 @@ Pytuck - 轻量级 Python 文档数据库
 
     class User(Base):
         __tablename__ = 'users'
-        id = Column('id', int, primary_key=True)
-        name = Column('name', str)
+        id = Column(int, primary_key=True)
+        name = Column(str)
 
     # 直接在模型上操作
     user = User.create(name='Alice')
@@ -88,6 +88,7 @@ from .common.exceptions import (
     MigrationError,
     PytuckIndexError,
 )
+from .common.options import SyncOptions, SyncResult
 
 __version__ = '0.4.0'
 __all__ = [
@@ -109,6 +110,10 @@ __all__ = [
     # 类型定义（用于类型注解）
     'PureBaseModel',      # 纯模型基类类型
     'CRUDBaseModel',      # Active Record 基类类型
+
+    # Schema 同步
+    'SyncOptions',        # 同步选项
+    'SyncResult',         # 同步结果
 
     # 查询结果
     'Result',        # 查询结果包装器

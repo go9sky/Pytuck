@@ -476,6 +476,9 @@ class Storage:
         self._native_sql_mode: bool = False  # 是否启用原生 SQL 模式
         self._connector: Optional[Any] = None  # 数据库连接器（原生 SQL 模式）
 
+        # 模型注册表（表名 -> 模型类，用于 Relationship 解析）
+        self._model_registry: Dict[str, Type] = {}
+
         # 初始化后端
         self.backend: Optional[StorageBackend] = None
         if not self.in_memory and file_path:
@@ -498,6 +501,30 @@ class Storage:
 
             # 检测并初始化原生 SQL 模式
             self._init_native_sql_mode()
+
+    # ==================== 模型注册表方法 ====================
+
+    def _register_model(self, table_name: str, model_cls: Type) -> None:
+        """
+        注册模型类（按表名）
+
+        Args:
+            table_name: 表名
+            model_cls: 模型类
+        """
+        self._model_registry[table_name] = model_cls
+
+    def _get_model_by_table(self, table_name: str) -> Optional[Type]:
+        """
+        根据表名获取模型类
+
+        Args:
+            table_name: 表名
+
+        Returns:
+            模型类，如果不存在返回 None
+        """
+        return self._model_registry.get(table_name)
 
     def create_table(
         self,

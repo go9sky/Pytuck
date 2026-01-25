@@ -503,7 +503,6 @@ class CRUDBaseModel(PureBaseModel):
 
     # 实例状态
     _loaded_from_db: bool = False
-    _pk_value: Any = None
 
     # ==================== 实例方法 ====================
 
@@ -600,21 +599,25 @@ class Relationship:
                  target_model: Union[str, Type[PureBaseModel]],
                  foreign_key: str,
                  lazy: bool = True,
-                 back_populates: Optional[str] = None):
+                 back_populates: Optional[str] = None,
+                 uselist: Optional[bool] = None):
         """
         初始化关联关系
 
         Args:
-            target_model: 目标模型类或类名（字符串）
+            target_model: 目标模型类或表名（字符串）
             foreign_key: 外键字段名
             lazy: 是否延迟加载
             back_populates: 反向关联的属性名
+            uselist: 是否返回列表（None=自动判断，True=强制列表，False=强制单个）
+                - 用于自引用等无法自动判断的场景
         """
         self.target_model = target_model
         self.foreign_key = foreign_key
         self.lazy = lazy
         self.back_populates = back_populates
-        self.is_one_to_many = False
+        self._uselist = uselist  # 用户指定的值
+        self.is_one_to_many = False  # 自动判断的值
         self.name: Optional[str] = None
         self.owner: Optional[Type[PureBaseModel]] = None
 
@@ -643,12 +646,15 @@ class Relationship:
             return getattr(instance, cache_key)
 
         # 延迟加载
-        target_model = self._resolve_target_model()
+        target_model = self._resolve_target_model(owner)
 
         primary_key = getattr(owner, '__primary_key__', 'id')
 
-        if self.is_one_to_many:
-            # 反向关联：查询外键指向当前实例的所有记录
+        # 确定是否返回列表：优先使用用户指定的 uselist，否则使用自动判断
+        use_list = self._uselist if self._uselist is not None else self.is_one_to_many
+
+        if use_list:
+            # 一对多：查询外键指向当前实例的所有记录
             pk_value = getattr(instance, primary_key)
             # 使用 filter_by（如果目标模型支持）
             if hasattr(target_model, 'filter_by'):
@@ -658,7 +664,7 @@ class Relationship:
             else:
                 results = []
         else:
-            # 正向关联：根据外键值查询目标对象
+            # 多对一：根据外键值查询目标对象
             fk_value = getattr(instance, self.foreign_key)
             if fk_value is None:
                 results = None
@@ -671,17 +677,43 @@ class Relationship:
         setattr(instance, cache_key, results)
         return results
 
-    def _resolve_target_model(self) -> Type[PureBaseModel]:
-        """解析目标模型"""
-        if isinstance(self.target_model, str):
-            # 字符串形式的模型名，从owner的模块中查找
-            owner_module = sys.modules[self.owner.__module__]
-            if hasattr(owner_module, self.target_model):
-                return getattr(owner_module, self.target_model)
-            else:
-                raise ValidationError(f"Cannot find model '{self.target_model}'")
-        else:
+    def _resolve_target_model(self, owner: Optional[Type[PureBaseModel]] = None) -> Type[PureBaseModel]:
+        """
+        解析目标模型
+
+        Args:
+            owner: 所有者类（用于回退，当 self.owner 为 None 时使用）
+
+        Returns:
+            解析后的目标模型类
+        """
+        # 如果不是字符串，直接返回类对象
+        if not isinstance(self.target_model, str):
             return self.target_model
+
+        # 使用 owner 或 self.owner
+        actual_owner = owner or self.owner
+        if actual_owner is None:
+            raise ValidationError(
+                f"Cannot resolve model '{self.target_model}': owner not set"
+            )
+
+        # 优先从 Storage 注册表按表名查找
+        storage = getattr(actual_owner, '__storage__', None)
+        if storage:
+            model = storage._get_model_by_table(self.target_model)
+            if model:
+                return model
+
+        # 回退：从模块命名空间按类名查找（兼容旧用法）
+        owner_module = sys.modules.get(actual_owner.__module__)
+        if owner_module and hasattr(owner_module, self.target_model):
+            return getattr(owner_module, self.target_model)
+
+        raise ValidationError(
+            f"Cannot find model for '{self.target_model}'. "
+            f"Use table name (e.g., 'users') or ensure the model class is defined."
+        )
 
     def __repr__(self) -> str:
         return f"Relationship(target={self.target_model}, fk={self.foreign_key})"
@@ -851,6 +883,9 @@ def _create_pure_base(
                     # 表不存在，创建新表
                     storage.create_table(table_name, columns_list, table_comment)
 
+                # 注册模型类到 Storage（用于 Relationship 按表名解析）
+                storage._register_model(table_name, cls)
+
         def __init__(self, **kwargs: Any):
             """初始化模型实例"""
             for col_name, column in self.__columns__.items():
@@ -971,10 +1006,12 @@ def _create_crud_base(
                     # 表不存在，创建新表
                     storage.create_table(table_name, columns_list, table_comment)
 
+                # 注册模型类到 Storage（用于 Relationship 按表名解析）
+                storage._register_model(table_name, cls)
+
         def __init__(self, **kwargs: Any):
             """初始化模型实例"""
             self._loaded_from_db = False
-            self._pk_value = None
 
             for col_name, column in self.__columns__.items():
                 if col_name in kwargs:
@@ -1045,7 +1082,6 @@ def _create_crud_base(
                 # Insert
                 pk_value = storage.insert(table_name, data)
                 setattr(self, self.__primary_key__, pk_value)
-                self._pk_value = pk_value
                 self._loaded_from_db = True
             else:
                 # Update
@@ -1096,7 +1132,6 @@ def _create_crud_base(
                 data = storage.select(table_name, pk)
                 instance = cls(**data)
                 instance._loaded_from_db = True
-                instance._pk_value = pk
                 return instance
             except Exception:
                 return None

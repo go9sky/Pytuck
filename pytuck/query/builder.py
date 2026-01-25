@@ -262,8 +262,6 @@ class Query(Generic[T]):
             # 兼容旧 API 的属性
             if hasattr(instance, '_loaded_from_db'):
                 instance._loaded_from_db = True
-            if hasattr(instance, '_pk_value'):
-                instance._pk_value = record.get(pk_name)
 
             instances.append(instance)
 

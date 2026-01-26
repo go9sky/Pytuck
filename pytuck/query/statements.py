@@ -158,6 +158,8 @@ class Select(Statement[T]):
             # 反向遍历，先按低优先级排序，再按高优先级排序
             # 利用 Python 排序的稳定性，最终实现多列排序
             for field, desc in reversed(self._order_by_fields):
+                # 使用工厂函数 make_sort_key 来正确捕获循环变量 field
+                # 这避免了闭包中常见的"后期绑定"问题
                 def make_sort_key(f: str) -> Any:
                     def sort_key(r: dict) -> Any:
                         return r.get(f) if r.get(f) is not None else ''
@@ -268,11 +270,14 @@ class Update(Statement[T]):
 
         if pk_value is not None:
             # 主键直接查询（O(1)）
+            from ..common.exceptions import RecordNotFoundError
             try:
                 storage.update(table_name, pk_value, validated_values)
                 return 1
-            except Exception:
+            except RecordNotFoundError:
+                # 记录不存在，返回 0（符合 SQL UPDATE 语义）
                 return 0
+            # 其他异常（如数据库错误）向上传播
         else:
             # 条件查询
             conditions = [expr.to_condition() for expr in self._where_clauses]
@@ -327,11 +332,14 @@ class Delete(Statement[T]):
 
         if pk_value is not None:
             # 主键直接删除（O(1)）
+            from ..common.exceptions import RecordNotFoundError
             try:
                 storage.delete(table_name, pk_value)
                 return 1
-            except Exception:
+            except RecordNotFoundError:
+                # 记录不存在，返回 0（符合 SQL DELETE 语义）
                 return 0
+            # 其他异常（如数据库错误）向上传播
         else:
             # 条件查询
             conditions = [expr.to_condition() for expr in self._where_clauses]

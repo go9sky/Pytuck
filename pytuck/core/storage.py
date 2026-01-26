@@ -10,6 +10,7 @@ from typing import Any, Dict, List, Iterator, Tuple, Optional, Generator, Type, 
 from contextlib import contextmanager
 
 from ..common.options import BackendOptions, SyncOptions, SyncResult
+from ..common.utils import validate_sql_identifier
 from .orm import Column
 from .index import HashIndex
 from ..query import Condition
@@ -265,14 +266,21 @@ class Table:
 
         Returns:
             记录字典
+
+        Raises:
+            RecordNotFoundError: 当记录不存在时
         """
-        if self._backend is None or self._pk_offsets is None:
+        # 内部状态检查：这些是程序错误，不是用户错误
+        assert self._backend is not None, "Backend must be set for lazy loading"
+        assert self._pk_offsets is not None, "PK offsets must be set for lazy loading"
+        assert self._data_file is not None, "Data file must be set for lazy loading"
+
+        # 检查 pk 是否存在（这是真正的"记录未找到"情况）
+        if pk not in self._pk_offsets:
             raise RecordNotFoundError(self.name, pk)
 
         offset = self._pk_offsets[pk]
 
-        if self._data_file is None:
-            raise RecordNotFoundError(self.name, pk)
         with open(self._data_file, 'rb') as f:
             f.seek(offset)
             # 使用 backend 的 _read_record 方法读取记录
@@ -612,6 +620,9 @@ class Storage:
             # 创建索引
             for col_name, col in table.columns.items():
                 if col.index and not col.primary_key:
+                    # 验证标识符安全性
+                    validate_sql_identifier(table_name)
+                    validate_sql_identifier(col_name)
                     index_name = f'idx_{table_name}_{col_name}'
                     connector.execute(
                         f'CREATE INDEX IF NOT EXISTS `{index_name}` ON `{table_name}`(`{col_name}`)'
@@ -896,6 +907,11 @@ class Storage:
         if not self._connector:
             return
 
+        # 验证标识符安全性
+        validate_sql_identifier(table_name)
+        if column.name:
+            validate_sql_identifier(column.name)
+
         sql_type = self._get_sql_type(column.col_type)
         sql = f'ALTER TABLE "{table_name}" ADD COLUMN "{column.name}" {sql_type}'
 
@@ -914,6 +930,10 @@ class Storage:
         if not self._connector:
             return
 
+        # 验证标识符安全性
+        validate_sql_identifier(table_name)
+        validate_sql_identifier(column_name)
+
         sql = f'ALTER TABLE "{table_name}" DROP COLUMN "{column_name}"'
         self._connector.execute(sql)
         self._connector.commit()
@@ -923,6 +943,9 @@ class Storage:
         if not self._connector:
             return
 
+        # 验证标识符安全性
+        validate_sql_identifier(table_name)
+
         sql = f'DROP TABLE IF EXISTS "{table_name}"'
         self._connector.execute(sql)
         self._connector.commit()
@@ -931,6 +954,10 @@ class Storage:
         """在原生 SQL 模式下重命名表"""
         if not self._connector:
             return
+
+        # 验证标识符安全性
+        validate_sql_identifier(old_name)
+        validate_sql_identifier(new_name)
 
         sql = f'ALTER TABLE "{old_name}" RENAME TO "{new_name}"'
         self._connector.execute(sql)
@@ -1241,8 +1268,15 @@ class Storage:
         # 排序
         if order_by and order_by in table.columns:
             def sort_key(record: Dict[str, Any]) -> tuple:
+                """
+                排序键函数
+
+                排序规则：
+                - None 值在升序时排在最后，降序时排在最前
+                - 使用元组 (优先级, 值) 实现：优先级 0 表示有值，1 表示 None
+                """
                 value = record.get(order_by)
-                # 处理 None 值，将其排在最后
+                # 处理 None 值：升序时 None 排在最后 (1, 0)，降序时排在最前 (0, 0)
                 if value is None:
                     return (1, 0) if not order_desc else (0, 0)
                 return (0, value) if not order_desc else (1, value)

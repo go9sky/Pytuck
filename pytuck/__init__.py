@@ -83,7 +83,7 @@ from .common.exceptions import (
     ConfigurationError,
     SchemaError,
     QueryError,
-    ConnectionError,
+    DatabaseConnectionError,
     UnsupportedOperationError,
     MigrationError,
     PytuckIndexError,
@@ -146,7 +146,7 @@ __all__ = [
     'QueryError',
 
     # 连接和事务异常
-    'ConnectionError',
+    'DatabaseConnectionError',
     'TransactionError',
 
     # 操作异常

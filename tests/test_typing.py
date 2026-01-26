@@ -11,15 +11,22 @@ Pytuck 类型检查测试
 
 import subprocess
 import sys
+from pathlib import Path
 from typing import List, Optional, TYPE_CHECKING, cast
 
 
 def test_mypy_pytuck() -> None:
     """确保整个 pytuck 库通过 mypy 类型检查"""
+    # 获取项目根目录（tests 目录的父目录）
+    project_root = Path(__file__).parent.parent
+    mypy_ini = project_root / 'mypy.ini'
+    pytuck_dir = project_root / 'pytuck'
+
     result = subprocess.run(
-        [sys.executable, '-m', 'mypy', 'pytuck', '--config-file', 'mypy.ini'],
+        [sys.executable, '-m', 'mypy', str(pytuck_dir), '--config-file', str(mypy_ini)],
         capture_output=True,
-        text=True
+        text=True,
+        cwd=str(project_root)
     )
     assert result.returncode == 0, f"mypy errors:\n{result.stdout}\n{result.stderr}"
 

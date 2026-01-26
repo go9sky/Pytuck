@@ -477,12 +477,23 @@ class Session:
             )
 
     def _deserialize_record(self, record: dict, columns: dict) -> dict:
-        """反序列化数据库记录"""
+        """
+        反序列化数据库记录
+
+        将数据库存储格式转换为 Python 对象。
+
+        Args:
+            record: 原始记录字典
+            columns: 列定义字典
+
+        Returns:
+            反序列化后的记录字典
+        """
         from datetime import datetime, date, timedelta
         from .types import TypeRegistry
         import json
 
-        result = {}
+        result: dict = {}
         for col_name, value in record.items():
             if col_name in columns and value is not None:
                 column = columns[col_name]

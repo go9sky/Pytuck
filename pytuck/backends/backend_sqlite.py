@@ -12,6 +12,7 @@ from datetime import datetime
 from .base import StorageBackend
 from ..connectors.connector_sqlite import SQLiteConnector
 from ..common.exceptions import SerializationError
+from ..common.utils import validate_sql_identifier
 from .versions import get_format_version
 from ..core.types import TypeRegistry
 
@@ -221,6 +222,9 @@ class SQLiteBackend(StorageBackend):
                     # 创建索引
                     for col_name, col in table.columns.items():
                         if col.index and not col.primary_key:
+                            # 验证标识符防止 SQL 注入
+                            validate_sql_identifier(table_name)
+                            validate_sql_identifier(col_name)
                             index_name = f'idx_{table_name}_{col_name}'
                             connector.execute(
                                 f'CREATE INDEX IF NOT EXISTS `{index_name}` ON `{table_name}`(`{col_name}`)'
@@ -429,6 +433,9 @@ class SQLiteBackend(StorageBackend):
         # 创建索引
         for col_name, col in table.columns.items():
             if col.index and not col.primary_key:
+                # 验证标识符防止 SQL 注入
+                validate_sql_identifier(table_name)
+                validate_sql_identifier(col_name)
                 index_name = f'idx_{table_name}_{col_name}'
                 connector.execute(
                     f'CREATE INDEX `{index_name}` ON `{table_name}`(`{col_name}`)'

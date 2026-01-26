@@ -11,7 +11,7 @@ from contextlib import contextmanager
 
 from ..common.options import BackendOptions, SyncOptions, SyncResult
 from ..common.utils import validate_sql_identifier
-from .orm import Column
+from .orm import Column, PSEUDO_PK_NAME
 from .index import HashIndex
 from ..query import Condition
 from ..common.exceptions import (
@@ -77,7 +77,7 @@ class Table:
         self,
         name: str,
         columns: List[Column],
-        primary_key: str = 'id',
+        primary_key: Optional[str] = None,
         comment: Optional[str] = None
     ):
         """
@@ -86,7 +86,7 @@ class Table:
         Args:
             name: 表名
             columns: 列定义列表
-            primary_key: 主键字段名
+            primary_key: 主键字段名（None 表示无主键，使用隐式 rowid）
             comment: 表备注/注释
         """
         self.name = name
@@ -94,7 +94,7 @@ class Table:
         for col in columns:
             assert col.name is not None, "Column name must be set"
             self.columns[col.name] = col
-        self.primary_key = primary_key
+        self.primary_key = primary_key  # None 表示无主键
         self.comment = comment
         self.data: Dict[Any, Dict[str, Any]] = {}  # {pk: record}
         self.indexes: Dict[str, HashIndex] = {}  # {column_name: HashIndex}
@@ -120,16 +120,17 @@ class Table:
             record: 记录字典
 
         Returns:
-            主键值
+            主键值（用户主键或隐式 rowid）
 
         Raises:
             DuplicateKeyError: 主键重复
         """
         # 处理主键
-        pk = record.get(self.primary_key)
-        if pk is None:
-            # 自动生成主键（仅支持int类型）
-            if self.primary_key in self.columns:
+        if self.primary_key and self.primary_key in self.columns:
+            # 有用户主键
+            pk = record.get(self.primary_key)
+            if pk is None:
+                # 自动生成主键（仅支持int类型）
                 pk_column = self.columns[self.primary_key]
                 if pk_column.col_type == int:
                     pk = self.next_id
@@ -141,10 +142,15 @@ class Table:
                         table_name=self.name,
                         column_name=self.primary_key
                     )
+            else:
+                # 检查主键是否已存在
+                if pk in self.data:
+                    raise DuplicateKeyError(self.name, pk)
         else:
-            # 检查主键是否已存在
-            if pk in self.data:
-                raise DuplicateKeyError(self.name, pk)
+            # 无用户主键：使用内部 rowid
+            pk = self.next_id
+            self.next_id += 1
+            # 不将 pk 写入 record（隐式主键不作为列存在）
 
         # 验证和处理所有字段
         validated_record = {}
@@ -562,21 +568,15 @@ class Storage:
             # 表已存在，跳过
             return
 
-        # 查找主键
+        # 查找主键（可能为 None，表示无主键）
         primary_key = None
         for col in columns:
             if col.primary_key:
                 primary_key = col.name
                 break
 
-        # 强制要求用户定义主键
-        if primary_key is None:
-            raise SchemaError(
-                f"Table '{name}' must have a primary key column. "
-                f"Add primary_key=True to one of your Column definitions. "
-                f"Example: Column(int, primary_key=True)",
-                table_name=name
-            )
+        # 允许无主键（使用隐式 rowid）
+        # 注意：无主键时，primary_key 为 None
 
         table = Table(name, columns, primary_key, comment)
         self.tables[name] = table
@@ -1154,7 +1154,7 @@ class Storage:
 
         Args:
             table_name: 表名
-            pk: 主键值
+            pk: 主键值（用户主键或内部 rowid）
 
         Returns:
             记录字典
@@ -1163,14 +1163,21 @@ class Storage:
 
         # 原生 SQL 模式：直接执行 SQL
         if self._native_sql_mode and self._connector:
-            result = self._connector.select_by_pk(table_name, table.primary_key, pk)
+            # 无主键表使用 rowid 查询
+            pk_col = table.primary_key if table.primary_key else 'rowid'
+            result = self._connector.select_by_pk(table_name, pk_col, pk)
             if result is None:
                 raise RecordNotFoundError(table_name, pk)
             # 反序列化
             return self._deserialize_record(result, table.columns)
 
         # 内存模式
-        return table.get(pk)
+        record = table.get(pk)
+        record_copy = record.copy()
+        # 无主键表：注入内部 rowid
+        if not table.primary_key:
+            record_copy[PSEUDO_PK_NAME] = pk
+        return record_copy
 
     def _deserialize_record(self, record: Dict[str, Any], columns: Dict[str, Column]) -> Dict[str, Any]:
         """
@@ -1263,7 +1270,11 @@ class Storage:
                 record = table.data[pk]
                 # 评估剩余条件（索引已匹配的条件无需再次评估）
                 if all(cond.evaluate(record) for cond in remaining_conditions):
-                    results.append(record.copy())
+                    record_copy = record.copy()
+                    # 无主键表：注入内部 rowid
+                    if not table.primary_key:
+                        record_copy[PSEUDO_PK_NAME] = pk
+                    results.append(record_copy)
 
         # 排序
         if order_by and order_by in table.columns:

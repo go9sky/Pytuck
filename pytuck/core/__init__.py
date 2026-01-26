@@ -10,6 +10,7 @@ from .orm import (
     declarative_base,
     PureBaseModel,
     CRUDBaseModel,
+    PSEUDO_PK_NAME,
 )
 from .storage import Storage
 from .session import Session
@@ -22,6 +23,7 @@ __all__ = [
     'declarative_base',
     'PureBaseModel',
     'CRUDBaseModel',
+    'PSEUDO_PK_NAME',
     # Storage & Session
     'Storage',
     'Session',

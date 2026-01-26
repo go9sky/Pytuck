@@ -14,7 +14,7 @@ from ..query.builder import Query
 from ..query.result import Result, CursorResult
 from ..query.statements import Statement, Insert, Select, Update, Delete
 from .storage import Storage
-from .orm import PureBaseModel, Column
+from .orm import PureBaseModel, Column, PSEUDO_PK_NAME
 
 
 class Session:
@@ -131,9 +131,19 @@ class Session:
             # 插入到数据库
             pk = self.storage.insert(table_name, data)
 
-            # 设置主键
+            # 设置主键（或隐式 rowid）
             pk_name = instance.__primary_key__
-            setattr(instance, pk_name, pk)
+            if pk_name:
+                setattr(instance, pk_name, pk)
+            else:
+                # 无主键时，使用隐式 rowid
+                setattr(instance, '_pytuck_rowid', pk)
+
+            # 从数据库重新读取并更新实例（刷新所有字段，类似 SQLAlchemy）
+            db_record = self.storage.select(table_name, pk)
+            for col_name, value in db_record.items():
+                if col_name != PSEUDO_PK_NAME:
+                    object.__setattr__(instance, col_name, value)
 
             # 注册到标识映射（使用统一的方法，设置 session 引用）
             self._register_instance(instance)
@@ -144,7 +154,10 @@ class Session:
             assert table_name is not None, f"Model {instance.__class__.__name__} must have __tablename__ defined"
 
             pk_name = instance.__primary_key__
-            pk = getattr(instance, pk_name)
+            if pk_name:
+                pk = getattr(instance, pk_name)
+            else:
+                pk = getattr(instance, '_pytuck_rowid', None)
 
             # 构建要更新的数据
             data = {}
@@ -156,19 +169,31 @@ class Session:
             # 更新数据库
             self.storage.update(table_name, pk, data)
 
+            # 从数据库重新读取并更新实例
+            db_record = self.storage.select(table_name, pk)
+            for col_name, value in db_record.items():
+                if col_name != PSEUDO_PK_NAME:
+                    object.__setattr__(instance, col_name, value)
+
         # 3. 处理待删除对象
         for instance in self._deleted_objects:
             table_name = instance.__tablename__
             assert table_name is not None, f"Model {instance.__class__.__name__} must have __tablename__ defined"
 
             pk_name = instance.__primary_key__
-            pk = getattr(instance, pk_name)
+            if pk_name:
+                pk = getattr(instance, pk_name)
+            else:
+                pk = getattr(instance, '_pytuck_rowid', None)
 
             # 从数据库删除
             self.storage.delete(table_name, pk)
 
             # 从标识映射移除
-            key = (instance.__class__, pk)
+            if pk_name:
+                key = (instance.__class__, pk)
+            else:
+                key = (instance.__class__, (PSEUDO_PK_NAME, pk))
             if key in self._identity_map:
                 del self._identity_map[key]
 
@@ -200,13 +225,20 @@ class Session:
         """
         通过主键获取对象
 
+        注意：无主键模型无法使用此方法，因为用户无法知道内部 rowid。
+        对于无主键模型，请使用 select() 语句进行查询。
+
         Args:
             model_class: 模型类
             pk: 主键值
 
         Returns:
-            模型实例，如果不存在返回 None
+            模型实例，如果不存在返回 None；无主键模型始终返回 None
         """
+        # 无主键模型不支持 get() 方法
+        if model_class.__primary_key__ is None:
+            return None
+
         # 先从标识映射查找
         instance = self._get_from_identity_map(model_class, pk)
         if instance is not None:
@@ -228,6 +260,49 @@ class Session:
             return instance
         except Exception:
             return None
+
+    def refresh(self, instance: T) -> None:
+        """
+        从数据库刷新实例的所有属性
+
+        类似 SQLAlchemy 的 session.refresh()，重新从数据库加载实例的所有字段值。
+
+        Args:
+            instance: 模型实例
+
+        Raises:
+            QueryError: 如果实例没有有效的主键或 rowid
+
+        Example:
+            user = session.get(User, 1)
+            # ... 其他操作可能修改了数据库中的记录 ...
+            session.refresh(user)  # 重新加载最新数据
+        """
+        model_class = instance.__class__
+        pk_name = model_class.__primary_key__
+
+        # 获取主键或 rowid
+        if pk_name:
+            pk_value = getattr(instance, pk_name, None)
+        else:
+            pk_value = getattr(instance, '_pytuck_rowid', None)
+
+        if pk_value is None:
+            raise QueryError(
+                "Cannot refresh instance without primary key or rowid",
+                details={'model': model_class.__name__}
+            )
+
+        table_name = instance.__tablename__
+        assert table_name is not None, f"Model {model_class.__name__} must have __tablename__ defined"
+
+        # 从数据库读取记录
+        db_record = self.storage.select(table_name, pk_value)
+
+        # 更新实例属性（使用 object.__setattr__ 避免触发脏跟踪）
+        for col_name, value in db_record.items():
+            if col_name != PSEUDO_PK_NAME:
+                object.__setattr__(instance, col_name, value)
 
     # ==================== 语句执行（带类型重载） ====================
 
@@ -518,13 +593,21 @@ class Session:
             instance: 模型实例
         """
         pk_name = instance.__primary_key__
-        pk = getattr(instance, pk_name)
-        if pk is not None:
-            key = (instance.__class__, pk)
-            self._identity_map[key] = instance
-            # 设置实例的 session 引用，用于脏跟踪
-            setattr(instance, '_pytuck_session', self)
-            setattr(instance, '_pytuck_state', 'persistent')
+        if pk_name:
+            pk = getattr(instance, pk_name, None)
+            if pk is not None:
+                key = (instance.__class__, pk)
+                self._identity_map[key] = instance
+        else:
+            # 无主键：使用隐式 rowid
+            rowid = getattr(instance, '_pytuck_rowid', None)
+            if rowid is not None:
+                key = (instance.__class__, (PSEUDO_PK_NAME, rowid))
+                self._identity_map[key] = instance
+
+        # 设置实例的 session 引用，用于脏跟踪
+        setattr(instance, '_pytuck_session', self)
+        setattr(instance, '_pytuck_state', 'persistent')
 
     def _get_from_identity_map(self, model_class: Type[T], pk: Any) -> Optional[T]:
         """
@@ -558,6 +641,9 @@ class Session:
         - 如果存在，更新现有实例的属性并返回现有实例
         - 如果不存在，从数据库加载或创建新实例，然后更新属性
 
+        对于无主键模型，只能通过内部 rowid 来查找 identity map。
+        如果没有 rowid，则作为新对象处理。
+
         Args:
             instance: 要合并的模型实例
 
@@ -574,15 +660,26 @@ class Session:
         """
         model_class = instance.__class__
         pk_name = model_class.__primary_key__
-        pk_value = getattr(instance, pk_name)
+
+        # 获取主键值或 rowid
+        if pk_name:
+            pk_value = getattr(instance, pk_name, None)
+        else:
+            # 无主键模型：尝试获取 rowid
+            pk_value = getattr(instance, '_pytuck_rowid', None)
 
         if pk_value is None:
-            # 没有主键，作为新对象处理
+            # 没有主键/rowid，作为新对象处理
             self.add(instance)
             return instance
 
         # 尝试从 identity map 获取现有实例
-        existing = self._get_from_identity_map(model_class, pk_value)
+        if pk_name:
+            existing = self._get_from_identity_map(model_class, pk_value)
+        else:
+            # 无主键模型使用特殊的 key 格式
+            key = (model_class, (PSEUDO_PK_NAME, pk_value))
+            existing = self._identity_map.get(key)  # type: ignore
 
         if existing is not None:
             # 已存在，更新其属性
@@ -593,19 +690,21 @@ class Session:
                         setattr(existing, col_name, value)
             return existing
 
-        # 不存在，尝试从数据库加载
-        existing = self.get(model_class, pk_value)
+        # 不存在于 identity map
+        if pk_name:
+            # 有主键：尝试从数据库加载
+            existing = self.get(model_class, pk_value)
 
-        if existing is not None:
-            # 从数据库加载成功，更新属性
-            for col_name, column in model_class.__columns__.items():
-                if hasattr(instance, col_name):
-                    value = getattr(instance, col_name)
-                    if getattr(existing, col_name) != value:
-                        setattr(existing, col_name, value)
-            return existing
+            if existing is not None:
+                # 从数据库加载成功，更新属性
+                for col_name, column in model_class.__columns__.items():
+                    if hasattr(instance, col_name):
+                        value = getattr(instance, col_name)
+                        if getattr(existing, col_name) != value:
+                            setattr(existing, col_name, value)
+                return existing
 
-        # 数据库中也不存在，作为新对象处理
+        # 数据库中也不存在（或无主键模型），作为新对象处理
         self.add(instance)
         return instance
 

@@ -105,15 +105,29 @@ class SQLiteBackend(StorageBackend):
             if table.data:  # 已有数据，跳过
                 continue
 
-            # 查询所有数据
-            cursor = connector.execute(f'SELECT * FROM `{table_name}`')
+            # 查询所有数据（无主键表需要包含 rowid）
+            if table.primary_key is None:
+                cursor = connector.execute(f'SELECT rowid, * FROM `{table_name}`')
+            else:
+                cursor = connector.execute(f'SELECT * FROM `{table_name}`')
             rows = cursor.fetchall()
             col_names = [desc[0] for desc in cursor.description]
 
             # 填充数据
             for row in rows:
                 record = self._deserialize_row(row, col_names, table.columns)
-                pk = record[table.primary_key]
+                # 确定主键或 rowid
+                if table.primary_key:
+                    pk = record.get(table.primary_key)
+                    if pk is None:
+                        pk = table.next_id
+                        table.next_id += 1
+                else:
+                    # 无主键表：使用 rowid
+                    pk = record.pop('rowid', None)
+                    if pk is None:
+                        pk = table.next_id
+                        table.next_id += 1
                 table.data[pk] = record
 
     def save(self, tables: Dict[str, 'Table']) -> None:

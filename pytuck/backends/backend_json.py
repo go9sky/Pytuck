@@ -249,9 +249,17 @@ class JSONBackend(StorageBackend):
         table.next_id = table_data['next_id']
 
         # 加载记录
-        for record_data in table_data['records']:
+        for idx, record_data in enumerate(table_data['records']):
             record = self._deserialize_record(record_data, table.columns)
-            pk = record[table.primary_key]
+            # 确定主键或使用内部索引
+            if table.primary_key:
+                pk = record[table.primary_key]
+            else:
+                # 无主键表：使用记录的顺序索引作为内部 pk
+                pk = idx + 1
+                # 更新 next_id 以确保后续插入的正确性
+                if pk >= table.next_id:
+                    table.next_id = pk + 1
             table.data[pk] = record
 
         # 重建索引（清除构造函数创建的空索引）

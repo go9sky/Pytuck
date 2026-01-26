@@ -195,16 +195,24 @@ class CSVBackend(StorageBackend):
             text_stream = io.TextIOWrapper(f, encoding=encoding)
             reader = csv.DictReader(text_stream, delimiter=self.options.delimiter)
 
-            # 检查主键列是否存在于 CSV header 中
-            if reader.fieldnames and table.primary_key not in reader.fieldnames:
+            # 检查主键列是否存在于 CSV header 中（仅当有主键时）
+            if table.primary_key and reader.fieldnames and table.primary_key not in reader.fieldnames:
                 raise SerializationError(
                     f"CSV 文件 '{csv_file}' 缺少主键列 '{table.primary_key}'，"
                     f"可用列: {reader.fieldnames}"
                 )
 
-            for row_data in reader:
+            for idx, row_data in enumerate(reader):
                 record = self._deserialize_record(row_data, table.columns)
-                pk = record[table.primary_key]
+                # 确定主键或使用内部索引
+                if table.primary_key:
+                    pk = record[table.primary_key]
+                else:
+                    # 无主键表：使用行索引作为内部 pk
+                    pk = idx + 1
+                    # 更新 next_id 以确保后续插入的正确性
+                    if pk >= table.next_id:
+                        table.next_id = pk + 1
                 table.data[pk] = record
 
         # 重建索引（删除构造函数创建的空索引）

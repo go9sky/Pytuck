@@ -237,7 +237,7 @@ class SQLiteConnector(DatabaseConnector):
         self,
         table_name: str,
         columns: List[Dict[str, Any]],
-        primary_key: str
+        primary_key: Optional[str]
     ) -> None:
         """创建表"""
         if self.conn is None:

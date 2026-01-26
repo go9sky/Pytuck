@@ -312,6 +312,8 @@ class Query(Generic[T]):
             # 反向遍历，先按低优先级排序，再按高优先级排序
             # 利用 Python 排序的稳定性，最终实现多列排序
             for field, desc in reversed(self._order_by_fields):
+                # 使用工厂函数 make_sort_key 来正确捕获循环变量 field
+                # 这避免了闭包中常见的"后期绑定"问题
                 def make_sort_key(f: str) -> Any:
                     def sort_key(r: dict) -> Any:
                         return r.get(f) if r.get(f) is not None else ''

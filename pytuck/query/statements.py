@@ -9,6 +9,7 @@ from abc import ABC, abstractmethod
 
 from ..common.types import T
 from ..common.exceptions import QueryError
+from ..core.orm import PSEUDO_PK_NAME
 
 if TYPE_CHECKING:
     from ..core.orm import PureBaseModel, Column
@@ -256,7 +257,7 @@ class Update(Statement[T]):
 
         # 优化：检测主键等于查询，直接访问而非全表扫描
         pk_value = None
-        if len(self._where_clauses) == 1:
+        if pk_name and len(self._where_clauses) == 1:
             expr = self._where_clauses[0]
             if expr.column.name == pk_name and expr.operator in ('=', '=='):
                 pk_value = expr.value
@@ -285,7 +286,17 @@ class Update(Statement[T]):
 
             count = 0
             for record in records:
-                pk = record[pk_name]
+                # 获取主键或 rowid
+                if pk_name:
+                    pk = record[pk_name]
+                else:
+                    # 无主键模型：使用内部 rowid
+                    pk = record.get(PSEUDO_PK_NAME)
+                    if pk is None:
+                        raise QueryError(
+                            "Cannot update record without primary key or rowid",
+                            details={'table': table_name}
+                        )
                 storage.update(table_name, pk, validated_values)
                 count += 1
 
@@ -325,7 +336,7 @@ class Delete(Statement[T]):
 
         # 优化：检测主键等于查询，直接访问而非全表扫描
         pk_value = None
-        if len(self._where_clauses) == 1:
+        if pk_name and len(self._where_clauses) == 1:
             expr = self._where_clauses[0]
             if expr.column.name == pk_name and expr.operator in ('=', '=='):
                 pk_value = expr.value
@@ -347,7 +358,17 @@ class Delete(Statement[T]):
 
             count = 0
             for record in records:
-                pk = record[pk_name]
+                # 获取主键或 rowid
+                if pk_name:
+                    pk = record[pk_name]
+                else:
+                    # 无主键模型：使用内部 rowid
+                    pk = record.get(PSEUDO_PK_NAME)
+                    if pk is None:
+                        raise QueryError(
+                            "Cannot delete record without primary key or rowid",
+                            details={'table': table_name}
+                        )
                 storage.delete(table_name, pk)
                 count += 1
 

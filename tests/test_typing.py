@@ -43,7 +43,7 @@ if TYPE_CHECKING:
     from pytuck.query.statements import Select, Insert, Update, Delete
 
     # 示例模型定义
-    db = Storage(':memory:')
+    db = Storage(':memory:', in_memory=True)
     Base = declarative_base(db)
 
     class User(Base):  # type: ignore[valid-type,misc]

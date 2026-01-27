@@ -96,6 +96,198 @@ class BinaryExpression:
         return f"BinaryExpression({self.column.name} {self.operator} {self.value})"
 
 
+# 表达式类型：BinaryExpression 或 LogicalExpression
+ExpressionType = Union['BinaryExpression', 'LogicalExpression']
+
+
+class CompositeCondition:
+    """
+    组合条件：用于 AND/OR/NOT 逻辑评估
+
+    支持递归嵌套，可以表示任意复杂的布尔逻辑组合。
+    """
+
+    def __init__(self, operator: str, conditions: List[Union[Condition, 'CompositeCondition']]):
+        """
+        初始化组合条件
+
+        Args:
+            operator: 逻辑操作符 ('AND' | 'OR' | 'NOT')
+            conditions: 子条件列表（NOT 时只有一个元素）
+        """
+        self.operator = operator
+        self.conditions = conditions
+
+    def evaluate(self, record: dict) -> bool:
+        """
+        递归评估条件是否满足
+
+        Args:
+            record: 记录字典
+
+        Returns:
+            条件是否满足
+        """
+        if self.operator == 'AND':
+            return all(cond.evaluate(record) for cond in self.conditions)
+        elif self.operator == 'OR':
+            return any(cond.evaluate(record) for cond in self.conditions)
+        elif self.operator == 'NOT':
+            return not self.conditions[0].evaluate(record)
+        else:
+            raise QueryError(f"Unsupported logical operator: {self.operator}")
+
+    def __repr__(self) -> str:
+        if self.operator == 'NOT':
+            return f"NOT({self.conditions[0]})"
+        sep = f" {self.operator} "
+        return f"({sep.join(repr(c) for c in self.conditions)})"
+
+
+class LogicalExpression:
+    """
+    逻辑组合表达式：表示 AND/OR/NOT 组合
+
+    由 or_(), and_(), not_() 函数创建，用于构建复杂查询条件。
+
+    Example:
+        # OR 组合
+        or_(User.age >= 18, User.vip == True)
+
+        # AND 组合
+        and_(User.active == True, User.verified == True)
+
+        # NOT 取反
+        not_(User.banned == True)
+
+        # 嵌套组合
+        or_(User.role == 'admin', and_(User.age >= 21, User.verified == True))
+    """
+
+    def __init__(self, operator: str, expressions: List[ExpressionType]):
+        """
+        初始化逻辑表达式
+
+        Args:
+            operator: 逻辑操作符 ('AND' | 'OR' | 'NOT')
+            expressions: 子表达式列表（NOT 时只有一个元素）
+        """
+        self.operator = operator
+        self.expressions = expressions
+
+    def to_condition(self) -> CompositeCondition:
+        """
+        转换为 CompositeCondition 对象
+
+        递归转换所有子表达式。
+
+        Returns:
+            CompositeCondition 对象
+        """
+        conditions: List[Union[Condition, CompositeCondition]] = []
+        for expr in self.expressions:
+            if isinstance(expr, BinaryExpression):
+                conditions.append(expr.to_condition())
+            elif isinstance(expr, LogicalExpression):
+                conditions.append(expr.to_condition())
+            else:
+                raise QueryError(f"Unexpected expression type: {type(expr).__name__}")
+        return CompositeCondition(self.operator, conditions)
+
+    def __repr__(self) -> str:
+        if self.operator == 'NOT':
+            return f"not_({self.expressions[0]})"
+        func_name = 'or_' if self.operator == 'OR' else 'and_'
+        args = ', '.join(repr(e) for e in self.expressions)
+        return f"{func_name}({args})"
+
+
+def or_(*expressions: ExpressionType) -> LogicalExpression:
+    """
+    创建 OR 组合表达式
+
+    将多个条件以 OR 逻辑组合，只要其中一个条件满足即返回 True。
+
+    Args:
+        *expressions: 要进行 OR 组合的表达式（至少 2 个）
+
+    Returns:
+        LogicalExpression 对象
+
+    Raises:
+        QueryError: 如果表达式少于 2 个
+
+    Example:
+        # 查询 age >= 18 或者 vip == True 的用户
+        stmt = select(User).where(or_(User.age >= 18, User.vip == True))
+
+        # 多个条件的 OR
+        stmt = select(User).where(or_(
+            User.role == 'admin',
+            User.role == 'moderator',
+            User.role == 'editor'
+        ))
+    """
+    if len(expressions) < 2:
+        raise QueryError("or_() requires at least 2 expressions")
+    return LogicalExpression('OR', list(expressions))
+
+
+def and_(*expressions: ExpressionType) -> LogicalExpression:
+    """
+    创建 AND 组合表达式
+
+    将多个条件以 AND 逻辑组合，所有条件都必须满足才返回 True。
+
+    注意：多参数 where() 调用默认就是 AND 语义，此函数主要用于与 or_() 嵌套组合。
+
+    Args:
+        *expressions: 要进行 AND 组合的表达式（至少 2 个）
+
+    Returns:
+        LogicalExpression 对象
+
+    Raises:
+        QueryError: 如果表达式少于 2 个
+
+    Example:
+        # 与 or_() 嵌套使用
+        stmt = select(User).where(or_(
+            User.role == 'admin',
+            and_(User.age >= 21, User.verified == True)
+        ))
+    """
+    if len(expressions) < 2:
+        raise QueryError("and_() requires at least 2 expressions")
+    return LogicalExpression('AND', list(expressions))
+
+
+def not_(expression: ExpressionType) -> LogicalExpression:
+    """
+    创建 NOT 表达式
+
+    对条件取反，条件不满足时返回 True。
+
+    Args:
+        expression: 要取反的表达式
+
+    Returns:
+        LogicalExpression 对象
+
+    Example:
+        # 查询未被封禁的用户
+        stmt = select(User).where(not_(User.banned == True))
+
+        # 与 or_() 组合
+        stmt = select(User).where(not_(or_(User.banned == True, User.deleted == True)))
+    """
+    return LogicalExpression('NOT', [expression])
+
+
+# 条件类型：Condition 或 CompositeCondition
+ConditionType = Union[Condition, CompositeCondition]
+
+
 class Query(Generic[T]):
     """查询构建器（支持链式调用）"""
 
@@ -109,20 +301,21 @@ class Query(Generic[T]):
         """
         self.model_class = model_class
         self.storage = storage  # 新 API：通过参数传入
-        self._conditions: List[Condition] = []
+        self._conditions: List[ConditionType] = []
         self._order_by_fields: List[Tuple[str, bool]] = []  # [(field, desc), ...]
         self._limit_value: Optional[int] = None
         self._offset_value: int = 0
 
-    def filter(self, *expressions: BinaryExpression) -> 'Query[T]':
+    def filter(self, *expressions: ExpressionType) -> 'Query[T]':
         """
-        添加过滤条件（只支持表达式语法）
+        添加过滤条件（支持表达式和逻辑组合）
 
         用法：
             query.filter(Student.age >= 20, Student.name == 'Alice')
+            query.filter(or_(Student.age >= 20, Student.vip == True))
 
         Args:
-            *expressions: BinaryExpression 对象
+            *expressions: BinaryExpression 或 LogicalExpression 对象
 
         Returns:
             Query 对象（链式调用）
@@ -134,18 +327,21 @@ class Query(Generic[T]):
             # 多条件（AND）
             query.filter(Student.age >= 20, Student.name == 'Alice')
 
+            # OR 条件
+            query.filter(or_(Student.age >= 20, Student.vip == True))
+
             # 链式调用
             query.filter(Student.age >= 20).filter(Student.score > 85).all()
         """
-        # 只处理 BinaryExpression 对象
         for expr in expressions:
             if isinstance(expr, BinaryExpression):
-                condition = expr.to_condition()
-                self._conditions.append(condition)
+                self._conditions.append(expr.to_condition())
+            elif isinstance(expr, LogicalExpression):
+                self._conditions.append(expr.to_condition())
             else:
                 raise QueryError(
-                    f"Expected BinaryExpression, got {type(expr).__name__}. "
-                    f"Use Model.column >= value syntax."
+                    f"Expected BinaryExpression or LogicalExpression, got {type(expr).__name__}. "
+                    f"Use Model.column >= value syntax or or_(), and_(), not_() functions."
                 )
 
         return self

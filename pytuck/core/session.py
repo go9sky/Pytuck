@@ -10,7 +10,7 @@ from contextlib import contextmanager
 from ..common.types import T
 from ..common.exceptions import QueryError, TransactionError
 from ..common.options import SyncOptions, SyncResult
-from ..query.builder import Query
+from ..query.builder import Query, BinaryExpression, LogicalExpression
 from ..query.result import Result, CursorResult
 from ..query.statements import Statement, Insert, Select, Update, Delete
 from .storage import Storage
@@ -416,33 +416,10 @@ class Session:
                             order_parts.append(f'`{field}` ASC')
                     order_by_str = ', '.join(order_parts)
 
-                # 构建 where 子句
-                where_parts = []
-                params = []
-                for expr in statement._where_clauses:
-                    assert expr.column.name is not None, "Column name must be set"
-                    col_name = expr.column.name  # 类型为 str
-                    op = compiler._convert_op(expr.operator)
-                    if expr.operator == 'IN':
-                        if isinstance(expr.value, (list, tuple)):
-                            placeholders = ', '.join(['?' for _ in expr.value])
-                            where_parts.append(f'`{col_name}` IN ({placeholders})')
-                            for v in expr.value:
-                                params.append(compiler._serialize_param(v, statement.model_class, col_name))
-                    elif expr.value is None:
-                        # NULL 值需要特殊处理：使用 IS NULL 或 IS NOT NULL
-                        if op in ('=', '=='):
-                            where_parts.append(f'`{col_name}` IS NULL')
-                        elif op in ('!=', '<>'):
-                            where_parts.append(f'`{col_name}` IS NOT NULL')
-                        else:
-                            # 其他操作符与 NULL 比较无意义，跳过
-                            pass
-                    else:
-                        where_parts.append(f'`{col_name}` {op} ?')
-                        params.append(compiler._serialize_param(expr.value, statement.model_class, col_name))
-
-                where_clause = ' AND '.join(where_parts) if where_parts else None
+                # 构建 where 子句（使用编译器处理，支持 LogicalExpression）
+                where_sql, params_list = compiler._compile_where(statement)
+                where_clause = where_sql if where_sql else None
+                params = params_list
 
                 # 执行查询
                 rows = connector.query_rows(
@@ -499,12 +476,13 @@ class Session:
                     column = table.columns[col_name]
                     validated_data[col_name] = column.validate(value)
 
-            # 优化：主键直接更新
+            # 优化：主键直接更新（仅对简单 BinaryExpression 生效）
             pk_value = None
             if len(statement._where_clauses) == 1:
                 expr = statement._where_clauses[0]
-                if expr.column.name == pk_name and expr.operator in ('=', '=='):
-                    pk_value = expr.value
+                if isinstance(expr, BinaryExpression):
+                    if expr.column.name == pk_name and expr.operator in ('=', '=='):
+                        pk_value = expr.value
 
             if pk_value is not None:
                 # 主键直接更新
@@ -525,12 +503,13 @@ class Session:
             table = self.storage.get_table(statement.model_class.__tablename__)
             pk_name = statement.model_class.__primary_key__
 
-            # 优化：主键直接删除
+            # 优化：主键直接删除（仅对简单 BinaryExpression 生效）
             pk_value = None
             if len(statement._where_clauses) == 1:
                 expr = statement._where_clauses[0]
-                if expr.column.name == pk_name and expr.operator in ('=', '=='):
-                    pk_value = expr.value
+                if isinstance(expr, BinaryExpression):
+                    if expr.column.name == pk_name and expr.operator in ('=', '=='):
+                        pk_value = expr.value
 
             if pk_value is not None:
                 # 主键直接删除

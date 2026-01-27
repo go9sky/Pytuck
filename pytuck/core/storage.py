@@ -6,14 +6,14 @@ Pytuck 存储引擎
 
 import copy
 from pathlib import Path
-from typing import Any, Dict, List, Iterator, Tuple, Optional, Generator, Type, TYPE_CHECKING
+from typing import Any, Dict, List, Iterator, Tuple, Optional, Generator, Type, TYPE_CHECKING, Sequence
 from contextlib import contextmanager
 
 from ..common.options import BackendOptions, SyncOptions, SyncResult
 from ..common.utils import validate_sql_identifier
 from .orm import Column, PSEUDO_PK_NAME
 from .index import HashIndex
-from ..query import Condition
+from ..query import Condition, CompositeCondition, ConditionType
 from ..common.exceptions import (
     TableNotFoundError,
     RecordNotFoundError,
@@ -1213,7 +1213,7 @@ class Storage:
 
     def query(self,
               table_name: str,
-              conditions: List[Condition],
+              conditions: Sequence[ConditionType],
               limit: Optional[int] = None,
               offset: int = 0,
               order_by: Optional[str] = None,
@@ -1223,7 +1223,7 @@ class Storage:
 
         Args:
             table_name: 表名
-            conditions: 查询条件列表
+            conditions: 查询条件列表（支持 Condition 和 CompositeCondition）
             limit: 限制返回记录数（None 表示无限制）
             offset: 跳过的记录数
             order_by: 排序字段名
@@ -1239,11 +1239,22 @@ class Storage:
             return self._query_native_sql(table_name, table, conditions, limit, offset, order_by, order_desc)
 
         # 内存模式
-        # 优化：使用多索引联合查询（取所有匹配索引结果的交集）
-        candidate_pks = None
-        remaining_conditions = []
+        # 分离简单条件和复合条件
+        simple_conditions: List[Condition] = []
+        composite_conditions: List[CompositeCondition] = []
 
         for condition in conditions:
+            if isinstance(condition, CompositeCondition):
+                composite_conditions.append(condition)
+            else:
+                simple_conditions.append(condition)
+
+        # 优化：使用多索引联合查询（取所有匹配索引结果的交集）
+        # 仅对简单条件使用索引优化
+        candidate_pks = None
+        remaining_simple_conditions: List[Condition] = []
+
+        for condition in simple_conditions:
             if condition.operator == '=' and condition.field in table.indexes:
                 # 使用索引查询
                 index = table.indexes[condition.field]
@@ -1256,25 +1267,30 @@ class Storage:
                     candidate_pks = candidate_pks.intersection(pks)
             else:
                 # 无索引的条件保留后续过滤
-                remaining_conditions.append(condition)
+                remaining_simple_conditions.append(condition)
 
-        # 如果没有使用索引，全表扫描（需要评估所有条件）
+        # 如果没有使用索引，全表扫描
         if candidate_pks is None:
             candidate_pks = set(table.data.keys())
-            remaining_conditions = conditions  # 没有索引时，所有条件都需要评估
+            remaining_simple_conditions = simple_conditions
 
-        # 过滤记录（只需评估未使用索引的条件）
+        # 过滤记录
         results = []
         for pk in candidate_pks:
             if pk in table.data:
                 record = table.data[pk]
-                # 评估剩余条件（索引已匹配的条件无需再次评估）
-                if all(cond.evaluate(record) for cond in remaining_conditions):
-                    record_copy = record.copy()
-                    # 无主键表：注入内部 rowid
-                    if not table.primary_key:
-                        record_copy[PSEUDO_PK_NAME] = pk
-                    results.append(record_copy)
+                # 评估简单条件
+                if not all(cond.evaluate(record) for cond in remaining_simple_conditions):
+                    continue
+                # 评估复合条件（OR/AND/NOT）
+                if not all(cond.evaluate(record) for cond in composite_conditions):
+                    continue
+
+                record_copy = record.copy()
+                # 无主键表：注入内部 rowid
+                if not table.primary_key:
+                    record_copy[PSEUDO_PK_NAME] = pk
+                results.append(record_copy)
 
         # 排序
         if order_by and order_by in table.columns:
@@ -1310,7 +1326,7 @@ class Storage:
         self,
         table_name: str,
         table: Table,
-        conditions: List[Condition],
+        conditions: Sequence[ConditionType],
         limit: Optional[int],
         offset: int,
         order_by: Optional[str],
@@ -1322,7 +1338,7 @@ class Storage:
         Args:
             table_name: 表名
             table: Table 对象
-            conditions: 查询条件列表
+            conditions: 查询条件列表（支持 Condition 和 CompositeCondition）
             limit: 限制返回记录数
             offset: 跳过的记录数
             order_by: 排序字段名
@@ -1339,9 +1355,16 @@ class Storage:
         params: List[Any] = []
 
         for condition in conditions:
-            op = self._convert_operator(condition.operator)
-            where_parts.append(f'`{condition.field}` {op} ?')
-            params.append(condition.value)
+            if isinstance(condition, CompositeCondition):
+                # 编译复合条件
+                sql_part, cond_params = self._compile_composite_condition(condition)
+                where_parts.append(f'({sql_part})')
+                params.extend(cond_params)
+            else:
+                # 简单条件
+                op = self._convert_operator(condition.operator)
+                where_parts.append(f'`{condition.field}` {op} ?')
+                params.append(condition.value)
 
         where_clause = ' AND '.join(where_parts) if where_parts else None
 
@@ -1364,6 +1387,52 @@ class Storage:
         # 反序列化
         results = [self._deserialize_record(row, table.columns) for row in rows]
         return results
+
+    def _compile_composite_condition(
+        self,
+        condition: CompositeCondition
+    ) -> Tuple[str, List[Any]]:
+        """
+        编译复合条件为 SQL
+
+        Args:
+            condition: CompositeCondition 对象
+
+        Returns:
+            (SQL 片段, 参数列表)
+        """
+        parts: List[str] = []
+        params: List[Any] = []
+
+        if condition.operator == 'NOT':
+            # NOT 只有一个子条件
+            child = condition.conditions[0]
+            if isinstance(child, CompositeCondition):
+                child_sql, child_params = self._compile_composite_condition(child)
+                parts.append(f'NOT ({child_sql})')
+                params.extend(child_params)
+            else:
+                op = self._convert_operator(child.operator)
+                parts.append(f'NOT (`{child.field}` {op} ?)')
+                params.append(child.value)
+        else:
+            # AND 或 OR
+            connector_str = ' AND ' if condition.operator == 'AND' else ' OR '
+            for child in condition.conditions:
+                if isinstance(child, CompositeCondition):
+                    child_sql, child_params = self._compile_composite_condition(child)
+                    parts.append(f'({child_sql})')
+                    params.extend(child_params)
+                else:
+                    op = self._convert_operator(child.operator)
+                    parts.append(f'`{child.field}` {op} ?')
+                    params.append(child.value)
+
+        if condition.operator == 'NOT':
+            return parts[0], params
+        else:
+            connector_str = ' AND ' if condition.operator == 'AND' else ' OR '
+            return connector_str.join(parts), params
 
     def _convert_operator(self, op: str) -> str:
         """转换操作符为 SQL 操作符"""

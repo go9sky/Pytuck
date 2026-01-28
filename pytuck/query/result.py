@@ -8,6 +8,7 @@ from typing import Any, Dict, List, Optional, Type, Generic, TYPE_CHECKING
 
 from ..common.types import T
 from ..common.exceptions import QueryError, UnsupportedOperationError
+from ..core.orm import PSEUDO_PK_NAME
 
 if TYPE_CHECKING:
     from ..core.orm import PureBaseModel
@@ -28,26 +29,48 @@ class _ScalarResult(Generic[T]):
 
     def _create_instance(self, record: Dict[str, Any]) -> T:
         """创建模型实例并处理 identity map"""
-        if self._session:
-            # 尝试从 identity map 获取现有实例
-            pk_name = getattr(self._model_class, '__primary_key__', 'id')
-            pk_value = record.get(pk_name)
+        # 检查是否有 PSEUDO_PK_NAME（无主键模型的内部 rowid）
+        rowid = record.pop(PSEUDO_PK_NAME, None)
 
-            if pk_value is not None:
-                existing = self._session._get_from_identity_map(self._model_class, pk_value)
+        pk_name = getattr(self._model_class, '__primary_key__', None)
+
+        if self._session:
+            if pk_name:
+                # 有主键：使用主键查找 identity map
+                pk_value = record.get(pk_name)
+                if pk_value is not None:
+                    existing = self._session._get_from_identity_map(self._model_class, pk_value)
+                    if existing is not None:
+                        # 刷新实例属性以保持与存储同步
+                        for key, value in record.items():
+                            setattr(existing, key, value)
+                        return existing
+            elif rowid is not None:
+                # 无主键：使用 rowid 查找 identity map
+                identity_key = (self._model_class, (PSEUDO_PK_NAME, rowid))
+                existing = self._session._identity_map.get(identity_key)  # type: ignore
                 if existing is not None:
                     # 刷新实例属性以保持与存储同步
-                    for key, value in record.items():
-                        setattr(existing, key, value)
+                    for key_name, value in record.items():
+                        setattr(existing, key_name, value)
                     return existing
 
-            # 创建新实例并注册到 identity map
+            # 创建新实例
             instance = self._model_class(**record)
+
+            # 对于无主键模型，设置内部 rowid
+            if rowid is not None and pk_name is None:
+                setattr(instance, '_pytuck_rowid', rowid)
+
+            # 注册到 identity map
             self._session._register_instance(instance)
             return instance
         else:
             # 没有 session，直接创建实例
             new_instance: T = self._model_class(**record)
+            # 对于无主键模型，设置内部 rowid
+            if rowid is not None and pk_name is None:
+                setattr(new_instance, '_pytuck_rowid', rowid)
             return new_instance
 
     def all(self) -> List[T]:

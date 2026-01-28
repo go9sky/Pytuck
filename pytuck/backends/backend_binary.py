@@ -1018,7 +1018,7 @@ class BinaryBackend(StorageBackend):
         - Table Name Length (2 bytes)
         - Table Name (UTF-8)
         - Primary Key Length (2 bytes)
-        - Primary Key (UTF-8)
+        - Primary Key (UTF-8) - 空字符串表示无主键
         - Table Comment Length (2 bytes)
         - Table Comment (UTF-8)
         - Column Count (2 bytes)
@@ -1030,10 +1030,12 @@ class BinaryBackend(StorageBackend):
         f.write(struct.pack('<H', len(table_name_bytes)))
         f.write(table_name_bytes)
 
-        # Primary Key
-        pk_bytes = table.primary_key.encode('utf-8')
+        # Primary Key（None 用空字符串表示）
+        pk_str = table.primary_key if table.primary_key else ''
+        pk_bytes = pk_str.encode('utf-8')
         f.write(struct.pack('<H', len(pk_bytes)))
-        f.write(pk_bytes)
+        if pk_bytes:
+            f.write(pk_bytes)
 
         # Table Comment
         comment_bytes = (table.comment or '').encode('utf-8')
@@ -1057,9 +1059,11 @@ class BinaryBackend(StorageBackend):
         name_len = struct.unpack('<H', f.read(2))[0]
         table_name = f.read(name_len).decode('utf-8')
 
-        # Primary Key
+        # Primary Key（空字符串表示无主键）
         pk_len = struct.unpack('<H', f.read(2))[0]
-        primary_key = f.read(pk_len).decode('utf-8')
+        primary_key: Optional[str] = f.read(pk_len).decode('utf-8') if pk_len > 0 else None
+        if primary_key == '':
+            primary_key = None
 
         # Table Comment
         comment_len = struct.unpack('<H', f.read(2))[0]

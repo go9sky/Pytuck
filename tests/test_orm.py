@@ -176,29 +176,29 @@ class TestDeclarativeBase(unittest.TestCase):
 
         self.assertEqual(TestModel.__primary_key__, 'user_id')
 
-    def test_primary_key_required(self):
-        """测试必须定义主键"""
+    def test_no_primary_key_allowed(self):
+        """测试无主键模型可以正常工作"""
         Base = declarative_base(self.db)
 
-        with self.assertRaises(SchemaError) as context:
-            class TestModel(Base):
-                __tablename__ = 'test_no_pk'
-                name = Column(str)
-                age = Column(int)
+        class TestModel(Base):
+            __tablename__ = 'test_no_pk'
+            name = Column(str)
+            age = Column(int)
 
-        self.assertIn('must have a primary key', str(context.exception))
+        # 无主键模型的 __primary_key__ 应为 None
+        self.assertIsNone(TestModel.__primary_key__)
 
-    def test_id_column_without_primary_key_raises_error(self):
-        """测试定义 id 列但不设置 primary_key=True 应抛出错误"""
+    def test_id_column_without_primary_key_no_error(self):
+        """测试定义 id 列但不设置 primary_key=True 不会自动成为主键"""
         Base = declarative_base(self.db)
 
-        with self.assertRaises(SchemaError) as context:
-            class TestModel(Base):
-                __tablename__ = 'test_id_no_pk'
-                id = Column(str)  # 没有 primary_key=True
-                name = Column(str)
+        class TestModel(Base):
+            __tablename__ = 'test_id_no_pk'
+            id = Column(str)  # 没有 primary_key=True
+            name = Column(str)
 
-        self.assertIn('must have a primary key', str(context.exception))
+        # 即使有 id 列，如果没有 primary_key=True，也是无主键模型
+        self.assertIsNone(TestModel.__primary_key__)
 
 
 class TestPureBaseModel(unittest.TestCase):

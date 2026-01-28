@@ -13,6 +13,7 @@ from ..core.types import TypeRegistry
 
 if TYPE_CHECKING:
     from .statements import Statement, Select, Insert, Update, Delete
+    from .builder import BinaryExpression, LogicalExpression
     from ..core.orm import Column
 
 
@@ -81,14 +82,13 @@ class QueryCompiler:
         检查语句是否可以编译为 SQL
 
         目前支持：
-        - 简单的 AND 组合的二元表达式
+        - 简单的二元表达式
         - 支持的操作符：=, !=, <, <=, >, >=, IN
+        - AND/OR/NOT 逻辑组合
 
         不支持（回退到内存执行）：
-        - OR 条件
         - 子查询
         - 函数调用
-        - 复杂嵌套表达式
 
         Args:
             statement: Statement 对象
@@ -96,10 +96,10 @@ class QueryCompiler:
         Returns:
             是否可以编译
         """
-        # 检查 where 条件是否都是简单的 AND 组合
+        # 检查 where 条件是否都可以编译
         if hasattr(statement, '_where_clauses'):
             for clause in statement._where_clauses:
-                if not self._is_simple_expression(clause):
+                if not self._is_compilable_expression(clause):
                     return False
         return True
 
@@ -245,6 +245,8 @@ class QueryCompiler:
         Returns:
             (WHERE 子句字符串, 参数列表)
         """
+        from .builder import BinaryExpression, LogicalExpression
+
         if not hasattr(stmt, '_where_clauses') or not stmt._where_clauses:
             return '', []
 
@@ -252,26 +254,128 @@ class QueryCompiler:
         params: List[Any] = []
 
         for expr in stmt._where_clauses:
-            col_name = expr.column.name
-            op = self._convert_op(expr.operator)
-
-            if expr.operator == 'IN':
-                # IN 操作符需要特殊处理
-                if isinstance(expr.value, (list, tuple)):
-                    placeholders = ', '.join(['?' for _ in expr.value])
-                    parts.append(f'{self._quote(col_name)} IN ({placeholders})')
-                    for v in expr.value:
-                        params.append(self._serialize_param(v, stmt.model_class, col_name))
-                else:
-                    raise QueryError(
-                        message="IN operator requires a list or tuple value",
-                        column_name=col_name
-                    )
+            if isinstance(expr, LogicalExpression):
+                # 编译逻辑表达式
+                sql_part, expr_params = self._compile_logical_expression(expr, stmt.model_class)
+                parts.append(f'({sql_part})')
+                params.extend(expr_params)
+            elif isinstance(expr, BinaryExpression):
+                # 编译二元表达式
+                sql_part, expr_params = self._compile_binary_expression(expr, stmt.model_class)
+                parts.append(sql_part)
+                params.extend(expr_params)
             else:
-                parts.append(f'{self._quote(col_name)} {op} ?')
-                params.append(self._serialize_param(expr.value, stmt.model_class, col_name))
+                raise QueryError(
+                    message=f"Unknown expression type: {type(expr).__name__}",
+                    details={"expression": repr(expr)}
+                )
 
         return ' AND '.join(parts), params
+
+    def _compile_binary_expression(
+        self,
+        expr: 'BinaryExpression',
+        model_class: Type
+    ) -> Tuple[str, List[Any]]:
+        """
+        编译二元表达式
+
+        Args:
+            expr: BinaryExpression 对象
+            model_class: 模型类
+
+        Returns:
+            (SQL 片段, 参数列表)
+        """
+        col_name = expr.column.name
+        if col_name is None:
+            raise QueryError(
+                message="Column name is not set",
+                details={"column": repr(expr.column)}
+            )
+        op = self._convert_op(expr.operator)
+        params: List[Any] = []
+
+        if expr.operator == 'IN':
+            # IN 操作符需要特殊处理
+            if isinstance(expr.value, (list, tuple)):
+                placeholders = ', '.join(['?' for _ in expr.value])
+                sql = f'{self._quote(col_name)} IN ({placeholders})'
+                for v in expr.value:
+                    params.append(self._serialize_param(v, model_class, col_name))
+            else:
+                raise QueryError(
+                    message="IN operator requires a list or tuple value",
+                    column_name=col_name
+                )
+        elif expr.value is None:
+            # NULL 值需要特殊处理：使用 IS NULL 或 IS NOT NULL
+            if op in ('=', '=='):
+                sql = f'{self._quote(col_name)} IS NULL'
+            elif op in ('!=', '<>'):
+                sql = f'{self._quote(col_name)} IS NOT NULL'
+            else:
+                # 其他操作符与 NULL 比较返回空结果
+                sql = '1 = 0'  # 永假条件
+        else:
+            sql = f'{self._quote(col_name)} {op} ?'
+            params.append(self._serialize_param(expr.value, model_class, col_name))
+
+        return sql, params
+
+    def _compile_logical_expression(
+        self,
+        expr: 'LogicalExpression',
+        model_class: Type
+    ) -> Tuple[str, List[Any]]:
+        """
+        递归编译逻辑表达式
+
+        Args:
+            expr: LogicalExpression 对象
+            model_class: 模型类
+
+        Returns:
+            (SQL 片段, 参数列表)
+        """
+        from .builder import BinaryExpression, LogicalExpression
+
+        parts: List[str] = []
+        params: List[Any] = []
+
+        if expr.operator == 'NOT':
+            # NOT 只有一个子表达式
+            child = expr.expressions[0]
+            if isinstance(child, LogicalExpression):
+                child_sql, child_params = self._compile_logical_expression(child, model_class)
+                return f'NOT ({child_sql})', child_params
+            elif isinstance(child, BinaryExpression):
+                child_sql, child_params = self._compile_binary_expression(child, model_class)
+                return f'NOT ({child_sql})', child_params
+            else:
+                raise QueryError(
+                    message=f"Unknown expression type in NOT: {type(child).__name__}",
+                    details={"expression": repr(child)}
+                )
+        else:
+            # AND 或 OR
+            connector = ' AND ' if expr.operator == 'AND' else ' OR '
+            for child in expr.expressions:
+                if isinstance(child, LogicalExpression):
+                    child_sql, child_params = self._compile_logical_expression(child, model_class)
+                    parts.append(f'({child_sql})')
+                    params.extend(child_params)
+                elif isinstance(child, BinaryExpression):
+                    child_sql, child_params = self._compile_binary_expression(child, model_class)
+                    parts.append(child_sql)
+                    params.extend(child_params)
+                else:
+                    raise QueryError(
+                        message=f"Unknown expression type: {type(child).__name__}",
+                        details={"expression": repr(child)}
+                    )
+
+            return connector.join(parts), params
 
     def _convert_op(self, op: str) -> str:
         """
@@ -365,22 +469,37 @@ class QueryCompiler:
 
         return value
 
-    def _is_simple_expression(self, expr: Any) -> bool:
+    def _is_compilable_expression(self, expr: Any) -> bool:
         """
-        检查是否为简单表达式
+        检查表达式是否可以编译为 SQL
 
-        简单表达式：支持 AND 组合的二元比较操作符
+        支持：
+        - BinaryExpression（简单比较操作符）
+        - LogicalExpression（AND/OR/NOT 组合）
 
         Args:
             expr: 表达式对象
 
         Returns:
-            是否为简单表达式
+            是否可以编译
         """
-        # BinaryExpression 且操作符为简单比较
+        from .builder import BinaryExpression, LogicalExpression
+
         simple_ops = {
             '==', '=', '!=', '<', '<=', '>', '>=',
             'eq', 'ne', 'lt', 'le', 'gt', 'ge',
             'IN', 'in'
         }
-        return hasattr(expr, 'operator') and expr.operator in simple_ops
+
+        if isinstance(expr, BinaryExpression):
+            return expr.operator in simple_ops
+        elif isinstance(expr, LogicalExpression):
+            # 递归检查所有子表达式
+            return all(self._is_compilable_expression(child) for child in expr.expressions)
+        else:
+            return False
+
+    # 保留旧方法名作为别名，保持向后兼容
+    def _is_simple_expression(self, expr: Any) -> bool:
+        """已废弃：使用 _is_compilable_expression 代替"""
+        return self._is_compilable_expression(expr)

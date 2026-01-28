@@ -268,14 +268,11 @@ class TransactionError(PytuckException):
 # 连接相关异常
 # =============================================================================
 
-class ConnectionError(PytuckException):
+class DatabaseConnectionError(PytuckException):
     """
-    连接异常
+    数据库连接异常
 
     当数据库连接未建立或已断开时抛出。
-
-    注意：此类会覆盖内置的 ConnectionError，但在 Pytuck 上下文中
-    这是有意为之，便于统一异常处理。
     """
 
     def __init__(

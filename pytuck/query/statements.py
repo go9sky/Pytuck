@@ -9,10 +9,11 @@ from abc import ABC, abstractmethod
 
 from ..common.types import T
 from ..common.exceptions import QueryError
+from ..core.orm import PSEUDO_PK_NAME
 
 if TYPE_CHECKING:
     from ..core.orm import PureBaseModel, Column
-    from .builder import BinaryExpression
+    from .builder import BinaryExpression, LogicalExpression, ExpressionType
     from ..core.storage import Storage
 
 
@@ -51,9 +52,12 @@ class Select(Statement[T]):
         # Multi-column ordering (priority: first to last)
         stmt = select(User).order_by('age', desc=True).order_by('name')
 
+        # OR conditions
+        stmt = select(User).where(or_(User.age >= 18, User.vip == True))
+
     Attributes:
         model_class: The model class to query
-        _where_clauses: List of query conditions (BinaryExpression)
+        _where_clauses: List of query conditions (BinaryExpression or LogicalExpression)
         _order_by_fields: List of (field_name, desc) tuples for multi-column ordering
         _limit_value: Maximum number of records to return
         _offset_value: Number of records to skip
@@ -61,13 +65,34 @@ class Select(Statement[T]):
 
     def __init__(self, model_class: Type[T]) -> None:
         super().__init__(model_class)
-        self._where_clauses: List['BinaryExpression'] = []
+        self._where_clauses: List['ExpressionType'] = []
         self._order_by_fields: List[Tuple[str, bool]] = []  # [(field, desc), ...]
         self._limit_value: Optional[int] = None
         self._offset_value: int = 0
 
-    def where(self, *expressions: 'BinaryExpression') -> 'Select[T]':
-        """添加 WHERE 条件（表达式语法）"""
+    def where(self, *expressions: 'ExpressionType') -> 'Select[T]':
+        """
+        添加 WHERE 条件（支持表达式和逻辑组合）
+
+        Args:
+            *expressions: BinaryExpression 或 LogicalExpression 对象
+
+        Returns:
+            Select 对象（链式调用）
+
+        Example:
+            # 简单条件
+            stmt = select(User).where(User.age >= 18)
+
+            # OR 条件
+            stmt = select(User).where(or_(User.age >= 18, User.vip == True))
+
+            # 组合条件
+            stmt = select(User).where(
+                User.active == True,
+                or_(User.role == 'admin', User.role == 'moderator')
+            )
+        """
         self._where_clauses.extend(expressions)
         return self
 
@@ -143,10 +168,18 @@ class Select(Statement[T]):
 
     def _execute(self, storage: 'Storage') -> List[Dict[str, Any]]:
         """执行查询，返回记录字典列表"""
-        from .builder import Condition
+        from .builder import Condition, BinaryExpression, LogicalExpression, ConditionType
 
-        # 转换 BinaryExpression 为 Condition
-        conditions = [expr.to_condition() for expr in self._where_clauses]
+        # 转换 Expression 为 Condition（支持 BinaryExpression 和 LogicalExpression）
+        conditions: List[ConditionType] = []
+        for expr in self._where_clauses:
+            if isinstance(expr, (BinaryExpression, LogicalExpression)):
+                conditions.append(expr.to_condition())
+            else:
+                raise QueryError(
+                    f"Unexpected expression type: {type(expr).__name__}",
+                    details={'expression': repr(expr)}
+                )
 
         # 查询
         table_name = self.model_class.__tablename__
@@ -158,6 +191,8 @@ class Select(Statement[T]):
             # 反向遍历，先按低优先级排序，再按高优先级排序
             # 利用 Python 排序的稳定性，最终实现多列排序
             for field, desc in reversed(self._order_by_fields):
+                # 使用工厂函数 make_sort_key 来正确捕获循环变量 field
+                # 这避免了闭包中常见的"后期绑定"问题
                 def make_sort_key(f: str) -> Any:
                     def sort_key(r: dict) -> Any:
                         return r.get(f) if r.get(f) is not None else ''
@@ -223,6 +258,9 @@ class Update(Statement[T]):
         result = session.execute(stmt)
         affected = result.rowcount()
 
+        # OR conditions
+        stmt = update(User).where(or_(User.role == 'guest', User.expired == True)).values(active=False)
+
     Attributes:
         model_class: The model class to update
         _where_clauses: List of conditions to match records
@@ -231,11 +269,19 @@ class Update(Statement[T]):
 
     def __init__(self, model_class: Type[T]) -> None:
         super().__init__(model_class)
-        self._where_clauses: List['BinaryExpression'] = []
+        self._where_clauses: List['ExpressionType'] = []
         self._values: Dict[str, Any] = {}
 
-    def where(self, *expressions: 'BinaryExpression') -> 'Update[T]':
-        """添加 WHERE 条件"""
+    def where(self, *expressions: 'ExpressionType') -> 'Update[T]':
+        """
+        添加 WHERE 条件（支持表达式和逻辑组合）
+
+        Args:
+            *expressions: BinaryExpression 或 LogicalExpression 对象
+
+        Returns:
+            Update 对象（链式调用）
+        """
         self._where_clauses.extend(expressions)
         return self
 
@@ -246,18 +292,20 @@ class Update(Statement[T]):
 
     def _execute(self, storage: 'Storage') -> int:
         """执行更新，返回受影响的行数"""
-        from .builder import Condition
+        from .builder import Condition, BinaryExpression, LogicalExpression, ConditionType
 
         table_name = self.model_class.__tablename__
         assert table_name is not None, f"Model {self.model_class.__name__} must have __tablename__ defined"
         pk_name = self.model_class.__primary_key__
 
         # 优化：检测主键等于查询，直接访问而非全表扫描
+        # 仅适用于单个 BinaryExpression 且是主键等值条件
         pk_value = None
-        if len(self._where_clauses) == 1:
+        if pk_name and len(self._where_clauses) == 1:
             expr = self._where_clauses[0]
-            if expr.column.name == pk_name and expr.operator in ('=', '=='):
-                pk_value = expr.value
+            if isinstance(expr, BinaryExpression):
+                if expr.column.name == pk_name and expr.operator in ('=', '=='):
+                    pk_value = expr.value
 
         # 验证值
         validated_values: Dict[str, Any] = {}
@@ -268,19 +316,40 @@ class Update(Statement[T]):
 
         if pk_value is not None:
             # 主键直接查询（O(1)）
+            from ..common.exceptions import RecordNotFoundError
             try:
                 storage.update(table_name, pk_value, validated_values)
                 return 1
-            except Exception:
+            except RecordNotFoundError:
+                # 记录不存在，返回 0（符合 SQL UPDATE 语义）
                 return 0
+            # 其他异常（如数据库错误）向上传播
         else:
             # 条件查询
-            conditions = [expr.to_condition() for expr in self._where_clauses]
+            conditions: List[ConditionType] = []
+            for expr in self._where_clauses:
+                if isinstance(expr, (BinaryExpression, LogicalExpression)):
+                    conditions.append(expr.to_condition())
+                else:
+                    raise QueryError(
+                        f"Unexpected expression type: {type(expr).__name__}",
+                        details={'expression': repr(expr)}
+                    )
             records = storage.query(table_name, conditions)
 
             count = 0
             for record in records:
-                pk = record[pk_name]
+                # 获取主键或 rowid
+                if pk_name:
+                    pk = record[pk_name]
+                else:
+                    # 无主键模型：使用内部 rowid
+                    pk = record.get(PSEUDO_PK_NAME)
+                    if pk is None:
+                        raise QueryError(
+                            "Cannot update record without primary key or rowid",
+                            details={'table': table_name}
+                        )
                 storage.update(table_name, pk, validated_values)
                 count += 1
 
@@ -296,6 +365,9 @@ class Delete(Statement[T]):
         result = session.execute(stmt)
         affected = result.rowcount()
 
+        # OR conditions
+        stmt = delete(User).where(or_(User.expired == True, User.banned == True))
+
     Attributes:
         model_class: The model class to delete from
         _where_clauses: List of conditions to match records for deletion
@@ -303,43 +375,74 @@ class Delete(Statement[T]):
 
     def __init__(self, model_class: Type[T]) -> None:
         super().__init__(model_class)
-        self._where_clauses: List['BinaryExpression'] = []
+        self._where_clauses: List['ExpressionType'] = []
 
-    def where(self, *expressions: 'BinaryExpression') -> 'Delete[T]':
-        """添加 WHERE 条件"""
+    def where(self, *expressions: 'ExpressionType') -> 'Delete[T]':
+        """
+        添加 WHERE 条件（支持表达式和逻辑组合）
+
+        Args:
+            *expressions: BinaryExpression 或 LogicalExpression 对象
+
+        Returns:
+            Delete 对象（链式调用）
+        """
         self._where_clauses.extend(expressions)
         return self
 
     def _execute(self, storage: 'Storage') -> int:
         """执行删除，返回受影响的行数"""
-        from .builder import Condition
+        from .builder import Condition, BinaryExpression, LogicalExpression, ConditionType
 
         table_name = self.model_class.__tablename__
         assert table_name is not None, f"Model {self.model_class.__name__} must have __tablename__ defined"
         pk_name = self.model_class.__primary_key__
 
         # 优化：检测主键等于查询，直接访问而非全表扫描
+        # 仅适用于单个 BinaryExpression 且是主键等值条件
         pk_value = None
-        if len(self._where_clauses) == 1:
+        if pk_name and len(self._where_clauses) == 1:
             expr = self._where_clauses[0]
-            if expr.column.name == pk_name and expr.operator in ('=', '=='):
-                pk_value = expr.value
+            if isinstance(expr, BinaryExpression):
+                if expr.column.name == pk_name and expr.operator in ('=', '=='):
+                    pk_value = expr.value
 
         if pk_value is not None:
             # 主键直接删除（O(1)）
+            from ..common.exceptions import RecordNotFoundError
             try:
                 storage.delete(table_name, pk_value)
                 return 1
-            except Exception:
+            except RecordNotFoundError:
+                # 记录不存在，返回 0（符合 SQL DELETE 语义）
                 return 0
+            # 其他异常（如数据库错误）向上传播
         else:
             # 条件查询
-            conditions = [expr.to_condition() for expr in self._where_clauses]
+            conditions: List[ConditionType] = []
+            for expr in self._where_clauses:
+                if isinstance(expr, (BinaryExpression, LogicalExpression)):
+                    conditions.append(expr.to_condition())
+                else:
+                    raise QueryError(
+                        f"Unexpected expression type: {type(expr).__name__}",
+                        details={'expression': repr(expr)}
+                    )
             records = storage.query(table_name, conditions)
 
             count = 0
             for record in records:
-                pk = record[pk_name]
+                # 获取主键或 rowid
+                if pk_name:
+                    pk = record[pk_name]
+                else:
+                    # 无主键模型：使用内部 rowid
+                    pk = record.get(PSEUDO_PK_NAME)
+                    if pk is None:
+                        raise QueryError(
+                            "Cannot delete record without primary key or rowid",
+                            details={'table': table_name}
+                        )
                 storage.delete(table_name, pk)
                 count += 1
 

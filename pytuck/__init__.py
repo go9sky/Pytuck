@@ -68,6 +68,7 @@ from .core import Storage
 from .core import Session
 from .query import Query, BinaryExpression
 from .query import select, insert, update, delete
+from .query import or_, and_, not_
 from .query import Result, CursorResult
 from .common.exceptions import (
     PytuckException,
@@ -83,7 +84,7 @@ from .common.exceptions import (
     ConfigurationError,
     SchemaError,
     QueryError,
-    ConnectionError,
+    DatabaseConnectionError,
     UnsupportedOperationError,
     MigrationError,
     PytuckIndexError,
@@ -99,6 +100,11 @@ __all__ = [
     'insert',      # INSERT 插入
     'update',      # UPDATE 更新
     'delete',      # DELETE 删除
+
+    # 逻辑组合函数
+    'or_',         # OR 条件组合
+    'and_',        # AND 条件组合
+    'not_',        # NOT 条件取反
 
     # 核心组件
     'Storage',            # 存储引擎
@@ -146,7 +152,7 @@ __all__ = [
     'QueryError',
 
     # 连接和事务异常
-    'ConnectionError',
+    'DatabaseConnectionError',
     'TransactionError',
 
     # 操作异常

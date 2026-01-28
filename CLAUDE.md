@@ -4,8 +4,7 @@
 
 ### 运行环境
 
-- **Windows**：默认使用 PowerShell 执行命令，PowerShell 中命令无法执行时再尝试 cmd
-- **Linux/macOS**：使用默认 shell（bash/zsh）
+- **Windows/Linux/macOS**：都使用默认 shell（bash/zsh），命令无法执行时再尝试 PowerShell/cmd 等
 
 ---
 

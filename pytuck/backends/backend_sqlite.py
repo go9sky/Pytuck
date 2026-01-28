@@ -12,6 +12,7 @@ from datetime import datetime
 from .base import StorageBackend
 from ..connectors.connector_sqlite import SQLiteConnector
 from ..common.exceptions import SerializationError
+from ..common.utils import validate_sql_identifier
 from .versions import get_format_version
 from ..core.types import TypeRegistry
 
@@ -104,15 +105,29 @@ class SQLiteBackend(StorageBackend):
             if table.data:  # 已有数据，跳过
                 continue
 
-            # 查询所有数据
-            cursor = connector.execute(f'SELECT * FROM `{table_name}`')
+            # 查询所有数据（无主键表需要包含 rowid）
+            if table.primary_key is None:
+                cursor = connector.execute(f'SELECT rowid, * FROM `{table_name}`')
+            else:
+                cursor = connector.execute(f'SELECT * FROM `{table_name}`')
             rows = cursor.fetchall()
             col_names = [desc[0] for desc in cursor.description]
 
             # 填充数据
             for row in rows:
                 record = self._deserialize_row(row, col_names, table.columns)
-                pk = record[table.primary_key]
+                # 确定主键或 rowid
+                if table.primary_key:
+                    pk = record.get(table.primary_key)
+                    if pk is None:
+                        pk = table.next_id
+                        table.next_id += 1
+                else:
+                    # 无主键表：使用 rowid
+                    pk = record.pop('rowid', None)
+                    if pk is None:
+                        pk = table.next_id
+                        table.next_id += 1
                 table.data[pk] = record
 
     def save(self, tables: Dict[str, 'Table']) -> None:
@@ -221,6 +236,9 @@ class SQLiteBackend(StorageBackend):
                     # 创建索引
                     for col_name, col in table.columns.items():
                         if col.index and not col.primary_key:
+                            # 验证标识符防止 SQL 注入
+                            validate_sql_identifier(table_name)
+                            validate_sql_identifier(col_name)
                             index_name = f'idx_{table_name}_{col_name}'
                             connector.execute(
                                 f'CREATE INDEX IF NOT EXISTS `{index_name}` ON `{table_name}`(`{col_name}`)'
@@ -429,6 +447,9 @@ class SQLiteBackend(StorageBackend):
         # 创建索引
         for col_name, col in table.columns.items():
             if col.index and not col.primary_key:
+                # 验证标识符防止 SQL 注入
+                validate_sql_identifier(table_name)
+                validate_sql_identifier(col_name)
                 index_name = f'idx_{table_name}_{col_name}'
                 connector.execute(
                     f'CREATE INDEX `{index_name}` ON `{table_name}`(`{col_name}`)'

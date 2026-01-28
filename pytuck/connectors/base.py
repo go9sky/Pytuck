@@ -157,7 +157,7 @@ class DatabaseConnector(ABC):
         self,
         table_name: str,
         columns: List[Dict[str, Any]],
-        primary_key: str
+        primary_key: Optional[str]
     ) -> None:
         """
         创建表
@@ -166,7 +166,7 @@ class DatabaseConnector(ABC):
             table_name: 表名
             columns: 列定义列表
                 [{'name': str, 'type': type, 'nullable': bool, 'primary_key': bool}, ...]
-            primary_key: 主键列名
+            primary_key: 主键列名（可选，无主键表传 None）
         """
         pass
 

@@ -6,13 +6,14 @@ Pytuck 存储引擎
 
 import copy
 from pathlib import Path
-from typing import Any, Dict, List, Iterator, Tuple, Optional, Generator, Type, TYPE_CHECKING
+from typing import Any, Dict, List, Iterator, Tuple, Optional, Generator, Type, TYPE_CHECKING, Sequence
 from contextlib import contextmanager
 
 from ..common.options import BackendOptions, SyncOptions, SyncResult
-from .orm import Column
+from ..common.utils import validate_sql_identifier
+from .orm import Column, PSEUDO_PK_NAME
 from .index import HashIndex
-from ..query import Condition
+from ..query import Condition, CompositeCondition, ConditionType
 from ..common.exceptions import (
     TableNotFoundError,
     RecordNotFoundError,
@@ -76,7 +77,7 @@ class Table:
         self,
         name: str,
         columns: List[Column],
-        primary_key: str = 'id',
+        primary_key: Optional[str] = None,
         comment: Optional[str] = None
     ):
         """
@@ -85,7 +86,7 @@ class Table:
         Args:
             name: 表名
             columns: 列定义列表
-            primary_key: 主键字段名
+            primary_key: 主键字段名（None 表示无主键，使用隐式 rowid）
             comment: 表备注/注释
         """
         self.name = name
@@ -93,7 +94,7 @@ class Table:
         for col in columns:
             assert col.name is not None, "Column name must be set"
             self.columns[col.name] = col
-        self.primary_key = primary_key
+        self.primary_key = primary_key  # None 表示无主键
         self.comment = comment
         self.data: Dict[Any, Dict[str, Any]] = {}  # {pk: record}
         self.indexes: Dict[str, HashIndex] = {}  # {column_name: HashIndex}
@@ -119,16 +120,17 @@ class Table:
             record: 记录字典
 
         Returns:
-            主键值
+            主键值（用户主键或隐式 rowid）
 
         Raises:
             DuplicateKeyError: 主键重复
         """
         # 处理主键
-        pk = record.get(self.primary_key)
-        if pk is None:
-            # 自动生成主键（仅支持int类型）
-            if self.primary_key in self.columns:
+        if self.primary_key and self.primary_key in self.columns:
+            # 有用户主键
+            pk = record.get(self.primary_key)
+            if pk is None:
+                # 自动生成主键（仅支持int类型）
                 pk_column = self.columns[self.primary_key]
                 if pk_column.col_type == int:
                     pk = self.next_id
@@ -140,10 +142,15 @@ class Table:
                         table_name=self.name,
                         column_name=self.primary_key
                     )
+            else:
+                # 检查主键是否已存在
+                if pk in self.data:
+                    raise DuplicateKeyError(self.name, pk)
         else:
-            # 检查主键是否已存在
-            if pk in self.data:
-                raise DuplicateKeyError(self.name, pk)
+            # 无用户主键：使用内部 rowid
+            pk = self.next_id
+            self.next_id += 1
+            # 不将 pk 写入 record（隐式主键不作为列存在）
 
         # 验证和处理所有字段
         validated_record = {}
@@ -265,14 +272,21 @@ class Table:
 
         Returns:
             记录字典
+
+        Raises:
+            RecordNotFoundError: 当记录不存在时
         """
-        if self._backend is None or self._pk_offsets is None:
+        # 内部状态检查：这些是程序错误，不是用户错误
+        assert self._backend is not None, "Backend must be set for lazy loading"
+        assert self._pk_offsets is not None, "PK offsets must be set for lazy loading"
+        assert self._data_file is not None, "Data file must be set for lazy loading"
+
+        # 检查 pk 是否存在（这是真正的"记录未找到"情况）
+        if pk not in self._pk_offsets:
             raise RecordNotFoundError(self.name, pk)
 
         offset = self._pk_offsets[pk]
 
-        if self._data_file is None:
-            raise RecordNotFoundError(self.name, pk)
         with open(self._data_file, 'rb') as f:
             f.seek(offset)
             # 使用 backend 的 _read_record 方法读取记录
@@ -554,21 +568,15 @@ class Storage:
             # 表已存在，跳过
             return
 
-        # 查找主键
+        # 查找主键（可能为 None，表示无主键）
         primary_key = None
         for col in columns:
             if col.primary_key:
                 primary_key = col.name
                 break
 
-        # 强制要求用户定义主键
-        if primary_key is None:
-            raise SchemaError(
-                f"Table '{name}' must have a primary key column. "
-                f"Add primary_key=True to one of your Column definitions. "
-                f"Example: Column(int, primary_key=True)",
-                table_name=name
-            )
+        # 允许无主键（使用隐式 rowid）
+        # 注意：无主键时，primary_key 为 None
 
         table = Table(name, columns, primary_key, comment)
         self.tables[name] = table
@@ -612,6 +620,9 @@ class Storage:
             # 创建索引
             for col_name, col in table.columns.items():
                 if col.index and not col.primary_key:
+                    # 验证标识符安全性
+                    validate_sql_identifier(table_name)
+                    validate_sql_identifier(col_name)
                     index_name = f'idx_{table_name}_{col_name}'
                     connector.execute(
                         f'CREATE INDEX IF NOT EXISTS `{index_name}` ON `{table_name}`(`{col_name}`)'
@@ -896,6 +907,11 @@ class Storage:
         if not self._connector:
             return
 
+        # 验证标识符安全性
+        validate_sql_identifier(table_name)
+        if column.name:
+            validate_sql_identifier(column.name)
+
         sql_type = self._get_sql_type(column.col_type)
         sql = f'ALTER TABLE "{table_name}" ADD COLUMN "{column.name}" {sql_type}'
 
@@ -914,6 +930,10 @@ class Storage:
         if not self._connector:
             return
 
+        # 验证标识符安全性
+        validate_sql_identifier(table_name)
+        validate_sql_identifier(column_name)
+
         sql = f'ALTER TABLE "{table_name}" DROP COLUMN "{column_name}"'
         self._connector.execute(sql)
         self._connector.commit()
@@ -923,6 +943,9 @@ class Storage:
         if not self._connector:
             return
 
+        # 验证标识符安全性
+        validate_sql_identifier(table_name)
+
         sql = f'DROP TABLE IF EXISTS "{table_name}"'
         self._connector.execute(sql)
         self._connector.commit()
@@ -931,6 +954,10 @@ class Storage:
         """在原生 SQL 模式下重命名表"""
         if not self._connector:
             return
+
+        # 验证标识符安全性
+        validate_sql_identifier(old_name)
+        validate_sql_identifier(new_name)
 
         sql = f'ALTER TABLE "{old_name}" RENAME TO "{new_name}"'
         self._connector.execute(sql)
@@ -1127,7 +1154,7 @@ class Storage:
 
         Args:
             table_name: 表名
-            pk: 主键值
+            pk: 主键值（用户主键或内部 rowid）
 
         Returns:
             记录字典
@@ -1136,14 +1163,21 @@ class Storage:
 
         # 原生 SQL 模式：直接执行 SQL
         if self._native_sql_mode and self._connector:
-            result = self._connector.select_by_pk(table_name, table.primary_key, pk)
+            # 无主键表使用 rowid 查询
+            pk_col = table.primary_key if table.primary_key else 'rowid'
+            result = self._connector.select_by_pk(table_name, pk_col, pk)
             if result is None:
                 raise RecordNotFoundError(table_name, pk)
             # 反序列化
             return self._deserialize_record(result, table.columns)
 
         # 内存模式
-        return table.get(pk)
+        record = table.get(pk)
+        record_copy = record.copy()
+        # 无主键表：注入内部 rowid
+        if not table.primary_key:
+            record_copy[PSEUDO_PK_NAME] = pk
+        return record_copy
 
     def _deserialize_record(self, record: Dict[str, Any], columns: Dict[str, Column]) -> Dict[str, Any]:
         """
@@ -1179,7 +1213,7 @@ class Storage:
 
     def query(self,
               table_name: str,
-              conditions: List[Condition],
+              conditions: Sequence[ConditionType],
               limit: Optional[int] = None,
               offset: int = 0,
               order_by: Optional[str] = None,
@@ -1189,7 +1223,7 @@ class Storage:
 
         Args:
             table_name: 表名
-            conditions: 查询条件列表
+            conditions: 查询条件列表（支持 Condition 和 CompositeCondition）
             limit: 限制返回记录数（None 表示无限制）
             offset: 跳过的记录数
             order_by: 排序字段名
@@ -1205,11 +1239,22 @@ class Storage:
             return self._query_native_sql(table_name, table, conditions, limit, offset, order_by, order_desc)
 
         # 内存模式
-        # 优化：使用多索引联合查询（取所有匹配索引结果的交集）
-        candidate_pks = None
-        remaining_conditions = []
+        # 分离简单条件和复合条件
+        simple_conditions: List[Condition] = []
+        composite_conditions: List[CompositeCondition] = []
 
         for condition in conditions:
+            if isinstance(condition, CompositeCondition):
+                composite_conditions.append(condition)
+            else:
+                simple_conditions.append(condition)
+
+        # 优化：使用多索引联合查询（取所有匹配索引结果的交集）
+        # 仅对简单条件使用索引优化
+        candidate_pks = None
+        remaining_simple_conditions: List[Condition] = []
+
+        for condition in simple_conditions:
             if condition.operator == '=' and condition.field in table.indexes:
                 # 使用索引查询
                 index = table.indexes[condition.field]
@@ -1222,27 +1267,43 @@ class Storage:
                     candidate_pks = candidate_pks.intersection(pks)
             else:
                 # 无索引的条件保留后续过滤
-                remaining_conditions.append(condition)
+                remaining_simple_conditions.append(condition)
 
-        # 如果没有使用索引，全表扫描（需要评估所有条件）
+        # 如果没有使用索引，全表扫描
         if candidate_pks is None:
             candidate_pks = set(table.data.keys())
-            remaining_conditions = conditions  # 没有索引时，所有条件都需要评估
+            remaining_simple_conditions = simple_conditions
 
-        # 过滤记录（只需评估未使用索引的条件）
+        # 过滤记录
         results = []
         for pk in candidate_pks:
             if pk in table.data:
                 record = table.data[pk]
-                # 评估剩余条件（索引已匹配的条件无需再次评估）
-                if all(cond.evaluate(record) for cond in remaining_conditions):
-                    results.append(record.copy())
+                # 评估简单条件
+                if not all(cond.evaluate(record) for cond in remaining_simple_conditions):
+                    continue
+                # 评估复合条件（OR/AND/NOT）
+                if not all(cond.evaluate(record) for cond in composite_conditions):
+                    continue
+
+                record_copy = record.copy()
+                # 无主键表：注入内部 rowid
+                if not table.primary_key:
+                    record_copy[PSEUDO_PK_NAME] = pk
+                results.append(record_copy)
 
         # 排序
         if order_by and order_by in table.columns:
             def sort_key(record: Dict[str, Any]) -> tuple:
+                """
+                排序键函数
+
+                排序规则：
+                - None 值在升序时排在最后，降序时排在最前
+                - 使用元组 (优先级, 值) 实现：优先级 0 表示有值，1 表示 None
+                """
                 value = record.get(order_by)
-                # 处理 None 值，将其排在最后
+                # 处理 None 值：升序时 None 排在最后 (1, 0)，降序时排在最前 (0, 0)
                 if value is None:
                     return (1, 0) if not order_desc else (0, 0)
                 return (0, value) if not order_desc else (1, value)
@@ -1265,7 +1326,7 @@ class Storage:
         self,
         table_name: str,
         table: Table,
-        conditions: List[Condition],
+        conditions: Sequence[ConditionType],
         limit: Optional[int],
         offset: int,
         order_by: Optional[str],
@@ -1277,7 +1338,7 @@ class Storage:
         Args:
             table_name: 表名
             table: Table 对象
-            conditions: 查询条件列表
+            conditions: 查询条件列表（支持 Condition 和 CompositeCondition）
             limit: 限制返回记录数
             offset: 跳过的记录数
             order_by: 排序字段名
@@ -1294,9 +1355,16 @@ class Storage:
         params: List[Any] = []
 
         for condition in conditions:
-            op = self._convert_operator(condition.operator)
-            where_parts.append(f'`{condition.field}` {op} ?')
-            params.append(condition.value)
+            if isinstance(condition, CompositeCondition):
+                # 编译复合条件
+                sql_part, cond_params = self._compile_composite_condition(condition)
+                where_parts.append(f'({sql_part})')
+                params.extend(cond_params)
+            else:
+                # 简单条件
+                op = self._convert_operator(condition.operator)
+                where_parts.append(f'`{condition.field}` {op} ?')
+                params.append(condition.value)
 
         where_clause = ' AND '.join(where_parts) if where_parts else None
 
@@ -1319,6 +1387,52 @@ class Storage:
         # 反序列化
         results = [self._deserialize_record(row, table.columns) for row in rows]
         return results
+
+    def _compile_composite_condition(
+        self,
+        condition: CompositeCondition
+    ) -> Tuple[str, List[Any]]:
+        """
+        编译复合条件为 SQL
+
+        Args:
+            condition: CompositeCondition 对象
+
+        Returns:
+            (SQL 片段, 参数列表)
+        """
+        parts: List[str] = []
+        params: List[Any] = []
+
+        if condition.operator == 'NOT':
+            # NOT 只有一个子条件
+            child = condition.conditions[0]
+            if isinstance(child, CompositeCondition):
+                child_sql, child_params = self._compile_composite_condition(child)
+                parts.append(f'NOT ({child_sql})')
+                params.extend(child_params)
+            else:
+                op = self._convert_operator(child.operator)
+                parts.append(f'NOT (`{child.field}` {op} ?)')
+                params.append(child.value)
+        else:
+            # AND 或 OR
+            connector_str = ' AND ' if condition.operator == 'AND' else ' OR '
+            for child in condition.conditions:
+                if isinstance(child, CompositeCondition):
+                    child_sql, child_params = self._compile_composite_condition(child)
+                    parts.append(f'({child_sql})')
+                    params.extend(child_params)
+                else:
+                    op = self._convert_operator(child.operator)
+                    parts.append(f'`{child.field}` {op} ?')
+                    params.append(child.value)
+
+        if condition.operator == 'NOT':
+            return parts[0], params
+        else:
+            connector_str = ' AND ' if condition.operator == 'AND' else ' OR '
+            return connector_str.join(parts), params
 
     def _convert_operator(self, op: str) -> str:
         """转换操作符为 SQL 操作符"""

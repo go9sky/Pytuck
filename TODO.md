@@ -28,6 +28,9 @@
 - [x] 后端自动注册机制（__init_subclass__）
 - [x] 查询结果 API 简化（移除 scalars() 中间层）
 - [x] 迁移工具延迟加载后端支持
+- [x] 无主键模型支持（使用内部隐式 `_pytuck_rowid`）
+- [x] 逻辑组合查询 OR/AND/NOT（`or_()`, `and_()`, `not_()`）
+- [x] 外部文件加载功能 load_table（CSV/Excel → 模型对象列表）
 
 ---
 
@@ -161,27 +164,6 @@ class User(Base):
 
 class Order(Base):
     user = relationship("User", back_populates="orders")
-```
-
-### OR 条件支持
-
-**目标**：支持复杂的逻辑查询条件
-
-**当前状态**：只支持 AND 条件
-**预期效果**：
-```python
-# 当前只能这样（隐式 AND）
-users = session.query(User).filter(
-    User.age >= 18,
-    User.status == 'active'
-).all()
-
-# 预期支持 OR 条件
-from pytuck.query import or_
-
-users = session.query(User).filter(
-    or_(User.age >= 65, User.vip == True)
-).all()
 ```
 
 ### 聚合函数支持

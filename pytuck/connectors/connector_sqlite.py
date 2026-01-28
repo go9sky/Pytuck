@@ -11,7 +11,7 @@ from typing import Any, Dict, List, Tuple, Optional, Type
 
 from .base import DatabaseConnector
 from ..common.options import SqliteConnectorOptions
-from ..common.exceptions import ConnectionError, TableNotFoundError
+from ..common.exceptions import DatabaseConnectionError, TableNotFoundError
 from ..core.types import TypeRegistry
 
 
@@ -128,7 +128,7 @@ class SQLiteConnector(DatabaseConnector):
             exclude_system: 是否排除系统表（sqlite_*）和 Pytuck 元数据表（_pytuck_*）
         """
         if self.conn is None:
-            raise ConnectionError("数据库未连接，请先调用 connect()")
+            raise DatabaseConnectionError("数据库未连接，请先调用 connect()")
 
         cursor = self.conn.execute(
             "SELECT name FROM sqlite_master WHERE type='table'"
@@ -146,7 +146,7 @@ class SQLiteConnector(DatabaseConnector):
     def table_exists(self, table_name: str) -> bool:
         """检查表是否存在"""
         if self.conn is None:
-            raise ConnectionError("数据库未连接，请先调用 connect()")
+            raise DatabaseConnectionError("数据库未连接，请先调用 connect()")
 
         cursor = self.conn.execute(
             "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
@@ -162,7 +162,7 @@ class SQLiteConnector(DatabaseConnector):
             (columns, primary_key) 元组
         """
         if self.conn is None:
-            raise ConnectionError("数据库未连接，请先调用 connect()")
+            raise DatabaseConnectionError("数据库未连接，请先调用 connect()")
 
         # 先验证表存在
         if not self.table_exists(table_name):
@@ -212,7 +212,7 @@ class SQLiteConnector(DatabaseConnector):
     def get_table_data(self, table_name: str) -> List[Dict[str, Any]]:
         """获取表中所有数据"""
         if self.conn is None:
-            raise ConnectionError("数据库未连接，请先调用 connect()")
+            raise DatabaseConnectionError("数据库未连接，请先调用 connect()")
 
         # 先验证表存在
         if not self.table_exists(table_name):
@@ -224,24 +224,24 @@ class SQLiteConnector(DatabaseConnector):
     def execute(self, sql: str, params: tuple = ()) -> Any:
         """执行 SQL 语句"""
         if self.conn is None:
-            raise ConnectionError("数据库未连接，请先调用 connect()")
+            raise DatabaseConnectionError("数据库未连接，请先调用 connect()")
         return self.conn.execute(sql, params)
 
     def executemany(self, sql: str, params_list: List[tuple]) -> None:
         """批量执行 SQL 语句"""
         if self.conn is None:
-            raise ConnectionError("数据库未连接，请先调用 connect()")
+            raise DatabaseConnectionError("数据库未连接，请先调用 connect()")
         self.conn.executemany(sql, params_list)
 
     def create_table(
         self,
         table_name: str,
         columns: List[Dict[str, Any]],
-        primary_key: str
+        primary_key: Optional[str]
     ) -> None:
         """创建表"""
         if self.conn is None:
-            raise ConnectionError("数据库未连接，请先调用 connect()")
+            raise DatabaseConnectionError("数据库未连接，请先调用 connect()")
 
         col_defs = []
         for col in columns:
@@ -267,7 +267,7 @@ class SQLiteConnector(DatabaseConnector):
     def drop_table(self, table_name: str) -> None:
         """删除表"""
         if self.conn is None:
-            raise ConnectionError("数据库未连接，请先调用 connect()")
+            raise DatabaseConnectionError("数据库未连接，请先调用 connect()")
         self.conn.execute(f"DROP TABLE IF EXISTS `{table_name}`")
 
     def insert_records(
@@ -278,7 +278,7 @@ class SQLiteConnector(DatabaseConnector):
     ) -> None:
         """批量插入记录"""
         if self.conn is None:
-            raise ConnectionError("数据库未连接，请先调用 connect()")
+            raise DatabaseConnectionError("数据库未连接，请先调用 connect()")
 
         if not records:
             return
@@ -331,7 +331,7 @@ class SQLiteConnector(DatabaseConnector):
             插入记录的主键值（lastrowid）
         """
         if self.conn is None:
-            raise ConnectionError("数据库未连接，请先调用 connect()")
+            raise DatabaseConnectionError("数据库未连接，请先调用 connect()")
 
         columns = list(data.keys())
         col_names = ', '.join([f'`{c}`' for c in columns])
@@ -364,7 +364,7 @@ class SQLiteConnector(DatabaseConnector):
             影响的行数
         """
         if self.conn is None:
-            raise ConnectionError("数据库未连接，请先调用 connect()")
+            raise DatabaseConnectionError("数据库未连接，请先调用 connect()")
 
         set_clause = ', '.join([f'`{k}` = ?' for k in data.keys()])
         sql = f'UPDATE `{table_name}` SET {set_clause} WHERE `{pk_column}` = ?'
@@ -393,7 +393,7 @@ class SQLiteConnector(DatabaseConnector):
             影响的行数
         """
         if self.conn is None:
-            raise ConnectionError("数据库未连接，请先调用 connect()")
+            raise DatabaseConnectionError("数据库未连接，请先调用 connect()")
 
         sql = f'DELETE FROM `{table_name}` WHERE `{pk_column}` = ?'
         cursor = self.conn.execute(sql, (self._serialize_value(pk_value),))
@@ -419,7 +419,7 @@ class SQLiteConnector(DatabaseConnector):
             匹配的记录字典，未找到返回 None
         """
         if self.conn is None:
-            raise ConnectionError("数据库未连接，请先调用 connect()")
+            raise DatabaseConnectionError("数据库未连接，请先调用 connect()")
 
         if columns:
             cols = ', '.join([f'`{c}`' for c in columns])
@@ -462,7 +462,7 @@ class SQLiteConnector(DatabaseConnector):
             记录字典列表
         """
         if self.conn is None:
-            raise ConnectionError("数据库未连接，请先调用 connect()")
+            raise DatabaseConnectionError("数据库未连接，请先调用 connect()")
 
         if columns:
             cols = ', '.join([f'`{c}`' for c in columns])
@@ -487,7 +487,7 @@ class SQLiteConnector(DatabaseConnector):
     def begin_transaction(self) -> None:
         """开始事务"""
         if self.conn is None:
-            raise ConnectionError("数据库未连接，请先调用 connect()")
+            raise DatabaseConnectionError("数据库未连接，请先调用 connect()")
         self.conn.execute('BEGIN')
 
     def rollback_transaction(self) -> None:

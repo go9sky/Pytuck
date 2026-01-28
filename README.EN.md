@@ -911,7 +911,6 @@ Pytuck is a lightweight embedded database designed for simplicity. Here are the 
 | Limitation | Description |
 |------------|-------------|
 | **No JOIN support** | Single table queries only, no multi-table joins |
-| **No OR conditions** | Query conditions only support AND logic |
 | **No aggregate functions** | No COUNT, SUM, AVG, MIN, MAX support |
 | **No relationship loading** | No lazy loading or eager loading of related objects |
 | **Single writer** | No concurrent write support, suitable for single-process use |
@@ -973,6 +972,15 @@ Pytuck is a lightweight embedded database designed for simplicity. Here are the 
   - [x] Use `result.all()`, `result.first()` directly
 - [x] **Migration Tool Lazy Loading Support** ✨NEW✨
   - [x] Fixed data migration issues with lazy loading backends
+- [x] **Primary Key-less Model Support** ✨NEW✨
+  - [x] Support defining models without a primary key, using internal implicit `_pytuck_rowid`
+  - [x] Suitable for log tables, event tables, etc.
+- [x] **Logical Query Operators OR/AND/NOT** ✨NEW✨
+  - [x] Added `or_()`, `and_()`, `not_()` logical operators
+  - [x] Support for complex condition combinations and nested queries
+- [x] **External File Loading (load_table)** ✨NEW✨
+  - [x] Added `load_table()` function to load CSV/Excel files as model object lists
+  - [x] Type coercion: convert if possible, raise error if not
 
 ### Planned Features
 
@@ -981,7 +989,6 @@ Pytuck is a lightweight embedded database designed for simplicity. Here are the 
 - [ ] **Web UI Interface Support** - Provide API support for independent Web UI library
 - [ ] **ORM Event Hooks System** - Complete event system based on SQLAlchemy event pattern
 - [ ] **JOIN Support** - Multi-table relational queries
-- [ ] **OR Condition Support** - Complex logical query conditions
 - [ ] **Aggregate Functions** - COUNT, SUM, AVG, MIN, MAX, etc.
 - [ ] **Relationship Lazy Loading** - Optimize associated data loading performance
 - [ ] **Concurrent Access Support** - Multi-process/thread-safe access

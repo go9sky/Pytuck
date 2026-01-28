@@ -3,7 +3,42 @@ Pytuck 工具函数
 """
 
 import hashlib
+import re
 from typing import Any
+
+from .exceptions import ValidationError
+
+
+# SQL 标识符安全字符正则：字母、数字、下划线、中文
+_SQL_IDENTIFIER_PATTERN = re.compile(r'^[\w\u4e00-\u9fff]+$')
+
+
+def validate_sql_identifier(identifier: str) -> str:
+    """
+    验证 SQL 标识符是否安全
+
+    确保标识符只包含安全字符（字母、数字、下划线、中文），
+    防止 SQL 注入攻击。
+
+    Args:
+        identifier: 表名或列名
+
+    Returns:
+        验证通过的标识符（原样返回）
+
+    Raises:
+        ValidationError: 如果标识符包含不安全字符
+    """
+    if not identifier:
+        raise ValidationError("SQL identifier cannot be empty")
+
+    if not _SQL_IDENTIFIER_PATTERN.match(identifier):
+        raise ValidationError(
+            f"Invalid SQL identifier '{identifier}': "
+            "only alphanumeric, underscore, and Chinese characters are allowed"
+        )
+
+    return identifier
 
 
 def compute_hash(value: Any) -> int:

@@ -12,7 +12,7 @@ from typing import (
 )
 from datetime import datetime, date, timedelta, timezone
 
-from ..common.exceptions import ValidationError, TypeConversionError
+from ..common.exceptions import ValidationError, TypeConversionError, SchemaError
 from ..common.options import SyncOptions
 from ..common.types import RelationshipT
 from .types import TypeCode, TypeRegistry
@@ -20,6 +20,10 @@ from .types import TypeCode, TypeRegistry
 if TYPE_CHECKING:
     from .storage import Storage
     from ..query import Query, BinaryExpression
+
+
+# 无主键时使用的内部 rowid 保留键名
+PSEUDO_PK_NAME: str = '_pytuck_rowid'
 
 
 class Column:
@@ -467,12 +471,34 @@ class PureBaseModel:
     __tablename__: Optional[str] = None
     __table_comment__: Optional[str] = None
     __columns__: Dict[str, Column] = {}
-    __primary_key__: str = 'id'
+    __primary_key__: Optional[str] = None  # None 表示无主键，使用隐式 rowid
     __relationships__: Dict[str, 'Relationship'] = {}
 
     def __init__(self, **kwargs: Any):
         """初始化模型实例"""
         raise NotImplementedError("This method should be overridden by declarative_base")
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        """
+        属性设置拦截，实现脏跟踪
+
+        当设置 Column 属性时，自动将实例标记为 dirty，
+        这样 session.flush()/commit() 就能检测到修改。
+        """
+        old_value = None
+        should_mark_dirty = False
+
+        if (hasattr(self.__class__, name) and
+            isinstance(getattr(self.__class__, name), Column) and
+            hasattr(self, '_pytuck_session')):
+            old_value = self.__dict__.get(name)
+            session = getattr(self, '_pytuck_session')
+            should_mark_dirty = (session is not None and old_value != value)
+
+        object.__setattr__(self, name, value)
+
+        if should_mark_dirty:
+            session._mark_dirty(self)
 
     def to_dict(self) -> Dict[str, Any]:
         """转换为字典"""
@@ -483,7 +509,12 @@ class PureBaseModel:
 
     def __repr__(self) -> str:
         """字符串表示"""
-        pk_value = getattr(self, self.__primary_key__, None)
+        pk_name = self.__primary_key__
+        if pk_name:
+            pk_value = getattr(self, pk_name, None)
+        else:
+            # 无主键时，尝试获取隐式 rowid
+            pk_value = getattr(self, '_pytuck_rowid', None)
         return f"<{self.__class__.__name__}(pk={pk_value})>"
 
 
@@ -881,7 +912,7 @@ def _create_pure_base(
         __tablename__: Optional[str] = None
         __table_comment__: Optional[str] = None
         __columns__: Dict[str, Column] = {}
-        __primary_key__: str = 'id'
+        __primary_key__: Optional[str] = None  # None 表示无主键，使用隐式 rowid
         __relationships__: Dict[str, Relationship] = {}
 
         def __init_subclass__(cls, **kwargs: Any):
@@ -901,15 +932,27 @@ def _create_pure_base(
             # 收集列定义
             cls.__columns__ = {}
             cls.__relationships__ = {}
+            primary_keys: List[str] = []
 
             for attr_name, attr_value in list(cls.__dict__.items()):
                 if isinstance(attr_value, Column):
                     cls.__columns__[attr_name] = attr_value
                     if attr_value.primary_key:
-                        cls.__primary_key__ = attr_name
+                        primary_keys.append(attr_name)
                 elif isinstance(attr_value, Relationship):
                     cls.__relationships__[attr_name] = attr_value
                     attr_value.__set_name__(cls, attr_name)
+
+            # 验证主键数量：只允许单主键或无主键
+            if len(primary_keys) > 1:
+                raise SchemaError(
+                    f"Model {cls.__name__} has multiple primary keys: {primary_keys}. "
+                    f"Pytuck only supports single-column primary key or no primary key.",
+                    table_name=cls.__tablename__
+                )
+
+            # 设置主键（None 表示无主键，使用隐式 rowid）
+            cls.__primary_key__ = primary_keys[0] if primary_keys else None
 
             # 自动创建或同步表
             if cls.__columns__:
@@ -947,43 +990,7 @@ def _create_pure_base(
                 else:
                     raise ValidationError(f"Missing required column '{col_name}'")
 
-        def __setattr__(self, name: str, value: Any) -> None:
-            """
-            拦截属性设置，实现脏跟踪
-
-            当设置 Column 属性时，自动将实例标记为 dirty，
-            这样 session.flush()/commit() 就能检测到修改
-            """
-            # 如果是 Column 属性且实例已关联 session，先获取旧值用于比较
-            old_value = None
-            should_mark_dirty = False
-
-            if (hasattr(self.__class__, name) and
-                isinstance(getattr(self.__class__, name), Column) and
-                hasattr(self, '_pytuck_session')):
-
-                old_value = self.__dict__.get(name)
-                session = getattr(self, '_pytuck_session')
-                should_mark_dirty = (session is not None and old_value != value)
-
-            # 设置属性值
-            super().__setattr__(name, value)
-
-            # 如果需要，标记实例为 dirty
-            if should_mark_dirty:
-                session._mark_dirty(self)
-
-        def to_dict(self) -> Dict[str, Any]:
-            """转换为字典"""
-            data = {}
-            for col_name in self.__columns__:
-                data[col_name] = getattr(self, col_name, None)
-            return data
-
-        def __repr__(self) -> str:
-            """字符串表示"""
-            pk_value = getattr(self, self.__primary_key__, None)
-            return f"<{self.__class__.__name__}(pk={pk_value})>"
+        # __setattr__ 继承自 PureBaseModel（实现脏跟踪）
 
     return DeclarativePureBase  # type: ignore
 
@@ -1004,7 +1011,7 @@ def _create_crud_base(
         __tablename__: Optional[str] = None
         __table_comment__: Optional[str] = None
         __columns__: Dict[str, Column] = {}
-        __primary_key__: str = 'id'
+        __primary_key__: Optional[str] = None  # None 表示无主键，使用隐式 rowid
         __relationships__: Dict[str, Relationship] = {}
 
         def __init_subclass__(cls, **kwargs: Any):
@@ -1024,15 +1031,27 @@ def _create_crud_base(
             # 收集列定义
             cls.__columns__ = {}
             cls.__relationships__ = {}
+            primary_keys: List[str] = []
 
             for attr_name, attr_value in list(cls.__dict__.items()):
                 if isinstance(attr_value, Column):
                     cls.__columns__[attr_name] = attr_value
                     if attr_value.primary_key:
-                        cls.__primary_key__ = attr_name
+                        primary_keys.append(attr_name)
                 elif isinstance(attr_value, Relationship):
                     cls.__relationships__[attr_name] = attr_value
                     attr_value.__set_name__(cls, attr_name)
+
+            # 验证主键数量：只允许单主键或无主键
+            if len(primary_keys) > 1:
+                raise SchemaError(
+                    f"Model {cls.__name__} has multiple primary keys: {primary_keys}. "
+                    f"Pytuck only supports single-column primary key or no primary key.",
+                    table_name=cls.__tablename__
+                )
+
+            # 设置主键（None 表示无主键，使用隐式 rowid）
+            cls.__primary_key__ = primary_keys[0] if primary_keys else None
 
             # 自动创建或同步表
             if cls.__columns__:
@@ -1059,6 +1078,7 @@ def _create_crud_base(
 
         def __init__(self, **kwargs: Any):
             """初始化模型实例"""
+            # CRUD 基类特有：跟踪是否从数据库加载
             self._loaded_from_db = False
 
             for col_name, column in self.__columns__.items():
@@ -1072,43 +1092,7 @@ def _create_crud_base(
                 else:
                     raise ValidationError(f"Missing required column '{col_name}'")
 
-        def __setattr__(self, name: str, value: Any) -> None:
-            """
-            拦截属性设置，实现脏跟踪
-
-            当设置 Column 属性时，自动将实例标记为 dirty，
-            这样 session.flush()/commit() 就能检测到修改
-            """
-            # 如果是 Column 属性且实例已关联 session，先获取旧值用于比较
-            old_value = None
-            should_mark_dirty = False
-
-            if (hasattr(self.__class__, name) and
-                isinstance(getattr(self.__class__, name), Column) and
-                hasattr(self, '_pytuck_session')):
-
-                old_value = self.__dict__.get(name)
-                session = getattr(self, '_pytuck_session')
-                should_mark_dirty = (session is not None and old_value != value)
-
-            # 设置属性值
-            super().__setattr__(name, value)
-
-            # 如果需要，标记实例为 dirty
-            if should_mark_dirty:
-                session._mark_dirty(self)
-
-        def to_dict(self) -> Dict[str, Any]:
-            """转换为字典"""
-            data = {}
-            for col_name in self.__columns__:
-                data[col_name] = getattr(self, col_name, None)
-            return data
-
-        def __repr__(self) -> str:
-            """字符串表示"""
-            pk_value = getattr(self, self.__primary_key__, None)
-            return f"<{self.__class__.__name__}(pk={pk_value})>"
+        # __setattr__ 继承自 PureBaseModel（通过 CRUDBaseModel）
 
         # ==================== 实例方法 ====================
 
@@ -1120,16 +1104,24 @@ def _create_crud_base(
                 value = getattr(self, col_name, None)
                 data[col_name] = value
 
-            # 判断是insert还是update
-            pk_value = getattr(self, self.__primary_key__)
-
             table_name = self.__tablename__
             assert table_name is not None, f"Model {self.__class__.__name__} must have __tablename__ defined"
+
+            pk_name = self.__primary_key__
+
+            # 判断是insert还是update
+            if pk_name:
+                pk_value = getattr(self, pk_name, None)
+            else:
+                pk_value = getattr(self, '_pytuck_rowid', None)
 
             if pk_value is None or not self._loaded_from_db:
                 # Insert
                 pk_value = storage.insert(table_name, data)
-                setattr(self, self.__primary_key__, pk_value)
+                if pk_name:
+                    setattr(self, pk_name, pk_value)
+                else:
+                    setattr(self, '_pytuck_rowid', pk_value)
                 self._loaded_from_db = True
             else:
                 # Update
@@ -1137,9 +1129,14 @@ def _create_crud_base(
 
         def delete(self) -> None:
             """删除当前记录"""
-            pk_value = getattr(self, self.__primary_key__)
+            pk_name = self.__primary_key__
+            if pk_name:
+                pk_value = getattr(self, pk_name, None)
+            else:
+                pk_value = getattr(self, '_pytuck_rowid', None)
+
             if pk_value is None:
-                raise ValidationError("Cannot delete record without primary key")
+                raise ValidationError("Cannot delete record without primary key or rowid")
 
             table_name = self.__tablename__
             assert table_name is not None, f"Model {self.__class__.__name__} must have __tablename__ defined"
@@ -1149,9 +1146,14 @@ def _create_crud_base(
 
         def refresh(self) -> None:
             """从数据库刷新数据"""
-            pk_value = getattr(self, self.__primary_key__)
+            pk_name = self.__primary_key__
+            if pk_name:
+                pk_value = getattr(self, pk_name, None)
+            else:
+                pk_value = getattr(self, '_pytuck_rowid', None)
+
             if pk_value is None:
-                raise ValidationError("Cannot refresh record without primary key")
+                raise ValidationError("Cannot refresh record without primary key or rowid")
 
             table_name = self.__tablename__
             assert table_name is not None, f"Model {self.__class__.__name__} must have __tablename__ defined"
@@ -1159,7 +1161,8 @@ def _create_crud_base(
             data = storage.select(table_name, pk_value)
 
             for col_name, value in data.items():
-                setattr(self, col_name, value)
+                if col_name != PSEUDO_PK_NAME:
+                    setattr(self, col_name, value)
 
         # ==================== 类方法 ====================
 
@@ -1172,7 +1175,14 @@ def _create_crud_base(
 
         @classmethod
         def get(cls, pk: Any) -> Optional['DeclarativeCRUDBase']:
-            """根据主键获取记录"""
+            """根据主键获取记录
+
+            注意：无主键模型无法使用此方法，会返回 None。
+            """
+            # 无主键模型不支持 get()
+            if cls.__primary_key__ is None:
+                return None
+
             try:
                 table_name = cls.__tablename__
                 assert table_name is not None, f"Model {cls.__name__} must have __tablename__ defined"

@@ -207,6 +207,7 @@ db = Storage(file_path='secure.db', engine='binary', backend_options=opts)
 ```
 
 **Encryption Levels**:
+
 | Level | Algorithm | Security | Use Case |
 |-------|-----------|----------|----------|
 | `low` | XOR obfuscation | Prevents casual viewing | Prevent accidental file opening |
@@ -214,6 +215,7 @@ db = Storage(file_path='secure.db', engine='binary', backend_options=opts)
 | `high` | ChaCha20 | Cryptographically secure | Sensitive data protection |
 
 **Encryption Performance Benchmark** (1000 records, ~100 bytes each):
+
 | Level | Write Time | Read Time | File Size | Read Overhead |
 |-------|------------|-----------|-----------|---------------|
 | None | 41ms | 17ms | 183KB | (baseline) |

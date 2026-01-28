@@ -208,6 +208,7 @@ db = Storage(file_path='secure.db', engine='binary', backend_options=opts)
 ```
 
 **加密等级说明**:
+
 | 等级 | 算法 | 安全性 | 适用场景 |
 |------|------|--------|----------|
 | `low` | XOR 混淆 | 防随手查看 | 防止文件被意外打开 |
@@ -215,6 +216,7 @@ db = Storage(file_path='secure.db', engine='binary', backend_options=opts)
 | `high` | ChaCha20 | 密码学安全 | 敏感数据保护 |
 
 **加密性能测试结果**（1000 条记录，每条约 100 字节）：
+
 | 等级 | 写入时间 | 读取时间 | 文件大小 | 读取性能税 |
 |------|----------|----------|----------|------------|
 | 无加密 | 41ms | 17ms | 183KB | (基准) |

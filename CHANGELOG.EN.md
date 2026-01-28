@@ -11,256 +11,99 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [0.5.0] - 2026-01-25
+## [0.6.0] - 2026-01-28
 
 ### Added
 
-- **Schema Sync & Migration**
-  - Support automatic schema synchronization when loading existing database on program restart
-  - Added `SyncOptions` configuration class to control sync behavior:
-    - `sync_table_comment`: Whether to sync table comments (default: True)
-    - `sync_column_comments`: Whether to sync column comments (default: True)
-    - `add_new_columns`: Whether to add new columns (default: True)
-    - `drop_missing_columns`: Whether to drop missing columns (default: False, dangerous)
-  - Added `SyncResult` result class to record sync change details
-  - `declarative_base()` now supports `sync_schema` and `sync_options` parameters for automatic sync at model definition
-  - Three-layer API design for different use cases:
-    - **Table layer**: `table.add_column()`, `table.drop_column()`, `table.update_comment()`, etc.
-    - **Storage layer**: `storage.sync_table_schema()`, `storage.add_column()`, `storage.drop_table()`, `storage.rename_table()`, etc.
-    - **Session layer**: `session.sync_schema()`, `session.add_column()`, `session.drop_column()`, etc.
-  - Support for SQLite native SQL mode DDL operations (ALTER TABLE)
-  - Support for pure table-name API (no model class required), convenient for Pytuck-view and other external tools
-  - Added 26 test cases
+- **Primary Key-less Model Support**
+  - Support defining models without a primary key, using internal implicit `_pytuck_rowid` as row identifier
+  - Full support in Storage/Table layer for data storage, serialization, and querying of primary key-less tables
+  - Suitable for log tables, event tables, and other scenarios that don't require unique identifiers
   - Example:
     ```python
-    from pytuck import Storage, declarative_base, SyncOptions, Column
+    class LogEntry(Base):
+        __tablename__ = 'logs'
+        # No column with primary_key=True
+        timestamp = Column(datetime)
+        message = Column(str)
+        level = Column(str)
 
-    # Automatic sync mode
-    db = Storage(file_path='existing.db')
-    Base = declarative_base(db, sync_schema=True)
+    # Normal usage with insert/select/update/delete
+    session.execute(insert(LogEntry).values(
+        timestamp=datetime.now(),
+        message='User logged in',
+        level='INFO'
+    ))
+    ```
+
+- **Logical Query Operators (OR/AND/NOT)**
+  - Added `or_()`, `and_()`, `not_()` logical operators
+  - Support for complex condition combinations and nested queries
+  - Example:
+    ```python
+    from pytuck import or_, and_, not_
+
+    # OR query
+    stmt = select(User).where(or_(User.age >= 65, User.vip == True))
+
+    # AND query (explicit)
+    stmt = select(User).where(and_(User.age >= 18, User.status == 'active'))
+
+    # NOT query
+    stmt = select(User).where(not_(User.deleted == True))
+
+    # Combined query
+    stmt = select(User).where(
+        or_(
+            and_(User.age >= 18, User.age < 30),
+            User.vip == True
+        )
+    )
+    ```
+
+- **External File Loading (load_table)**
+  - Added `load_table()` function to load CSV/Excel files as model object lists
+  - User defines model (table name, column types) first, then loads external file
+  - Type coercion: convert if possible, raise error if not
+  - Support for CSV (custom encoding, delimiter) and Excel (specify worksheet)
+  - Example:
+    ```python
+    from pytuck.tools import load_table
 
     class User(Base):
         __tablename__ = 'users'
         id = Column(int, primary_key=True)
         name = Column(str)
-        age = Column(int, nullable=True)  # New column, auto synced
+        age = Column(int)
 
-    # Manual sync mode
-    from pytuck import Session
-    session = Session(db)
-    result = session.sync_schema(User)
-    if result.has_changes:
-        print(f"Added columns: {result.columns_added}")
+    # Load CSV file
+    users = load_table(User, 'users.csv')
 
-    # Storage layer API (for Pytuck-view)
-    db.add_column('users', Column(str, nullable=True, name='email'))
-    db.sync_table_schema('users', columns, comment='User table')
+    # Load Excel file
+    users = load_table(User, 'data.xlsx', sheet_name='Sheet1')
+
+    # Custom delimiter
+    users = load_table(User, 'data.csv', delimiter=';')
+
+    # Iterate data
+    for user in users:
+        print(user.id, user.name, user.age)
     ```
 
-- **Excel Row Number Mapping**
-  - Added `row_number_mapping` option to use Excel physical row numbers as primary key or map to a field
-  - `row_number_mapping='as_pk'`: Use row number directly as primary key value
-  - `row_number_mapping='field'`: Map row number to a specified field (default: `row_num`)
-  - `row_number_field_name`: Customize the row number field name
-  - `row_number_override`: Force row number mapping even for Pytuck-created files
-  - `persist_row_number`: Persist row number field when saving
-  - Support for loading external Excel files (without Pytuck metadata)
-  - Added dedicated Excel row number mapping tests (11 test cases)
-  - Example:
-    ```python
-    from pytuck import Storage
-    from pytuck.common.options import ExcelBackendOptions
+### Fixed
 
-    # Use row number as primary key
-    opts = ExcelBackendOptions(row_number_mapping='as_pk')
-    db = Storage(file_path='external.xlsx', engine='excel', backend_options=opts)
-
-    # Map row number to row_num field
-    opts = ExcelBackendOptions(
-        row_number_mapping='field',
-        row_number_field_name='row_num',
-        persist_row_number=True
-    )
-    db = Storage(file_path='external.xlsx', engine='excel', backend_options=opts)
-    ```
-
-### Improved
-
-- **SQLite Native SQL Mode Optimization**
-  - SQLite backend now defaults to native SQL mode (`use_native_sql=True`), executing SQL directly instead of full load/save
-  - Completed `TYPE_TO_SQL` mapping for all 10 Pytuck types:
-    - Basic types: `int`, `str`, `float`, `bool`, `bytes`
-    - Extended types: `datetime`, `date`, `timedelta`, `list`, `dict`
-  - Completed `SQL_TO_TYPE` reverse mapping for external SQLite database type inference (`DATETIME`, `DATE`, `TIMESTAMP`)
-  - Added dedicated native SQL mode tests (11 test cases)
-  - Fixed NULL value query issue (using `IS NULL` instead of `= NULL`)
-  - Multi-column ORDER BY support (`order_by('col1').order_by('col2', desc=True)`)
-
-- **Migration Tool Lazy Loading Backend Support**
-  - Fixed `migrate_engine()` returning empty data when source backend uses lazy loading mode (e.g., SQLite native mode)
-  - Added `supports_lazy_loading()` method to `StorageBackend` base class to check if backend only loads schema
-  - Added `populate_tables_with_data()` method to `StorageBackend` base class for on-demand data loading
-  - Added `save_full()` method to `StorageBackend` base class to ensure all data is saved during migration
-  - Added dedicated lazy loading backend migration tests (5 test cases)
-
-- **Backend Registry Optimization**: Automatic registration using `__init_subclass__`
-  - Added `__init_subclass__` method to `StorageBackend` base class for automatic registration to `BackendRegistry` when subclassed
-  - Removed hardcoded `BackendRegistry._discover_backends()` discovery logic
-  - User-defined backends only need to inherit `StorageBackend` and define `ENGINE_NAME` for automatic registration
-  - Dependency checks still performed early in `get_backend()` to ensure user data safety
-  - Example:
-    ```python
-    from pytuck.backends import StorageBackend
-
-    class MyCustomBackend(StorageBackend):
-        ENGINE_NAME = 'custom'
-        REQUIRED_DEPENDENCIES = ['my_lib']
-
-        def save(self, tables): ...
-        def load(self): ...
-        def exists(self): ...
-        def delete(self): ...
-
-    # Automatically registered on class definition
-    ```
-
-- **Relationship Enhancement**
-  - Support defining bidirectional relationships using table name strings, no need to assign reverse relationship after class definition
-  - Added Storage-level model registry (`_model_registry`) to map models by table name
-  - Added `uselist` parameter for self-referential relationships to explicitly specify return type:
-    - `uselist=True`: Force return list (one-to-many)
-    - `uselist=False`: Force return single object (many-to-one)
-    - `uselist=None` (default): Auto-detect based on foreign key position
-  - IDE type hint support: Get precise code completion by directly declaring return type
-  - Added comprehensive Relationship tests (one-to-one, many-to-one, many-to-many, self-reference, string reference)
-  - Added `examples/relationship_demo.py` comprehensive example
-  - Example:
-    ```python
-    from typing import List, Optional
-
-    class Order(Base):
-        __tablename__ = 'orders'
-        id = Column(int, primary_key=True)
-        user_id = Column(int)
-        # Define relationship using table name (no need to consider class definition order)
-        user: Optional[User] = Relationship('users', foreign_key='user_id')  # type: ignore
-
-    class User(Base):
-        __tablename__ = 'users'
-        id = Column(int, primary_key=True)
-        # Bidirectional relationship, declare return type for IDE hints
-        orders: List[Order] = Relationship('orders', foreign_key='user_id')  # type: ignore
-
-    # Self-reference (tree structure)
-    class Category(Base):
-        __tablename__ = 'categories'
-        id = Column(int, primary_key=True)
-        parent_id = Column(int, nullable=True)
-        parent: Optional['Category'] = Relationship(  # type: ignore
-            'categories', foreign_key='parent_id', uselist=False
-        )
-        children: List['Category'] = Relationship(  # type: ignore
-            'categories', foreign_key='parent_id', uselist=True
-        )
-    ```
+- **Security Fix: SQL Injection**
+  - Fixed SQL injection vulnerability in SQLite backend using parameterized queries
 
 ### Refactored
 
-- **Backend Module Structure Optimization**
-  - Simplified `pytuck/backends/__init__.py` to import/export responsibilities only
-  - Removed `_initialized` and `_discover_backends()` from `pytuck/backends/registry.py`
-  - Built-in backends explicitly imported in `__init__.py` to trigger automatic registration
+- **Exception Rename**
+  - Renamed `ConnectionError` to `DatabaseConnectionError` to avoid conflict with Python built-in exception
 
-- **Exception System Refactoring**
-  - Refactored `PytuckException` base class with common fields: `message`, `table_name`, `column_name`, `pk`, `details`
-  - Added `to_dict()` method for logging and serialization
-  - New exception types:
-    - `TypeConversionError`: Type conversion failure (extends `ValidationError`)
-    - `ConfigurationError`: Configuration errors (engine config, backend options, etc.)
-    - `SchemaError`: Schema definition errors (e.g., missing primary key, extends `ConfigurationError`)
-    - `QueryError`: Query building or execution errors
-    - `ConnectionError`: Database connection not established or disconnected
-    - `UnsupportedOperationError`: Unsupported operations
-  - Unified replacement of all built-in exceptions with custom exception types:
-    - `ValueError` → `TypeConversionError`/`ValidationError`/`ConfigurationError`/`QueryError`
-    - `TypeError` → `ConfigurationError`/`QueryError`
-    - `RuntimeError` → `ConnectionError`/`TransactionError`
-    - `NotImplementedError` (runtime) → `UnsupportedOperationError`
-  - All new exception types exported in `pytuck/__init__.py` for direct import
-  - Exception hierarchy:
-    ```
-    PytuckException (base)
-    ├── TableNotFoundError        # Table not found
-    ├── RecordNotFoundError       # Record not found
-    ├── DuplicateKeyError         # Duplicate primary key
-    ├── ColumnNotFoundError       # Column not found
-    ├── ValidationError           # Data validation error
-    │   └── TypeConversionError   # Type conversion failure
-    ├── ConfigurationError        # Configuration error
-    │   └── SchemaError           # Schema definition error
-    ├── QueryError                # Query error
-    ├── TransactionError          # Transaction error
-    ├── ConnectionError           # Connection error
-    ├── SerializationError        # Serialization error
-    ├── EncryptionError           # Encryption error
-    ├── MigrationError            # Migration error
-    ├── PytuckIndexError          # Index error
-    └── UnsupportedOperationError # Unsupported operation
-    ```
+- **Removed Excel Row Number Mapping**
+  - Removed `row_number_mapping` options to simplify Excel backend implementation
 
-### Breaking Changes
-
-- **Column Definition API Simplification**
-  - `Column` constructor signature changed: `col_type` is now the first positional argument, `name` becomes an optional keyword argument
-  - `name` parameter defaults to the variable name (automatically obtained via Python descriptor protocol `__set_name__`)
-  - All other parameters now must be passed as keyword arguments
-  - Migration Guide:
-    ```python
-    # Old usage
-    id = Column('id', int, primary_key=True)
-    name = Column('name', str)
-    email = Column('user_email', str)
-
-    # New usage
-    id = Column(int, primary_key=True)       # name auto-set to 'id'
-    name = Column(str)                        # name auto-set to 'name'
-    email = Column(str, name='user_email')   # Explicit name when different from variable
-    ```
-  - New Signature:
-    ```python
-    Column(
-        col_type: Type,              # Required, first positional argument
-        *,                           # Force keyword arguments after this
-        name: Optional[str] = None,  # Optional, defaults to variable name
-        nullable: bool = True,
-        primary_key: bool = False,
-        index: bool = False,
-        default: Any = None,
-        foreign_key: Optional[tuple] = None,
-        comment: Optional[str] = None,
-        strict: bool = False
-    )
-    ```
-
-- **Query Result API Simplification**
-  - Removed `Result.scalars()` method, use `Result.all()`/`first()`/`one()`/`one_or_none()` directly
-  - Removed `Result.rows()` method
-  - Removed `Result.fetchall()` method
-  - Removed `Row` class
-  - `ScalarResult` changed to internal class `_ScalarResult`, no longer publicly exported
-  - Migration Guide:
-    ```python
-    # Old usage
-    users = result.scalars().all()
-    user = result.scalars().first()
-
-    # New usage
-    users = result.all()
-    user = result.first()
-    ```
-  - New API:
-    - `Result.all()` → Returns list of model instances `List[T]`
-    - `Result.first()` → Returns first model instance `Optional[T]`
-    - `Result.one()` → Returns exactly one model instance `T` (raises if not exactly one)
-    - `Result.one_or_none()` → Returns one model instance or None `Optional[T]` (at most one)
-    - `Result.rowcount()` → Returns result count `int`
+- **Other Improvements**
+  - Refactored model base class for more reliable dirty data tracking
+  - Improved security and error handling in storage module
+  - Fixed closure binding issue in query statements

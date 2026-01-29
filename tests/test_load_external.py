@@ -344,3 +344,378 @@ class TestLoadTableExcel:
         assert data[0].score == 95.5
         assert isinstance(data[0].created, datetime)
         assert data[0].created.year == 2024
+
+
+class TestLoadTableColumnName:
+    """测试 Column.name 映射功能"""
+
+    def test_csv_with_column_name(self, tmp_path: Path) -> None:
+        """测试 CSV 文件使用 Column.name 作为表头"""
+        csv_file = tmp_path / "users.csv"
+        # 表头使用 Column.name 定义的名称
+        csv_file.write_text(
+            "ID,Name,Age,Level Name\n1,Alice,20,Beginner\n2,Bob,25,Expert\n",
+            encoding='utf-8'
+        )
+
+        db = Storage(in_memory=True)
+        Base: Type[PureBaseModel] = declarative_base(db)
+
+        class User(Base):
+            __tablename__ = 'users'
+            user_id = Column(int, primary_key=True, name='ID')
+            user_name = Column(str, name='Name')
+            user_age = Column(int, name='Age')
+            level_name = Column(str, name='Level Name')
+
+        users = load_table(User, str(csv_file))
+
+        assert len(users) == 2
+        # 验证属性名访问
+        assert users[0].user_id == 1
+        assert users[0].user_name == 'Alice'
+        assert users[0].user_age == 20
+        assert users[0].level_name == 'Beginner'
+        assert users[1].user_id == 2
+        assert users[1].user_name == 'Bob'
+        assert users[1].user_age == 25
+        assert users[1].level_name == 'Expert'
+
+    @pytest.fixture
+    def has_openpyxl(self) -> bool:
+        """检查是否安装了 openpyxl"""
+        try:
+            import openpyxl
+            return True
+        except ImportError:
+            return False
+
+    def test_excel_with_column_name(self, tmp_path: Path, has_openpyxl: bool) -> None:
+        """测试 Excel 文件使用 Column.name 作为表头"""
+        if not has_openpyxl:
+            pytest.skip("openpyxl not installed")
+
+        from openpyxl import Workbook
+
+        xlsx_file = tmp_path / "users.xlsx"
+        wb = Workbook()
+        ws = wb.active
+        # 表头使用 Column.name 定义的名称
+        ws.append(['ID', 'Name', 'Age', 'Level Name'])
+        ws.append([1, 'Alice', 20, 'Beginner'])
+        ws.append([2, 'Bob', 25, 'Expert'])
+        wb.save(str(xlsx_file))
+
+        db = Storage(in_memory=True)
+        Base: Type[PureBaseModel] = declarative_base(db)
+
+        class User(Base):
+            __tablename__ = 'users'
+            user_id = Column(int, primary_key=True, name='ID')
+            user_name = Column(str, name='Name')
+            user_age = Column(int, name='Age')
+            level_name = Column(str, name='Level Name')
+
+        users = load_table(User, str(xlsx_file))
+
+        assert len(users) == 2
+        assert users[0].user_id == 1
+        assert users[0].user_name == 'Alice'
+        assert users[0].user_age == 20
+        assert users[0].level_name == 'Beginner'
+
+    def test_fallback_to_attr_name(self, tmp_path: Path) -> None:
+        """测试当 Column.name 找不到时回退到属性名"""
+        csv_file = tmp_path / "users.csv"
+        # 表头使用属性名而非 Column.name
+        csv_file.write_text("user_id,user_name\n1,Alice\n", encoding='utf-8')
+
+        db = Storage(in_memory=True)
+        Base: Type[PureBaseModel] = declarative_base(db)
+
+        class User(Base):
+            __tablename__ = 'users'
+            user_id = Column(int, primary_key=True, name='ID')
+            user_name = Column(str, name='Name')
+
+        users = load_table(User, str(csv_file))
+
+        # 应该能通过属性名回退找到值
+        assert len(users) == 1
+        assert users[0].user_id == 1
+        assert users[0].user_name == 'Alice'
+
+
+class TestLoadTableImport:
+    """测试 load_table 数据导入到数据库"""
+
+    def test_import_csv_to_memory_db(self, tmp_path: Path) -> None:
+        """测试将 CSV 数据导入到内存数据库"""
+        from pytuck import Session, insert, select
+
+        # 创建 CSV 文件
+        csv_file = tmp_path / "users.csv"
+        csv_file.write_text("id,name,age\n1,Alice,20\n2,Bob,25\n", encoding='utf-8')
+
+        # 创建数据库和模型
+        db = Storage(in_memory=True)
+        Base: Type[PureBaseModel] = declarative_base(db)
+
+        class User(Base):
+            __tablename__ = 'users'
+            id = Column(int, primary_key=True)
+            name = Column(str)
+            age = Column(int)
+
+        session = Session(db)
+
+        # 加载 CSV 数据
+        users = load_table(User, str(csv_file))
+
+        # 通过 session.add 导入
+        for user in users:
+            session.add(user)
+        session.commit()
+
+        # 验证数据已导入
+        result = session.execute(select(User))
+        db_users = result.all()
+
+        assert len(db_users) == 2
+        assert db_users[0].name == 'Alice'
+        assert db_users[1].name == 'Bob'
+
+    def test_import_csv_to_json_backend(self, tmp_path: Path) -> None:
+        """测试将 CSV 数据导入到 JSON 后端"""
+        from pytuck import Session, select
+
+        # 创建 CSV 文件
+        csv_file = tmp_path / "products.csv"
+        csv_file.write_text(
+            "id,name,price\n1,Apple,3.5\n2,Banana,2.0\n3,Orange,4.0\n",
+            encoding='utf-8'
+        )
+
+        # 创建 JSON 后端数据库
+        json_file = tmp_path / "products.json"
+        db = Storage(str(json_file), engine='json')
+        Base: Type[PureBaseModel] = declarative_base(db)
+
+        class Product(Base):
+            __tablename__ = 'products'
+            id = Column(int, primary_key=True)
+            name = Column(str)
+            price = Column(float)
+
+        session = Session(db)
+
+        # 加载并导入
+        products = load_table(Product, str(csv_file))
+        for product in products:
+            session.add(product)
+        session.commit()
+        db.flush()
+
+        # 验证数据
+        result = session.execute(select(Product))
+        db_products = result.all()
+
+        assert len(db_products) == 3
+        assert db_products[0].name == 'Apple'
+        assert db_products[0].price == 3.5
+        assert db_products[2].name == 'Orange'
+
+        db.close()
+
+    def test_import_csv_to_binary_backend(self, tmp_path: Path) -> None:
+        """测试将 CSV 数据导入到 Binary 后端"""
+        from pytuck import Session, select
+
+        # 创建 CSV 文件
+        csv_file = tmp_path / "orders.csv"
+        csv_file.write_text(
+            "id,customer,amount\n1,Alice,100\n2,Bob,200\n",
+            encoding='utf-8'
+        )
+
+        # 创建 Binary 后端数据库
+        db_file = tmp_path / "orders.db"
+        db = Storage(str(db_file), engine='binary')
+        Base: Type[PureBaseModel] = declarative_base(db)
+
+        class Order(Base):
+            __tablename__ = 'orders'
+            id = Column(int, primary_key=True)
+            customer = Column(str)
+            amount = Column(int)
+
+        session = Session(db)
+
+        # 加载并导入
+        orders = load_table(Order, str(csv_file))
+        for order in orders:
+            session.add(order)
+        session.commit()
+        db.flush()
+
+        # 验证数据
+        result = session.execute(select(Order))
+        db_orders = result.all()
+
+        assert len(db_orders) == 2
+        assert db_orders[0].customer == 'Alice'
+        assert db_orders[0].amount == 100
+
+        db.close()
+
+    def test_import_with_column_name_mapping(self, tmp_path: Path) -> None:
+        """测试带有 Column.name 映射的导入"""
+        from pytuck import Session, select
+
+        # 创建 CSV 文件（使用 Column.name 作为表头）
+        csv_file = tmp_path / "employees.csv"
+        csv_file.write_text(
+            "Employee ID,Full Name,Department\n101,John Doe,Engineering\n102,Jane Smith,Marketing\n",
+            encoding='utf-8'
+        )
+
+        # 创建数据库
+        db = Storage(in_memory=True)
+        Base: Type[PureBaseModel] = declarative_base(db)
+
+        class Employee(Base):
+            __tablename__ = 'employees'
+            emp_id = Column(int, primary_key=True, name='Employee ID')
+            full_name = Column(str, name='Full Name')
+            department = Column(str, name='Department')
+
+        session = Session(db)
+
+        # 加载并导入
+        employees = load_table(Employee, str(csv_file))
+        for emp in employees:
+            session.add(emp)
+        session.commit()
+
+        # 验证数据
+        result = session.execute(select(Employee))
+        db_employees = result.all()
+
+        assert len(db_employees) == 2
+        assert db_employees[0].emp_id == 101
+        assert db_employees[0].full_name == 'John Doe'
+        assert db_employees[0].department == 'Engineering'
+        assert db_employees[1].emp_id == 102
+        assert db_employees[1].full_name == 'Jane Smith'
+
+    @pytest.fixture
+    def has_openpyxl(self) -> bool:
+        """检查是否安装了 openpyxl"""
+        try:
+            import openpyxl
+            return True
+        except ImportError:
+            return False
+
+    def test_import_excel_to_json_backend(self, tmp_path: Path, has_openpyxl: bool) -> None:
+        """测试将 Excel 数据导入到 JSON 后端"""
+        if not has_openpyxl:
+            pytest.skip("openpyxl not installed")
+
+        from openpyxl import Workbook
+        from pytuck import Session, select
+
+        # 创建 Excel 文件
+        xlsx_file = tmp_path / "inventory.xlsx"
+        wb = Workbook()
+        ws = wb.active
+        ws.append(['id', 'item', 'quantity'])
+        ws.append([1, 'Widget', 100])
+        ws.append([2, 'Gadget', 50])
+        ws.append([3, 'Gizmo', 75])
+        wb.save(str(xlsx_file))
+
+        # 创建 JSON 后端数据库
+        json_file = tmp_path / "inventory.json"
+        db = Storage(str(json_file), engine='json')
+        Base: Type[PureBaseModel] = declarative_base(db)
+
+        class Inventory(Base):
+            __tablename__ = 'inventory'
+            id = Column(int, primary_key=True)
+            item = Column(str)
+            quantity = Column(int)
+
+        session = Session(db)
+
+        # 加载并导入
+        items = load_table(Inventory, str(xlsx_file))
+        for item in items:
+            session.add(item)
+        session.commit()
+        db.flush()
+
+        # 验证数据
+        result = session.execute(select(Inventory))
+        db_items = result.all()
+
+        assert len(db_items) == 3
+        assert db_items[0].item == 'Widget'
+        assert db_items[0].quantity == 100
+        assert db_items[2].item == 'Gizmo'
+
+        db.close()
+
+    def test_import_preserves_data_integrity(self, tmp_path: Path) -> None:
+        """测试导入后数据完整性"""
+        from pytuck import Session, select
+
+        # 创建 CSV 文件
+        csv_file = tmp_path / "data.csv"
+        csv_file.write_text(
+            "id,value,active\n1,100,true\n2,200,false\n3,300,true\n",
+            encoding='utf-8'
+        )
+
+        # 创建数据库
+        db_file = tmp_path / "data.db"
+        db = Storage(str(db_file), engine='binary')
+        Base: Type[PureBaseModel] = declarative_base(db)
+
+        class Data(Base):
+            __tablename__ = 'data'
+            id = Column(int, primary_key=True)
+            value = Column(int)
+            active = Column(bool)
+
+        session = Session(db)
+
+        # 加载并导入
+        records = load_table(Data, str(csv_file))
+        for record in records:
+            session.add(record)
+        session.commit()
+        db.flush()
+        db.close()
+
+        # 重新打开数据库验证持久化
+        db2 = Storage(str(db_file), engine='binary')
+        Base2: Type[PureBaseModel] = declarative_base(db2)
+
+        class Data2(Base2):
+            __tablename__ = 'data'
+            id = Column(int, primary_key=True)
+            value = Column(int)
+            active = Column(bool)
+
+        session2 = Session(db2)
+        result = session2.execute(select(Data2))
+        db_records = result.all()
+
+        assert len(db_records) == 3
+        assert db_records[0].value == 100
+        assert db_records[0].active is True
+        assert db_records[1].value == 200
+        assert db_records[1].active is False
+
+        db2.close()

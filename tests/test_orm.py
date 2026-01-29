@@ -590,6 +590,248 @@ class TestTypeAnnotations(unittest.TestCase):
         self.assertTrue(issubclass(CRUDUser, PureBaseModel))
 
 
+class TestColumnNameMapping(unittest.TestCase):
+    """测试 Column.name 映射功能"""
+
+    def setUp(self):
+        """设置测试环境"""
+        self.temp_dir = mktemp_dir_project()
+        self.db_path = os.path.join(self.temp_dir, 'test.db')
+        self.db = Storage(file_path=self.db_path)
+
+    def tearDown(self):
+        """清理测试环境"""
+        self.db.close()
+        if os.path.exists(self.db_path):
+            os.remove(self.db_path)
+        os.rmdir(self.temp_dir)
+
+    def test_to_dict_default_uses_attr_name(self):
+        """测试 to_dict() 默认使用属性名"""
+        Base = declarative_base(self.db)
+
+        class User(Base):
+            __tablename__ = 'users_todict_default'
+            id = Column(int, primary_key=True)
+            lv = Column(str, name='level')
+            nm = Column(str, name='display_name')
+
+        user = User(lv='admin', nm='Alice')
+        d = user.to_dict()
+
+        # 默认使用属性名作为键
+        self.assertIn('lv', d)
+        self.assertIn('nm', d)
+        self.assertNotIn('level', d)
+        self.assertNotIn('display_name', d)
+        self.assertEqual(d['lv'], 'admin')
+        self.assertEqual(d['nm'], 'Alice')
+
+    def test_to_dict_with_column_names(self):
+        """测试 to_dict(use_column_names=True) 使用 Column.name"""
+        Base = declarative_base(self.db)
+
+        class User(Base):
+            __tablename__ = 'users_todict_colname'
+            id = Column(int, primary_key=True)
+            lv = Column(str, name='level')
+            nm = Column(str, name='display_name')
+
+        user = User(lv='admin', nm='Alice')
+        d = user.to_dict(use_column_names=True)
+
+        # 使用 Column.name 作为键
+        self.assertIn('level', d)
+        self.assertIn('display_name', d)
+        self.assertNotIn('lv', d)
+        self.assertNotIn('nm', d)
+        self.assertEqual(d['level'], 'admin')
+        self.assertEqual(d['display_name'], 'Alice')
+
+    def test_crud_save_with_column_name(self):
+        """测试 CRUDBaseModel.save() 使用 Column.name 正确存储数据"""
+        Base = declarative_base(self.db, crud=True)
+
+        class User(Base):
+            __tablename__ = 'users_crud_colname'
+            id = Column(int, primary_key=True)
+            lv = Column(str, name='level')
+
+        # 创建并保存
+        user = User.create(lv='admin')
+        self.assertEqual(user.lv, 'admin')
+
+        # 通过 get 重新加载
+        loaded_user = User.get(user.id)
+        self.assertIsNotNone(loaded_user)
+        self.assertEqual(loaded_user.lv, 'admin')
+
+    def test_crud_refresh_with_column_name(self):
+        """测试 CRUDBaseModel.refresh() 正确转换列名"""
+        Base = declarative_base(self.db, crud=True)
+
+        class User(Base):
+            __tablename__ = 'users_crud_refresh'
+            id = Column(int, primary_key=True)
+            lv = Column(str, name='level')
+
+        # 创建用户
+        user = User.create(lv='admin')
+        user_id = user.id
+
+        # 直接通过 storage 更新（模拟外部修改）
+        self.db.update('users_crud_refresh', user_id, {'level': 'superadmin'})
+
+        # refresh 应该正确更新属性
+        user.refresh()
+        self.assertEqual(user.lv, 'superadmin')
+
+    def test_session_add_with_column_name(self):
+        """测试 Session.add() 使用 Column.name 正确存储数据"""
+        Base = declarative_base(self.db)
+
+        class User(Base):
+            __tablename__ = 'users_session_colname'
+            id = Column(int, primary_key=True)
+            lv = Column(str, name='level')
+
+        session = Session(self.db)
+        user = User(lv='moderator')
+        session.add(user)
+        session.commit()
+
+        # 验证数据正确存储
+        self.assertIsNotNone(user.id)
+        self.assertEqual(user.lv, 'moderator')
+
+        # 通过 storage 直接读取验证
+        record = self.db.select('users_session_colname', user.id)
+        # 存储层使用 Column.name
+        self.assertEqual(record.get('level'), 'moderator')
+
+    def test_session_refresh_with_column_name(self):
+        """测试 Session.refresh() 正确转换列名"""
+        Base = declarative_base(self.db)
+
+        class User(Base):
+            __tablename__ = 'users_session_refresh'
+            id = Column(int, primary_key=True)
+            lv = Column(str, name='level')
+
+        session = Session(self.db)
+        user = User(lv='user')
+        session.add(user)
+        session.commit()
+
+        user_id = user.id
+
+        # 直接通过 storage 更新（模拟外部修改）
+        self.db.update('users_session_refresh', user_id, {'level': 'premium'})
+
+        # refresh 应该正确更新属性
+        session.refresh(user)
+        self.assertEqual(user.lv, 'premium')
+
+    def test_attr_to_column_name_method(self):
+        """测试 _attr_to_column_name 方法"""
+        Base = declarative_base(self.db)
+
+        class User(Base):
+            __tablename__ = 'users_attr_method'
+            id = Column(int, primary_key=True)
+            lv = Column(str, name='level')
+            name = Column(str)  # 未指定 name，使用属性名
+
+        # 测试有显式 name 的列
+        self.assertEqual(User._attr_to_column_name('lv'), 'level')
+
+        # 测试未指定 name 的列（使用属性名）
+        self.assertEqual(User._attr_to_column_name('name'), 'name')
+
+        # 测试不存在的属性
+        self.assertEqual(User._attr_to_column_name('nonexistent'), 'nonexistent')
+
+    def test_column_to_attr_name_method(self):
+        """测试 _column_to_attr_name 方法"""
+        Base = declarative_base(self.db)
+
+        class User(Base):
+            __tablename__ = 'users_col_method'
+            id = Column(int, primary_key=True)
+            lv = Column(str, name='level')
+            name = Column(str)
+
+        # 测试通过 Column.name 查找属性名
+        self.assertEqual(User._column_to_attr_name('level'), 'lv')
+
+        # 测试未显式指定 name 的列
+        self.assertEqual(User._column_to_attr_name('name'), 'name')
+
+        # 测试不存在的列名
+        self.assertIsNone(User._column_to_attr_name('nonexistent'))
+
+    def test_session_query_with_column_name(self):
+        """测试 session.query() 正确使用 Column.name 映射"""
+        Base = declarative_base(self.db)
+
+        class User(Base):
+            __tablename__ = 'users_query_colname'
+            id = Column(int, primary_key=True)
+            lv = Column(str, name='level')
+            nm = Column(str, name='display_name')
+
+        session = Session(self.db)
+
+        # 添加测试数据
+        user1 = User(lv='admin', nm='Alice')
+        user2 = User(lv='user', nm='Bob')
+        session.add(user1)
+        session.add(user2)
+        session.commit()
+
+        # 通过 session.query() 查询
+        users = session.query(User).all()
+        self.assertEqual(len(users), 2)
+
+        # 验证属性正确映射
+        user_names = {u.nm for u in users}
+        self.assertIn('Alice', user_names)
+        self.assertIn('Bob', user_names)
+
+        user_levels = {u.lv for u in users}
+        self.assertIn('admin', user_levels)
+        self.assertIn('user', user_levels)
+
+    def test_session_execute_select_with_column_name(self):
+        """测试 session.execute(select()) 正确使用 Column.name 映射"""
+        from pytuck import select
+
+        Base = declarative_base(self.db)
+
+        class User(Base):
+            __tablename__ = 'users_select_colname'
+            id = Column(int, primary_key=True)
+            lv = Column(str, name='level')
+            nm = Column(str, name='display_name')
+
+        session = Session(self.db)
+
+        # 添加测试数据
+        user1 = User(lv='moderator', nm='Charlie')
+        session.add(user1)
+        session.commit()
+
+        # 通过 session.execute(select()) 查询
+        result = session.execute(select(User))
+        users = result.all()
+        self.assertEqual(len(users), 1)
+
+        # 验证属性正确映射
+        user = users[0]
+        self.assertEqual(user.lv, 'moderator')
+        self.assertEqual(user.nm, 'Charlie')
+
+
 def run_tests():
     """运行所有测试"""
     loader = unittest.TestLoader()
@@ -602,6 +844,7 @@ def run_tests():
     suite.addTests(loader.loadTestsFromTestCase(TestCRUDBaseModel))
     suite.addTests(loader.loadTestsFromTestCase(TestMultipleEngines))
     suite.addTests(loader.loadTestsFromTestCase(TestTypeAnnotations))
+    suite.addTests(loader.loadTestsFromTestCase(TestColumnNameMapping))
 
     # 运行测试
     runner = unittest.TextTestRunner(verbosity=2)

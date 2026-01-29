@@ -8,6 +8,17 @@
 
 ---
 
+## [0.6.1] - 2026-01-29
+
+### 修复
+
+- **Column.name 映射问题**
+  - 修复使用 `Column(type, name='xxx')` 定义列时，查询结果属性为 None 的问题
+  - 修复 `session.query().all()` 和 `session.execute(select(...))` 的列名映射
+  - 相关文件：`pytuck/query/result.py`, `pytuck/query/builder.py`
+
+---
+
 ## [0.6.0] - 2026-01-28
 
 ### 新增

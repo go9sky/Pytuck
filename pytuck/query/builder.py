@@ -8,6 +8,7 @@ from typing import Any, List, Optional, Tuple, Type, Generic, TYPE_CHECKING, Uni
 
 from ..common.types import T
 from ..common.exceptions import QueryError
+from ..core.orm import PSEUDO_PK_NAME
 
 if TYPE_CHECKING:
     from ..core.orm import PureBaseModel, Column
@@ -454,7 +455,16 @@ class Query(Generic[T]):
         # 转换为模型实例
         instances = []
         for record in records:
-            instance = self.model_class(**record)
+            # 将 Column.name 映射为模型属性名
+            mapped = {}
+            for db_col_name, value in record.items():
+                if db_col_name == PSEUDO_PK_NAME:
+                    continue  # 跳过内部 rowid
+                # 使用模型的 _column_to_attr_name 方法转换
+                attr_name = self.model_class._column_to_attr_name(db_col_name) or db_col_name
+                mapped[attr_name] = value
+
+            instance = self.model_class(**mapped)
 
             # 兼容旧 API 的属性
             if hasattr(instance, '_loaded_from_db'):

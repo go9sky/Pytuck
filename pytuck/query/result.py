@@ -29,20 +29,28 @@ class _ScalarResult(Generic[T]):
 
     def _create_instance(self, record: Dict[str, Any]) -> T:
         """创建模型实例并处理 identity map"""
-        # 检查是否有 PSEUDO_PK_NAME（无主键模型的内部 rowid）
-        rowid = record.pop(PSEUDO_PK_NAME, None)
+        # 将 Column.name 映射为模型属性名
+        mapped: Dict[str, Any] = {}
+        rowid = None
+        for db_col_name, value in record.items():
+            if db_col_name == PSEUDO_PK_NAME:
+                rowid = value
+            else:
+                # 使用模型的 _column_to_attr_name 方法转换
+                attr_name = self._model_class._column_to_attr_name(db_col_name) or db_col_name
+                mapped[attr_name] = value
 
         pk_name = getattr(self._model_class, '__primary_key__', None)
 
         if self._session:
             if pk_name:
                 # 有主键：使用主键查找 identity map
-                pk_value = record.get(pk_name)
+                pk_value = mapped.get(pk_name)
                 if pk_value is not None:
                     existing = self._session._get_from_identity_map(self._model_class, pk_value)
                     if existing is not None:
                         # 刷新实例属性以保持与存储同步
-                        for key, value in record.items():
+                        for key, value in mapped.items():
                             setattr(existing, key, value)
                         return existing
             elif rowid is not None:
@@ -51,12 +59,12 @@ class _ScalarResult(Generic[T]):
                 existing = self._session._identity_map.get(identity_key)  # type: ignore
                 if existing is not None:
                     # 刷新实例属性以保持与存储同步
-                    for key_name, value in record.items():
+                    for key_name, value in mapped.items():
                         setattr(existing, key_name, value)
                     return existing
 
             # 创建新实例
-            instance = self._model_class(**record)
+            instance = self._model_class(**mapped)
 
             # 对于无主键模型，设置内部 rowid
             if rowid is not None and pk_name is None:
@@ -67,7 +75,7 @@ class _ScalarResult(Generic[T]):
             return instance
         else:
             # 没有 session，直接创建实例
-            new_instance: T = self._model_class(**record)
+            new_instance: T = self._model_class(**mapped)
             # 对于无主键模型，设置内部 rowid
             if rowid is not None and pk_name is None:
                 setattr(new_instance, '_pytuck_rowid', rowid)

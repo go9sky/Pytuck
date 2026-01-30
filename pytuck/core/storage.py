@@ -379,7 +379,9 @@ class Table:
         从表中删除列
 
         Args:
-            column_name: 列名
+            column_name: 字段名（Column.name），而非 Python 属性名。
+                         例如定义 ``student_no = Column(str, name="Student No.")`` 时，
+                         应传入 ``"Student No."`` 而非 ``"student_no"``
 
         Raises:
             ColumnNotFoundError: 列不存在
@@ -415,7 +417,7 @@ class Table:
         更新列备注
 
         Args:
-            column_name: 列名
+            column_name: 字段名（Column.name），而非 Python 属性名
             comment: 新的备注（None 表示清空）
 
         Raises:
@@ -430,7 +432,7 @@ class Table:
         更新列的索引设置
 
         Args:
-            column_name: 列名
+            column_name: 字段名（Column.name），而非 Python 属性名
             index: 是否创建索引
 
         Raises:
@@ -843,7 +845,9 @@ class Storage:
 
         Args:
             table_name: 表名
-            column_name: 列名
+            column_name: 字段名（Column.name），而非 Python 属性名。
+                         例如定义 ``student_no = Column(str, name="Student No.")`` 时，
+                         应传入 ``"Student No."`` 而非 ``"student_no"``
 
         Raises:
             TableNotFoundError: 表不存在
@@ -874,7 +878,7 @@ class Storage:
 
         Args:
             table_name: 表名
-            column_name: 列名
+            column_name: 字段名（Column.name），而非 Python 属性名
             comment: 新备注（... 表示不修改）
             index: 是否创建索引（... 表示不修改）
 

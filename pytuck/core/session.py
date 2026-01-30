@@ -862,7 +862,7 @@ class Session:
 
         Args:
             model_or_table: 模型类或表名字符串
-            column_name: 列名
+            column_name: 字段名（Column.name），而非 Python 属性名
 
         Example:
             # 通过模型类
@@ -870,6 +870,11 @@ class Session:
 
             # 通过表名
             session.drop_column('users', 'old_field')
+
+            # 属性名与字段名不一致时，使用字段名
+            # 定义：student_no = Column(str, name="Student No.")
+            session.drop_column(Student, "Student No.")  # 正确
+            # session.drop_column(Student, "student_no")  # 错误！
         """
         table_name = self._resolve_table_name(model_or_table)
         self.storage.drop_column(table_name, column_name)
@@ -905,7 +910,7 @@ class Session:
 
         Args:
             model_or_table: 模型类或表名字符串
-            column_name: 列名
+            column_name: 字段名（Column.name），而非 Python 属性名
             comment: 新的列备注（None 表示不修改）
             index: 是否索引（None 表示不修改）
 
@@ -918,6 +923,10 @@ class Session:
 
             # 同时更新
             session.update_column('users', 'phone', comment='电话号码', index=True)
+
+            # 属性名与字段名不一致时，使用字段名
+            # 定义：student_no = Column(str, name="Student No.")
+            session.update_column(Student, "Student No.", comment="学号")
         """
         table_name = self._resolve_table_name(model_or_table)
         self.storage.update_column(table_name, column_name, comment, index)

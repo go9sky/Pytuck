@@ -15,8 +15,8 @@ A lightweight, pure Python document database with multi-engine support. No SQL r
 
 ## Repository Mirrors
 
-- **GitHub**: https://github.com/go9sky/pytuck
-- **Gitee**: https://gitee.com/go9sky/pytuck
+- **GitHub**: https://github.com/go9sky/Pytuck
+- **Gitee**: https://gitee.com/go9sky/Pytuck
 
 ## Key Features
 

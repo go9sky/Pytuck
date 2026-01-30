@@ -670,3 +670,124 @@ class TestPytuckViewAPI:
             assert table.columns['name'].comment == '用户名'
 
             db.close()
+
+
+class TestColumnNameInSchemaOperations:
+    """测试 Schema 操作方法对自定义 Column.name 的支持"""
+
+    def test_drop_column_with_custom_name(self) -> None:
+        """测试删除具有自定义 name 的列 - 应使用字段名"""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / 'test.db'
+            db = Storage(file_path=str(db_path))
+            Base: Type[PureBaseModel] = declarative_base(db)
+
+            class Student(Base):
+                __tablename__ = 'students'
+                id = Column(int, primary_key=True)
+                student_no = Column(str, name='Student No.')  # 属性名与字段名不一致
+                level = Column(str, name='Level Name')
+
+            table = db.get_table('students')
+            # 验证初始状态
+            assert 'Student No.' in table.columns
+            assert 'Level Name' in table.columns
+            assert 'student_no' not in table.columns  # 存储层使用字段名
+
+            # 使用字段名删除列
+            session = Session(db)
+            session.drop_column(Student, 'Student No.')
+
+            # 验证删除成功
+            assert 'Student No.' not in table.columns
+            assert 'Level Name' in table.columns
+
+            db.close()
+
+    def test_update_column_comment_with_custom_name(self) -> None:
+        """测试更新具有自定义 name 的列备注 - 应使用字段名"""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / 'test.db'
+            db = Storage(file_path=str(db_path))
+            Base: Type[PureBaseModel] = declarative_base(db)
+
+            class Student(Base):
+                __tablename__ = 'students'
+                id = Column(int, primary_key=True)
+                student_no = Column(str, name='Student No.')
+
+            # 使用字段名更新备注
+            db.update_column('students', 'Student No.', comment='学生学号')
+
+            table = db.get_table('students')
+            assert table.columns['Student No.'].comment == '学生学号'
+
+            db.close()
+
+    def test_update_column_index_with_custom_name(self) -> None:
+        """测试更新具有自定义 name 的列索引 - 应使用字段名"""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / 'test.db'
+            db = Storage(file_path=str(db_path))
+            Base: Type[PureBaseModel] = declarative_base(db)
+
+            class Student(Base):
+                __tablename__ = 'students'
+                id = Column(int, primary_key=True)
+                student_no = Column(str, name='Student No.')
+
+            # 使用字段名更新索引
+            db.update_column('students', 'Student No.', index=True)
+
+            table = db.get_table('students')
+            assert table.columns['Student No.'].index is True
+            assert 'Student No.' in table.indexes
+
+            db.close()
+
+    def test_add_column_with_custom_name(self) -> None:
+        """测试添加具有自定义 name 的列"""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / 'test.db'
+            db = Storage(file_path=str(db_path))
+            Base: Type[PureBaseModel] = declarative_base(db)
+
+            class Student(Base):
+                __tablename__ = 'students'
+                id = Column(int, primary_key=True)
+
+            # 添加具有自定义 name 的列
+            new_col = Column(str, nullable=True, name='Student No.')
+            db.add_column('students', new_col)
+
+            table = db.get_table('students')
+            assert 'Student No.' in table.columns
+
+            db.close()
+
+    def test_sync_table_schema_with_custom_name(self) -> None:
+        """测试同步具有自定义 name 的表结构"""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / 'test.db'
+            db = Storage(file_path=str(db_path))
+            Base: Type[PureBaseModel] = declarative_base(db)
+
+            class Student(Base):
+                __tablename__ = 'students'
+                id = Column(int, primary_key=True)
+                student_no = Column(str, name='Student No.')
+
+            # 新列定义
+            new_columns = [
+                Column(int, primary_key=True, name='id'),
+                Column(str, name='Student No.'),
+                Column(str, nullable=True, name='Level Name')  # 新增列
+            ]
+
+            result = db.sync_table_schema('students', new_columns)
+
+            assert 'Level Name' in result.columns_added
+            table = db.get_table('students')
+            assert 'Level Name' in table.columns
+
+            db.close()

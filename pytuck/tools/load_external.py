@@ -152,9 +152,15 @@ def _row_to_model(
     """将一行数据转换为模型对象"""
     kwargs: Dict[str, Any] = {}
 
-    for col_name, column in columns.items():
-        # 从 row 中获取值
+    for attr_name, column in columns.items():
+        # 优先使用 Column.name 查找（匹配 CSV/Excel 表头）
+        # 如果没有指定 name，则使用属性名
+        col_name = column.name if column.name else attr_name
         raw_value = row.get(col_name)
+
+        # 如果 Column.name 找不到，尝试用属性名（兼容旧行为）
+        if raw_value is None and column.name:
+            raw_value = row.get(attr_name)
 
         # 空字符串视为 None
         if raw_value == '':
@@ -163,7 +169,7 @@ def _row_to_model(
         # 使用 Column.validate 进行类型转换
         # 能转就转，不能转就抛出 ValidationError
         validated_value = column.validate(raw_value)
-        kwargs[col_name] = validated_value
+        kwargs[attr_name] = validated_value  # 用属性名作为 kwargs 键
 
     # 创建模型实例
     # 注意：PureBaseModel 的 __init__ 由 declarative_base 动态生成

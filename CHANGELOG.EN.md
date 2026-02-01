@@ -11,6 +11,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.6.1] - 2026-01-29
+
+### Fixed
+
+- **Column.name Mapping Issue**
+  - Fixed query results returning None for all attributes when using `Column(type, name='xxx')` syntax
+  - Fixed column name mapping in `session.query().all()` and `session.execute(select(...))`
+  - Related files: `pytuck/query/result.py`, `pytuck/query/builder.py`
+
+---
+
 ## [0.6.0] - 2026-01-28
 
 ### Added

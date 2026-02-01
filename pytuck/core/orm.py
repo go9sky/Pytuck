@@ -14,7 +14,7 @@ from datetime import datetime, date, timedelta, timezone
 
 from ..common.exceptions import ValidationError, TypeConversionError, SchemaError
 from ..common.options import SyncOptions
-from ..common.types import RelationshipT
+from ..common.types import RelationshipT, Column_Types
 from .types import TypeCode, TypeRegistry
 
 if TYPE_CHECKING:
@@ -43,7 +43,7 @@ class Column:
                  '_attr_name', '_owner_class', 'strict']
 
     def __init__(self,
-                 col_type: Type,
+                 col_type: Column_Types,
                  *,
                  name: Optional[str] = None,
                  nullable: bool = True,
@@ -165,7 +165,7 @@ class Column:
                 return self._convert_to_dict(value)
             else:
                 # 其他类型：尝试直接转换
-                return self.col_type(value)
+                return self.col_type(value)  # type: ignore[call-arg]
         except (ValueError, TypeError) as e:
             raise ValidationError(
                 f"Column '{self.name}' Cannot convert {type(value).__name__} "
@@ -500,11 +500,62 @@ class PureBaseModel:
         if should_mark_dirty:
             session._mark_dirty(self)
 
-    def to_dict(self) -> Dict[str, Any]:
-        """转换为字典"""
+    # ==================== 列名映射辅助方法 ====================
+
+    @classmethod
+    def _attr_to_column_name(cls, attr_name: str) -> str:
+        """
+        将属性名转换为 Column.name
+
+        Args:
+            attr_name: 模型属性名
+
+        Returns:
+            对应的 Column.name（如果存在），否则返回属性名本身
+        """
+        column = cls.__columns__.get(attr_name)
+        return column.name if column and column.name else attr_name
+
+    @classmethod
+    def _column_to_attr_name(cls, col_name: str) -> Optional[str]:
+        """
+        将 Column.name 转换为属性名
+
+        Args:
+            col_name: Column.name（数据库列名）
+
+        Returns:
+            对应的属性名，如果未找到返回 None
+        """
+        for attr_name, column in cls.__columns__.items():
+            if column.name == col_name:
+                return attr_name
+        return None
+
+    def to_dict(self, use_column_names: bool = False) -> Dict[str, Any]:
+        """
+        转换为字典
+
+        Args:
+            use_column_names: 如果为 True，使用 Column.name 作为字典键；
+                             否则使用属性名（默认）
+
+        Returns:
+            包含模型数据的字典
+
+        Example:
+            class User(Base):
+                __tablename__ = 'users'
+                lv = Column(str, name='level')
+
+            user = User(lv='admin')
+            user.to_dict()  # {'lv': 'admin'}
+            user.to_dict(use_column_names=True)  # {'level': 'admin'}
+        """
         data = {}
-        for col_name in self.__columns__:
-            data[col_name] = getattr(self, col_name, None)
+        for attr_name, column in self.__columns__.items():
+            key = column.name if use_column_names and column.name else attr_name
+            data[key] = getattr(self, attr_name, None)
         return data
 
     def __repr__(self) -> str:
@@ -1098,11 +1149,13 @@ def _create_crud_base(
 
         def save(self) -> None:
             """保存记录（insert or update）"""
-            # 准备数据
+            # 准备数据（使用 Column.name 作为存储键）
             data = {}
-            for col_name in self.__columns__:
-                value = getattr(self, col_name, None)
-                data[col_name] = value
+            for attr_name, column in self.__columns__.items():
+                value = getattr(self, attr_name, None)
+                # 使用 Column.name 作为存储键
+                db_col_name = column.name if column.name else attr_name
+                data[db_col_name] = value
 
             table_name = self.__tablename__
             assert table_name is not None, f"Model {self.__class__.__name__} must have __tablename__ defined"
@@ -1160,9 +1213,11 @@ def _create_crud_base(
 
             data = storage.select(table_name, pk_value)
 
-            for col_name, value in data.items():
-                if col_name != PSEUDO_PK_NAME:
-                    setattr(self, col_name, value)
+            for db_col_name, value in data.items():
+                if db_col_name != PSEUDO_PK_NAME:
+                    # 将 Column.name 转换回属性名
+                    attr_name = self._column_to_attr_name(db_col_name) or db_col_name
+                    setattr(self, attr_name, value)
 
         # ==================== 类方法 ====================
 
@@ -1188,7 +1243,14 @@ def _create_crud_base(
                 assert table_name is not None, f"Model {cls.__name__} must have __tablename__ defined"
 
                 data = storage.select(table_name, pk)
-                instance = cls(**data)
+                # 将 Column.name 转换为属性名
+                attr_data = {}
+                for db_col_name, value in data.items():
+                    if db_col_name == PSEUDO_PK_NAME:
+                        continue
+                    attr_name = cls._column_to_attr_name(db_col_name) or db_col_name
+                    attr_data[attr_name] = value
+                instance = cls(**attr_data)
                 instance._loaded_from_db = True
                 return instance
             except Exception:

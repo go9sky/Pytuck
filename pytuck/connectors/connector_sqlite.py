@@ -328,7 +328,7 @@ class SQLiteConnector(DatabaseConnector):
             pk_column: 主键列名
 
         Returns:
-            插入记录的主键值（lastrowid）
+            插入记录的主键值（用户提供的主键值或 lastrowid）
         """
         if self.conn is None:
             raise DatabaseConnectionError("数据库未连接，请先调用 connect()")
@@ -342,6 +342,10 @@ class SQLiteConnector(DatabaseConnector):
         params = tuple(self._serialize_value(v) for v in data.values())
 
         cursor = self.conn.execute(sql, params)
+
+        # 如果用户提供了主键值，返回该值；否则返回 lastrowid（自增主键）
+        if pk_column and pk_column in data and data[pk_column] is not None:
+            return data[pk_column]
         return cursor.lastrowid
 
     def update_row(

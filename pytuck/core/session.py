@@ -121,12 +121,14 @@ class Session:
             table_name = instance.__tablename__
             assert table_name is not None, f"Model {instance.__class__.__name__} must have __tablename__ defined"
 
-            # 构建要插入的数据
+            # 构建要插入的数据（使用 Column.name 作为存储键）
             data = {}
-            for col_name, column in instance.__columns__.items():
-                value = getattr(instance, col_name, None)
+            for attr_name, column in instance.__columns__.items():
+                value = getattr(instance, attr_name, None)
                 if value is not None:
-                    data[col_name] = value
+                    # 使用 Column.name 作为存储键
+                    db_col_name = column.name if column.name else attr_name
+                    data[db_col_name] = value
 
             # 插入到数据库
             pk = self.storage.insert(table_name, data)
@@ -141,9 +143,11 @@ class Session:
 
             # 从数据库重新读取并更新实例（刷新所有字段，类似 SQLAlchemy）
             db_record = self.storage.select(table_name, pk)
-            for col_name, value in db_record.items():
-                if col_name != PSEUDO_PK_NAME:
-                    object.__setattr__(instance, col_name, value)
+            for db_col_name, value in db_record.items():
+                if db_col_name != PSEUDO_PK_NAME:
+                    # 将 Column.name 转换回属性名
+                    attr_name = instance._column_to_attr_name(db_col_name) or db_col_name
+                    object.__setattr__(instance, attr_name, value)
 
             # 注册到标识映射（使用统一的方法，设置 session 引用）
             self._register_instance(instance)
@@ -159,21 +163,25 @@ class Session:
             else:
                 pk = getattr(instance, '_pytuck_rowid', None)
 
-            # 构建要更新的数据
+            # 构建要更新的数据（使用 Column.name 作为存储键）
             data = {}
-            for col_name in instance.__columns__.keys():
-                value = getattr(instance, col_name, None)
+            for attr_name, column in instance.__columns__.items():
+                value = getattr(instance, attr_name, None)
                 if value is not None:
-                    data[col_name] = value
+                    # 使用 Column.name 作为存储键
+                    db_col_name = column.name if column.name else attr_name
+                    data[db_col_name] = value
 
             # 更新数据库
             self.storage.update(table_name, pk, data)
 
             # 从数据库重新读取并更新实例
             db_record = self.storage.select(table_name, pk)
-            for col_name, value in db_record.items():
-                if col_name != PSEUDO_PK_NAME:
-                    object.__setattr__(instance, col_name, value)
+            for db_col_name, value in db_record.items():
+                if db_col_name != PSEUDO_PK_NAME:
+                    # 将 Column.name 转换回属性名
+                    attr_name = instance._column_to_attr_name(db_col_name) or db_col_name
+                    object.__setattr__(instance, attr_name, value)
 
         # 3. 处理待删除对象
         for instance in self._deleted_objects:
@@ -300,9 +308,11 @@ class Session:
         db_record = self.storage.select(table_name, pk_value)
 
         # 更新实例属性（使用 object.__setattr__ 避免触发脏跟踪）
-        for col_name, value in db_record.items():
-            if col_name != PSEUDO_PK_NAME:
-                object.__setattr__(instance, col_name, value)
+        for db_col_name, value in db_record.items():
+            if db_col_name != PSEUDO_PK_NAME:
+                # 将 Column.name 转换回属性名
+                attr_name = model_class._column_to_attr_name(db_col_name) or db_col_name
+                object.__setattr__(instance, attr_name, value)
 
     # ==================== 语句执行（带类型重载） ====================
 
@@ -852,7 +862,7 @@ class Session:
 
         Args:
             model_or_table: 模型类或表名字符串
-            column_name: 列名
+            column_name: 字段名（Column.name），而非 Python 属性名
 
         Example:
             # 通过模型类
@@ -860,6 +870,11 @@ class Session:
 
             # 通过表名
             session.drop_column('users', 'old_field')
+
+            # 属性名与字段名不一致时，使用字段名
+            # 定义：student_no = Column(str, name="Student No.")
+            session.drop_column(Student, "Student No.")  # 正确
+            # session.drop_column(Student, "student_no")  # 错误！
         """
         table_name = self._resolve_table_name(model_or_table)
         self.storage.drop_column(table_name, column_name)
@@ -895,7 +910,7 @@ class Session:
 
         Args:
             model_or_table: 模型类或表名字符串
-            column_name: 列名
+            column_name: 字段名（Column.name），而非 Python 属性名
             comment: 新的列备注（None 表示不修改）
             index: 是否索引（None 表示不修改）
 
@@ -908,6 +923,10 @@ class Session:
 
             # 同时更新
             session.update_column('users', 'phone', comment='电话号码', index=True)
+
+            # 属性名与字段名不一致时，使用字段名
+            # 定义：student_no = Column(str, name="Student No.")
+            session.update_column(Student, "Student No.", comment="学号")
         """
         table_name = self._resolve_table_name(model_or_table)
         self.storage.update_column(table_name, column_name, comment, index)

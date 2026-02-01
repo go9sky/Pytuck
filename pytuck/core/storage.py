@@ -5,11 +5,15 @@ Pytuck 存储引擎
 """
 
 import copy
+import json
+import sqlite3
+from datetime import datetime, date, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Iterator, Tuple, Optional, Generator, Type, TYPE_CHECKING, Sequence
 from contextlib import contextmanager
 
 from ..common.options import BackendOptions, SyncOptions, SyncResult
+from ..common.types import Column_Types
 from ..common.utils import validate_sql_identifier
 from .orm import Column, PSEUDO_PK_NAME
 from .index import HashIndex
@@ -112,6 +116,25 @@ class Table:
                 assert col.name is not None, "Column name must be set"
                 self.build_index(col.name)
 
+    def _normalize_pk(self, pk: Any) -> Any:
+        """
+        将主键值转换为正确的类型
+
+        Args:
+            pk: 原始主键值
+
+        Returns:
+            类型转换后的主键值
+        """
+        if pk is None:
+            return None
+
+        if self.primary_key and self.primary_key in self.columns:
+            pk_column = self.columns[self.primary_key]
+            return pk_column.validate(pk)
+
+        return pk
+
     def insert(self, record: Dict[str, Any]) -> Any:
         """
         插入记录
@@ -129,6 +152,11 @@ class Table:
         if self.primary_key and self.primary_key in self.columns:
             # 有用户主键
             pk = record.get(self.primary_key)
+            # 转换主键类型
+            pk = self._normalize_pk(pk)
+            if pk is not None:
+                # 将转换后的 pk 写回 record
+                record[self.primary_key] = pk
             if pk is None:
                 # 自动生成主键（仅支持int类型）
                 pk_column = self.columns[self.primary_key]
@@ -185,6 +213,8 @@ class Table:
         Raises:
             RecordNotFoundError: 记录不存在
         """
+        # 转换主键类型
+        pk = self._normalize_pk(pk)
         if pk not in self.data:
             raise RecordNotFoundError(self.name, pk)
 
@@ -221,6 +251,8 @@ class Table:
         Raises:
             RecordNotFoundError: 记录不存在
         """
+        # 转换主键类型
+        pk = self._normalize_pk(pk)
         if pk not in self.data:
             raise RecordNotFoundError(self.name, pk)
 
@@ -248,6 +280,8 @@ class Table:
         Raises:
             RecordNotFoundError: 记录不存在
         """
+        # 转换主键类型
+        pk = self._normalize_pk(pk)
         # 已加载的数据直接返回
         if pk in self.data:
             return self.data[pk].copy()
@@ -379,7 +413,9 @@ class Table:
         从表中删除列
 
         Args:
-            column_name: 列名
+            column_name: 字段名（Column.name），而非 Python 属性名。
+                         例如定义 ``student_no = Column(str, name="Student No.")`` 时，
+                         应传入 ``"Student No."`` 而非 ``"student_no"``
 
         Raises:
             ColumnNotFoundError: 列不存在
@@ -415,7 +451,7 @@ class Table:
         更新列备注
 
         Args:
-            column_name: 列名
+            column_name: 字段名（Column.name），而非 Python 属性名
             comment: 新的备注（None 表示清空）
 
         Raises:
@@ -430,7 +466,7 @@ class Table:
         更新列的索引设置
 
         Args:
-            column_name: 列名
+            column_name: 字段名（Column.name），而非 Python 属性名
             index: 是否创建索引
 
         Raises:
@@ -843,7 +879,9 @@ class Storage:
 
         Args:
             table_name: 表名
-            column_name: 列名
+            column_name: 字段名（Column.name），而非 Python 属性名。
+                         例如定义 ``student_no = Column(str, name="Student No.")`` 时，
+                         应传入 ``"Student No."`` 而非 ``"student_no"``
 
         Raises:
             TableNotFoundError: 表不存在
@@ -874,7 +912,7 @@ class Storage:
 
         Args:
             table_name: 表名
-            column_name: 列名
+            column_name: 字段名（Column.name），而非 Python 属性名
             comment: 新备注（... 表示不修改）
             index: 是否创建索引（... 表示不修改）
 
@@ -963,10 +1001,9 @@ class Storage:
         self._connector.execute(sql)
         self._connector.commit()
 
-    def _get_sql_type(self, col_type: Type) -> str:
+    @staticmethod
+    def _get_sql_type(col_type: Column_Types) -> str:
         """获取 Python 类型对应的 SQLite 类型"""
-        from datetime import datetime, date, timedelta
-
         type_mapping = {
             int: 'INTEGER',
             float: 'REAL',
@@ -981,7 +1018,8 @@ class Storage:
         }
         return type_mapping.get(col_type, 'TEXT')
 
-    def _format_sql_value(self, value: Any) -> str:
+    @staticmethod
+    def _format_sql_value(value: Any) -> str:
         """格式化 SQL 值"""
         if value is None:
             return 'NULL'
@@ -1050,8 +1088,15 @@ class Storage:
             validated_value = column.validate(value)
             validated_record[col_name] = validated_value
 
-        # 使用连接器插入
-        pk = connector.insert_row(table_name, validated_record, table.primary_key)
+        # 使用连接器插入，捕获主键冲突异常
+        try:
+            pk = connector.insert_row(table_name, validated_record, table.primary_key)
+        except sqlite3.IntegrityError as e:
+            error_msg = str(e).lower()
+            if 'unique constraint' in error_msg or 'primary key' in error_msg:
+                pk_value = validated_record.get(table.primary_key) if table.primary_key else None
+                raise DuplicateKeyError(table_name, pk_value) from e
+            raise
 
         # 更新 next_id
         if pk is not None and isinstance(pk, int) and pk >= table.next_id:
@@ -1130,7 +1175,9 @@ class Storage:
 
         # 原生 SQL 模式：直接执行 SQL
         if self._native_sql_mode and self._connector:
-            self._connector.delete_row(table_name, table.primary_key, pk)
+            # 无主键表使用 rowid 删除（与 select 方法保持一致）
+            pk_column = table.primary_key if table.primary_key else 'rowid'
+            self._connector.delete_row(table_name, pk_column, pk)
             if self.auto_flush:
                 self.flush()
             return
@@ -1179,7 +1226,34 @@ class Storage:
             record_copy[PSEUDO_PK_NAME] = pk
         return record_copy
 
-    def _deserialize_record(self, record: Dict[str, Any], columns: Dict[str, Column]) -> Dict[str, Any]:
+    def count_rows(self, table_name: str) -> int:
+        """
+        获取表的记录数
+
+        Args:
+            table_name: 表名
+
+        Returns:
+            记录数
+
+        Raises:
+            TableNotFoundError: 表不存在
+        """
+        table = self.get_table(table_name)
+
+        # 原生 SQL 模式：直接执行 COUNT 查询
+        if self._native_sql_mode and self._connector:
+            cursor = self._connector.execute(
+                f'SELECT COUNT(*) FROM `{table_name}`'
+            )
+            result = cursor.fetchone()
+            return int(result[0]) if result else 0
+
+        # 内存模式：返回 data 字典的长度
+        return len(table.data)
+
+    @staticmethod
+    def _deserialize_record(record: Dict[str, Any], columns: Dict[str, Column]) -> Dict[str, Any]:
         """
         反序列化记录
 
@@ -1190,9 +1264,7 @@ class Storage:
         Returns:
             反序列化后的记录
         """
-        from datetime import datetime, date, timedelta
         from .types import TypeRegistry
-        import json
 
         result: Dict[str, Any] = {}
         for col_name, value in record.items():
@@ -1434,7 +1506,8 @@ class Storage:
             connector_str = ' AND ' if condition.operator == 'AND' else ' OR '
             return connector_str.join(parts), params
 
-    def _convert_operator(self, op: str) -> str:
+    @staticmethod
+    def _convert_operator(op: str) -> str:
         """转换操作符为 SQL 操作符"""
         op_map = {
             '==': '=',

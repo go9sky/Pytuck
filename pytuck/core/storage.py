@@ -5,12 +5,15 @@ Pytuck 存储引擎
 """
 
 import copy
+import json
 import sqlite3
+from datetime import datetime, date, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Iterator, Tuple, Optional, Generator, Type, TYPE_CHECKING, Sequence
 from contextlib import contextmanager
 
 from ..common.options import BackendOptions, SyncOptions, SyncResult
+from ..common.types import Column_Types
 from ..common.utils import validate_sql_identifier
 from .orm import Column, PSEUDO_PK_NAME
 from .index import HashIndex
@@ -968,10 +971,9 @@ class Storage:
         self._connector.execute(sql)
         self._connector.commit()
 
-    def _get_sql_type(self, col_type: Type) -> str:
+    @staticmethod
+    def _get_sql_type(col_type: Column_Types) -> str:
         """获取 Python 类型对应的 SQLite 类型"""
-        from datetime import datetime, date, timedelta
-
         type_mapping = {
             int: 'INTEGER',
             float: 'REAL',
@@ -986,7 +988,8 @@ class Storage:
         }
         return type_mapping.get(col_type, 'TEXT')
 
-    def _format_sql_value(self, value: Any) -> str:
+    @staticmethod
+    def _format_sql_value(value: Any) -> str:
         """格式化 SQL 值"""
         if value is None:
             return 'NULL'
@@ -1193,7 +1196,34 @@ class Storage:
             record_copy[PSEUDO_PK_NAME] = pk
         return record_copy
 
-    def _deserialize_record(self, record: Dict[str, Any], columns: Dict[str, Column]) -> Dict[str, Any]:
+    def count_rows(self, table_name: str) -> int:
+        """
+        获取表的记录数
+
+        Args:
+            table_name: 表名
+
+        Returns:
+            记录数
+
+        Raises:
+            TableNotFoundError: 表不存在
+        """
+        table = self.get_table(table_name)
+
+        # 原生 SQL 模式：直接执行 COUNT 查询
+        if self._native_sql_mode and self._connector:
+            cursor = self._connector.execute(
+                f'SELECT COUNT(*) FROM `{table_name}`'
+            )
+            result = cursor.fetchone()
+            return int(result[0]) if result else 0
+
+        # 内存模式：返回 data 字典的长度
+        return len(table.data)
+
+    @staticmethod
+    def _deserialize_record(record: Dict[str, Any], columns: Dict[str, Column]) -> Dict[str, Any]:
         """
         反序列化记录
 
@@ -1204,9 +1234,7 @@ class Storage:
         Returns:
             反序列化后的记录
         """
-        from datetime import datetime, date, timedelta
         from .types import TypeRegistry
-        import json
 
         result: Dict[str, Any] = {}
         for col_name, value in record.items():
@@ -1448,7 +1476,8 @@ class Storage:
             connector_str = ' AND ' if condition.operator == 'AND' else ' OR '
             return connector_str.join(parts), params
 
-    def _convert_operator(self, op: str) -> str:
+    @staticmethod
+    def _convert_operator(op: str) -> str:
         """转换操作符为 SQL 操作符"""
         op_map = {
             '==': '=',

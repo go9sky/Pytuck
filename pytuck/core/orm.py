@@ -14,7 +14,7 @@ from datetime import datetime, date, timedelta, timezone
 
 from ..common.exceptions import ValidationError, TypeConversionError, SchemaError
 from ..common.options import SyncOptions
-from ..common.types import RelationshipT
+from ..common.types import RelationshipT, Column_Types
 from .types import TypeCode, TypeRegistry
 
 if TYPE_CHECKING:
@@ -43,7 +43,7 @@ class Column:
                  '_attr_name', '_owner_class', 'strict']
 
     def __init__(self,
-                 col_type: Type,
+                 col_type: Column_Types,
                  *,
                  name: Optional[str] = None,
                  nullable: bool = True,

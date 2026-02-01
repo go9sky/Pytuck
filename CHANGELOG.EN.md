@@ -11,6 +11,61 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.6.2] - 2026-02-01
+
+### Added
+
+- **Storage.count_rows() Method**
+  - Added public interface to get table record count
+  - Supports both Native SQL mode and memory mode
+  - Raises `TableNotFoundError` when table doesn't exist
+  - Example:
+    ```python
+    count = storage.count_rows('users')
+    print(f"users table has {count} records")
+    ```
+
+- **Primary Key Type Auto-Conversion**
+  - Added `_normalize_pk` method in `Table` class
+  - `insert`, `update`, `delete`, `get` methods now auto-convert primary key types
+  - Resolves mismatch between string primary key `'1'` and integer primary key `1`
+
+### Fixed
+
+- **Primary Key Duplicate Detection Failure**
+  - Fixed duplicate detection failure in memory mode when primary key types don't match
+  - Table defined with `int` primary key, passing `'1'` (string) now correctly detects duplicate with `1` (integer)
+
+- **Unified Primary Key Duplicate Exception**
+  - Native SQL mode now raises `DuplicateKeyError` instead of `sqlite3.IntegrityError` for duplicate primary keys
+
+- **insert Return Value Fix**
+  - Returns user-provided value when user specifies primary key, instead of SQLite's `lastrowid`
+  - Fixed delete failure immediately after insert
+
+- **delete for Primary Key-less Tables**
+  - Unified delete operation for primary key-less tables to use `rowid`
+
+- **External File Loading Column Name Mapping**
+  - Fixed column name mapping issue when using `Column(type, name='xxx')` with `load_table`
+
+- **mypy Type Check Error**
+  - Fixed type check error for datetime/date type conversion in `orm.py`
+
+### Documentation
+
+- Updated documentation for column operation methods
+- Updated GitHub and Gitee links in README
+
+### Tests
+
+- Added `test_insert_issues.py`: Primary key duplicate, return value, insert+delete integration tests
+- Added `test_count_rows.py`: count_rows method tests
+- Added `TestPkTypeMismatch`: Primary key type mismatch scenario tests
+- Added Column.name mapping tests for Schema operations
+
+---
+
 ## [0.6.1] - 2026-01-29
 
 ### Fixed

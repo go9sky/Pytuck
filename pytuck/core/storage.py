@@ -5,6 +5,7 @@ Pytuck 存储引擎
 """
 
 import copy
+import sqlite3
 from pathlib import Path
 from typing import Any, Dict, List, Iterator, Tuple, Optional, Generator, Type, TYPE_CHECKING, Sequence
 from contextlib import contextmanager
@@ -1054,8 +1055,15 @@ class Storage:
             validated_value = column.validate(value)
             validated_record[col_name] = validated_value
 
-        # 使用连接器插入
-        pk = connector.insert_row(table_name, validated_record, table.primary_key)
+        # 使用连接器插入，捕获主键冲突异常
+        try:
+            pk = connector.insert_row(table_name, validated_record, table.primary_key)
+        except sqlite3.IntegrityError as e:
+            error_msg = str(e).lower()
+            if 'unique constraint' in error_msg or 'primary key' in error_msg:
+                pk_value = validated_record.get(table.primary_key) if table.primary_key else None
+                raise DuplicateKeyError(table_name, pk_value) from e
+            raise
 
         # 更新 next_id
         if pk is not None and isinstance(pk, int) and pk >= table.next_id:
@@ -1134,7 +1142,9 @@ class Storage:
 
         # 原生 SQL 模式：直接执行 SQL
         if self._native_sql_mode and self._connector:
-            self._connector.delete_row(table_name, table.primary_key, pk)
+            # 无主键表使用 rowid 删除（与 select 方法保持一致）
+            pk_column = table.primary_key if table.primary_key else 'rowid'
+            self._connector.delete_row(table_name, pk_column, pk)
             if self.auto_flush:
                 self.flush()
             return

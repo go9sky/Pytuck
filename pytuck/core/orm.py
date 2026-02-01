@@ -165,7 +165,7 @@ class Column:
                 return self._convert_to_dict(value)
             else:
                 # 其他类型：尝试直接转换
-                return self.col_type(value)
+                return self.col_type(value)  # type: ignore[call-arg]
         except (ValueError, TypeError) as e:
             raise ValidationError(
                 f"Column '{self.name}' Cannot convert {type(value).__name__} "

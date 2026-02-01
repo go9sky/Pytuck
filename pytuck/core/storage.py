@@ -116,6 +116,25 @@ class Table:
                 assert col.name is not None, "Column name must be set"
                 self.build_index(col.name)
 
+    def _normalize_pk(self, pk: Any) -> Any:
+        """
+        将主键值转换为正确的类型
+
+        Args:
+            pk: 原始主键值
+
+        Returns:
+            类型转换后的主键值
+        """
+        if pk is None:
+            return None
+
+        if self.primary_key and self.primary_key in self.columns:
+            pk_column = self.columns[self.primary_key]
+            return pk_column.validate(pk)
+
+        return pk
+
     def insert(self, record: Dict[str, Any]) -> Any:
         """
         插入记录
@@ -133,6 +152,11 @@ class Table:
         if self.primary_key and self.primary_key in self.columns:
             # 有用户主键
             pk = record.get(self.primary_key)
+            # 转换主键类型
+            pk = self._normalize_pk(pk)
+            if pk is not None:
+                # 将转换后的 pk 写回 record
+                record[self.primary_key] = pk
             if pk is None:
                 # 自动生成主键（仅支持int类型）
                 pk_column = self.columns[self.primary_key]
@@ -189,6 +213,8 @@ class Table:
         Raises:
             RecordNotFoundError: 记录不存在
         """
+        # 转换主键类型
+        pk = self._normalize_pk(pk)
         if pk not in self.data:
             raise RecordNotFoundError(self.name, pk)
 
@@ -225,6 +251,8 @@ class Table:
         Raises:
             RecordNotFoundError: 记录不存在
         """
+        # 转换主键类型
+        pk = self._normalize_pk(pk)
         if pk not in self.data:
             raise RecordNotFoundError(self.name, pk)
 
@@ -252,6 +280,8 @@ class Table:
         Raises:
             RecordNotFoundError: 记录不存在
         """
+        # 转换主键类型
+        pk = self._normalize_pk(pk)
         # 已加载的数据直接返回
         if pk in self.data:
             return self.data[pk].copy()

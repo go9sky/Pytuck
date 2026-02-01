@@ -1,7 +1,7 @@
 # Pytuck - Lightweight Python Document Database
 
-[![Gitee](https://img.shields.io/badge/Gitee-go9sky%2Fpytuck-red)](https://gitee.com/go9sky/Pytuck)
-[![GitHub](https://img.shields.io/badge/GitHub-go9sky%2Fpytuck-blue)](https://github.com/go9sky/Pytuck)
+[![Gitee](https://img.shields.io/badge/Gitee-Pytuck%2FPytuck-red)](https://gitee.com/Pytuck/Pytuck)
+[![GitHub](https://img.shields.io/badge/GitHub-Pytuck%2FPytuck-blue)](https://github.com/Pytuck/Pytuck)
 
 [![PyPI version](https://badge.fury.io/py/pytuck.svg)](https://badge.fury.io/py/pytuck)
 [![Python Versions](https://img.shields.io/pypi/pyversions/pytuck.svg)](https://pypi.org/project/pytuck/)
@@ -15,8 +15,8 @@ A lightweight, pure Python document database with multi-engine support. No SQL r
 
 ## Repository Mirrors
 
-- **GitHub**: https://github.com/go9sky/Pytuck
-- **Gitee**: https://gitee.com/go9sky/Pytuck
+- **GitHub**: https://github.com/Pytuck/Pytuck
+- **Gitee**: https://gitee.com/Pytuck/Pytuck
 
 ## Key Features
 
@@ -817,7 +817,7 @@ pip install pytuck[dev]      # Development tools
 
 ```bash
 # Clone repository
-git clone https://github.com/go9sky/pytuck.git
+git clone https://github.com/Pytuck/Pytuck.git
 cd pytuck
 
 # Editable install

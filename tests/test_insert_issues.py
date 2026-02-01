@@ -252,3 +252,120 @@ class TestInsertThenDelete:
             db.select('users', pk)
 
         db.close()
+
+
+class TestPkTypeMismatch:
+    """测试主键类型不匹配场景"""
+
+    def test_insert_duplicate_pk_with_type_mismatch(self, tmp_path: Path) -> None:
+        """主键类型不匹配时也能正确检测重复（int 列，str 输入）"""
+        db_file = tmp_path / 'test_type_mismatch.sqlite'
+        options = SqliteBackendOptions(use_native_sql=False)
+        db = Storage(file_path=str(db_file), engine='sqlite', backend_options=options)
+        Base: Type[PureBaseModel] = declarative_base(db)
+
+        class User(Base):
+            __tablename__ = 'users'
+            id = Column(int, primary_key=True)
+            name = Column(str)
+
+        # 第一次插入，使用整数主键
+        db.insert('users', {'id': 1, 'name': 'Alice'})
+
+        # 第二次插入，使用字符串主键（应该被检测为重复）
+        with pytest.raises(DuplicateKeyError):
+            db.insert('users', {'id': '1', 'name': 'Bob'})
+
+        db.close()
+
+    def test_update_with_pk_type_mismatch(self, tmp_path: Path) -> None:
+        """update 时主键类型不匹配也能找到记录"""
+        db_file = tmp_path / 'test_update_type_mismatch.sqlite'
+        options = SqliteBackendOptions(use_native_sql=False)
+        db = Storage(file_path=str(db_file), engine='sqlite', backend_options=options)
+        Base: Type[PureBaseModel] = declarative_base(db)
+
+        class User(Base):
+            __tablename__ = 'users'
+            id = Column(int, primary_key=True)
+            name = Column(str)
+
+        # 插入记录，使用整数主键
+        db.insert('users', {'id': 1, 'name': 'Alice'})
+
+        # 使用字符串主键更新（应该能找到记录）
+        db.update('users', '1', {'name': 'Updated Alice'})
+
+        # 验证更新成功
+        record = db.select('users', 1)
+        assert record['name'] == 'Updated Alice'
+
+        db.close()
+
+    def test_delete_with_pk_type_mismatch(self, tmp_path: Path) -> None:
+        """delete 时主键类型不匹配也能找到记录"""
+        db_file = tmp_path / 'test_delete_type_mismatch.sqlite'
+        options = SqliteBackendOptions(use_native_sql=False)
+        db = Storage(file_path=str(db_file), engine='sqlite', backend_options=options)
+        Base: Type[PureBaseModel] = declarative_base(db)
+
+        class User(Base):
+            __tablename__ = 'users'
+            id = Column(int, primary_key=True)
+            name = Column(str)
+
+        # 插入记录，使用整数主键
+        db.insert('users', {'id': 1, 'name': 'Alice'})
+
+        # 使用字符串主键删除（应该能找到并删除记录）
+        db.delete('users', '1')
+
+        # 验证删除成功
+        from pytuck.common.exceptions import RecordNotFoundError
+        with pytest.raises(RecordNotFoundError):
+            db.select('users', 1)
+
+        db.close()
+
+    def test_get_with_pk_type_mismatch(self, tmp_path: Path) -> None:
+        """get/select 时主键类型不匹配也能找到记录"""
+        db_file = tmp_path / 'test_get_type_mismatch.sqlite'
+        options = SqliteBackendOptions(use_native_sql=False)
+        db = Storage(file_path=str(db_file), engine='sqlite', backend_options=options)
+        Base: Type[PureBaseModel] = declarative_base(db)
+
+        class User(Base):
+            __tablename__ = 'users'
+            id = Column(int, primary_key=True)
+            name = Column(str)
+
+        # 插入记录，使用整数主键
+        db.insert('users', {'id': 1, 'name': 'Alice'})
+
+        # 使用字符串主键查询（应该能找到记录）
+        record = db.select('users', '1')
+        assert record['id'] == 1
+        assert record['name'] == 'Alice'
+
+        db.close()
+
+    def test_insert_str_pk_with_int_input(self, tmp_path: Path) -> None:
+        """字符串主键列传入整数也能正确检测重复"""
+        db_file = tmp_path / 'test_str_pk_int_input.sqlite'
+        options = SqliteBackendOptions(use_native_sql=False)
+        db = Storage(file_path=str(db_file), engine='sqlite', backend_options=options)
+        Base: Type[PureBaseModel] = declarative_base(db)
+
+        class Product(Base):
+            __tablename__ = 'products'
+            sku = Column(str, primary_key=True)
+            name = Column(str)
+
+        # 第一次插入，使用字符串主键
+        db.insert('products', {'sku': '123', 'name': 'Widget'})
+
+        # 第二次插入，使用整数主键（应该被转换为 '123' 并检测为重复）
+        with pytest.raises(DuplicateKeyError):
+            db.insert('products', {'sku': 123, 'name': 'Another Widget'})
+
+        db.close()

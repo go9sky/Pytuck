@@ -442,6 +442,195 @@ class TestAllEngines:
         session2.close()
         db2.close()
 
+    @pytest.mark.parametrize("engine_name,file_ext", ALL_ENGINES)
+    def test_engine_column_name_mapping(self, engine_name: str, file_ext: str, tmp_path: Path) -> None:
+        """
+        测试引擎的 Column.name 与属性名映射
+
+        验证当 Column.name 与属性名不同时，写入和读取都能正确工作。
+
+        Args:
+            engine_name: 引擎名称
+            file_ext: 文件扩展名
+            tmp_path: pytest 提供的临时目录
+        """
+        if not is_engine_available(engine_name):
+            pytest.skip(get_skip_reason(engine_name))
+
+        db_file = tmp_path / f'test_column_name_{engine_name}.{file_ext}'
+
+        # 1. 创建数据库并写入
+        db = Storage(file_path=str(db_file), engine=engine_name)
+        Base: Type[PureBaseModel] = declarative_base(db)
+
+        class Product(Base):
+            __tablename__ = 'products'
+            # 使用不带空格的 Column.name，避免 SQLite 语法问题
+            id = Column(int, primary_key=True, name='product_id')
+            product_name = Column(str, name='product_name_col')
+            unit_price = Column(float, name='unit_price_col')
+            in_stock = Column(bool, name='in_stock_col')
+
+        session = Session(db)
+
+        # 插入数据
+        stmt = insert(Product).values(
+            id=1,
+            product_name='Widget',
+            unit_price=19.99,
+            in_stock=True
+        )
+        session.execute(stmt)
+        stmt = insert(Product).values(
+            id=2,
+            product_name='Gadget',
+            unit_price=29.99,
+            in_stock=False
+        )
+        session.execute(stmt)
+        session.commit()
+
+        # 2. 验证存储层使用 Column.name
+        records = db.query('products', [])
+        assert len(records) == 2
+        assert 'product_id' in records[0]
+        assert 'product_name_col' in records[0]
+        assert 'unit_price_col' in records[0]
+        assert 'in_stock_col' in records[0]
+
+        # 3. 验证读取时映射回属性名
+        product = session.get(Product, 1)
+        assert product is not None
+        assert product.id == 1
+        assert product.product_name == 'Widget'
+        assert product.unit_price == 19.99
+        assert product.in_stock is True
+
+        # 4. 验证更新
+        stmt = update(Product).where(Product.id == 1).values(unit_price=24.99)
+        session.execute(stmt)
+        session.commit()
+
+        # 刷新对象以获取最新数据（update statement 不会自动刷新 identity map）
+        session.refresh(product)
+        assert product.unit_price == 24.99
+
+        # 5. 验证条件查询
+        stmt = select(Product).where(Product.in_stock == False)
+        out_of_stock = session.execute(stmt).all()
+        assert len(out_of_stock) == 1
+        assert out_of_stock[0].product_name == 'Gadget'
+
+        # 6. 持久化并重载
+        session.close()
+        db.close()
+
+        # 验证文件已创建
+        assert db_file.exists()
+
+        # 7. 重新加载验证
+        db2 = Storage(file_path=str(db_file), engine=engine_name)
+        Base2: Type[PureBaseModel] = declarative_base(db2)
+
+        class Product2(Base2):
+            __tablename__ = 'products'
+            id = Column(int, primary_key=True, name='product_id')
+            product_name = Column(str, name='product_name_col')
+            unit_price = Column(float, name='unit_price_col')
+            in_stock = Column(bool, name='in_stock_col')
+
+        session2 = Session(db2)
+
+        # 验证重载后数据正确
+        stmt = select(Product2)
+        products = session2.execute(stmt).all()
+        assert len(products) == 2
+
+        # 使用 Session.get()
+        product = session2.get(Product2, 1)
+        assert product is not None
+        assert product.product_name == 'Widget'
+        assert product.unit_price == 24.99
+        assert product.in_stock is True
+
+        product2 = session2.get(Product2, 2)
+        assert product2 is not None
+        assert product2.product_name == 'Gadget'
+        assert product2.in_stock is False
+
+        session2.close()
+        db2.close()
+
+    @pytest.mark.parametrize("engine_name,file_ext", ALL_ENGINES)
+    def test_engine_column_name_with_chinese(self, engine_name: str, file_ext: str, tmp_path: Path) -> None:
+        """
+        测试引擎的中文 Column.name 支持
+
+        Args:
+            engine_name: 引擎名称
+            file_ext: 文件扩展名
+            tmp_path: pytest 提供的临时目录
+        """
+        if not is_engine_available(engine_name):
+            pytest.skip(get_skip_reason(engine_name))
+
+        # SQLite 原生 SQL 模式不支持特殊字符作为列名（需要用引号包围）
+        if engine_name == 'sqlite':
+            pytest.skip("SQLite 原生模式不支持中文列名")
+
+        db_file = tmp_path / f'test_chinese_col_{engine_name}.{file_ext}'
+
+        db = Storage(file_path=str(db_file), engine=engine_name)
+        Base: Type[PureBaseModel] = declarative_base(db)
+
+        class User(Base):
+            __tablename__ = 'users'
+            id = Column(int, primary_key=True, name='编号')
+            user_name = Column(str, name='用户名')
+            email = Column(str, name='电子邮箱')
+
+        session = Session(db)
+
+        # 插入
+        stmt = insert(User).values(id=1, user_name='张三', email='zhangsan@example.com')
+        session.execute(stmt)
+        session.commit()
+
+        # 验证存储层
+        records = db.query('users', [])
+        assert '编号' in records[0]
+        assert '用户名' in records[0]
+        assert '电子邮箱' in records[0]
+        assert records[0]['用户名'] == '张三'
+
+        # 验证读取
+        user = session.get(User, 1)
+        assert user is not None
+        assert user.user_name == '张三'
+        assert user.email == 'zhangsan@example.com'
+
+        # 持久化并重载
+        session.close()
+        db.close()
+
+        db2 = Storage(file_path=str(db_file), engine=engine_name)
+        Base2: Type[PureBaseModel] = declarative_base(db2)
+
+        class User2(Base2):
+            __tablename__ = 'users'
+            id = Column(int, primary_key=True, name='编号')
+            user_name = Column(str, name='用户名')
+            email = Column(str, name='电子邮箱')
+
+        session2 = Session(db2)
+
+        user = session2.get(User2, 1)
+        assert user is not None
+        assert user.user_name == '张三'
+
+        session2.close()
+        db2.close()
+
 
 # 允许直接运行测试
 if __name__ == '__main__':

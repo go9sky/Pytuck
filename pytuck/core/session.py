@@ -233,19 +233,26 @@ class Session:
         """
         通过主键获取对象
 
-        注意：无主键模型无法使用此方法，因为用户无法知道内部 rowid。
-        对于无主键模型，请使用 select() 语句进行查询。
-
         Args:
             model_class: 模型类
             pk: 主键值
 
         Returns:
-            模型实例，如果不存在返回 None；无主键模型始终返回 None
+            模型实例，如果不存在返回 None
+
+        Raises:
+            QueryError: 如果模型没有定义主键（reason='no_primary_key'）
+
+        Note:
+            无主键模型无法使用此方法，请使用 select() 语句进行查询。
         """
-        # 无主键模型不支持 get() 方法
+        # 无主键模型不支持 get() 方法，抛出明确错误
         if model_class.__primary_key__ is None:
-            return None
+            raise QueryError(
+                f"Model '{model_class.__name__}' has no primary key. "
+                f"Use select() statement to query records instead.",
+                details={'model': model_class.__name__, 'reason': 'no_primary_key'}
+            )
 
         # 先从标识映射查找
         instance = self._get_from_identity_map(model_class, pk)
@@ -259,8 +266,16 @@ class Session:
         try:
             record = self.storage.get_table(table_name).get(pk)
 
+            # 将 Column.name 转换为属性名
+            attr_data = {}
+            for db_col_name, value in record.items():
+                if db_col_name == PSEUDO_PK_NAME:
+                    continue
+                attr_name = model_class._column_to_attr_name(db_col_name) or db_col_name
+                attr_data[attr_name] = value
+
             # 创建模型实例
-            instance = model_class(**record)
+            instance = model_class(**attr_data)
 
             # 注册到标识映射
             self._register_instance(instance)

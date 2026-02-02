@@ -147,10 +147,6 @@ class TestMetadataStorageFormat:
         assert table.primary_key == 'id'
         db2.close()
 
-    @pytest.mark.skipif(
-        True,  # Excel 需要 openpyxl
-        reason="Excel tests require openpyxl"
-    )
     def test_excel_metadata_location(self, tmp_path):
         """Excel 引擎元数据在 _pytuck_tables 工作表"""
         try:

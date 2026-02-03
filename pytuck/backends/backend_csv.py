@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any, Dict, Union, TYPE_CHECKING, Tuple, Optional
 from datetime import datetime
 from .base import StorageBackend
-from ..common.exceptions import SerializationError
+from ..common.exceptions import SerializationError, EncryptionError
 from .versions import get_format_version
 from ..core.types import TypeRegistry
 
@@ -49,39 +49,50 @@ class CSVBackend(StorageBackend):
         temp_path = self.file_path.parent / (self.file_path.name + '.tmp')
 
         try:
-            with zipfile.ZipFile(str(temp_path), 'w', zipfile.ZIP_DEFLATED) as zf:
-                # 收集所有表的 schema
-                tables_schema: Dict[str, Dict[str, Any]] = {}
-                for table_name, table in tables.items():
-                    tables_schema[table_name] = {
-                        'primary_key': table.primary_key,
-                        'next_id': table.next_id,
-                        'comment': table.comment,
-                        'columns': [
-                            {
-                                'name': col.name,
-                                'type': col.col_type.__name__,
-                                'nullable': col.nullable,
-                                'primary_key': col.primary_key,
-                                'index': col.index,
-                                'comment': col.comment
-                            }
-                            for col in table.columns.values()
-                        ]
-                    }
-
-                # 保存全局元数据（包含所有表的 schema）
-                metadata = {
-                    'format_version': self.FORMAT_VERSION,
-                    'timestamp': datetime.now().isoformat(),
-                    'table_count': len(tables),
-                    'tables': tables_schema
+            # 收集所有表的 schema
+            tables_schema: Dict[str, Dict[str, Any]] = {}
+            for table_name, table in tables.items():
+                tables_schema[table_name] = {
+                    'primary_key': table.primary_key,
+                    'next_id': table.next_id,
+                    'comment': table.comment,
+                    'columns': [
+                        {
+                            'name': col.name,
+                            'type': col.col_type.__name__,
+                            'nullable': col.nullable,
+                            'primary_key': col.primary_key,
+                            'index': col.index,
+                            'comment': col.comment
+                        }
+                        for col in table.columns.values()
+                    ]
                 }
-                zf.writestr('_metadata.json', json.dumps(metadata, indent=self.options.indent))
 
-                # 为每个表保存 CSV 数据
-                for table_name, table in tables.items():
-                    self._save_table_to_zip(zf, table_name, table)
+            # 保存全局元数据（包含所有表的 schema）
+            metadata = {
+                'format_version': self.FORMAT_VERSION,
+                'timestamp': datetime.now().isoformat(),
+                'table_count': len(tables),
+                'tables': tables_schema
+            }
+            metadata_bytes = json.dumps(metadata, indent=self.options.indent).encode('utf-8')
+
+            if self.options.password:
+                # 使用加密 ZIP 写入器
+                from ..common.encrypted_zip import EncryptedZipFile
+                with EncryptedZipFile(str(temp_path), self.options.password) as zf:
+                    zf.writestr('_metadata.json', metadata_bytes)
+                    for table_name, table in tables.items():
+                        csv_bytes = self._generate_csv_bytes(table_name, table)
+                        zf.writestr(f'{table_name}.csv', csv_bytes)
+            else:
+                # 原有行为：标准 zipfile（无加密）
+                with zipfile.ZipFile(str(temp_path), 'w', zipfile.ZIP_DEFLATED) as zf:
+                    zf.writestr('_metadata.json', metadata_bytes)
+                    # 为每个表保存 CSV 数据
+                    for table_name, table in tables.items():
+                        self._save_table_to_zip(zf, table_name, table)
 
             # 原子性重命名
             if self.file_path.exists():
@@ -104,10 +115,22 @@ class CSVBackend(StorageBackend):
 
         try:
             with zipfile.ZipFile(str(self.file_path), 'r') as zf:
+                # 检测是否加密
+                encrypted = any((info.flag_bits & 0x1) != 0 for info in zf.infolist())
+
+                if encrypted:
+                    if not self.options.password:
+                        raise EncryptionError(
+                            "CSV archive is encrypted. Please provide password in CsvBackendOptions."
+                        )
+                    pwd = self.options.password.encode('utf-8')
+                else:
+                    pwd = None
+
                 # 读取元数据
                 metadata: Dict[str, Any] = {}
                 if '_metadata.json' in zf.namelist():
-                    with zf.open('_metadata.json') as f:
+                    with zf.open('_metadata.json', pwd=pwd) as f:
                         metadata = json.load(f)
 
                 # 从 metadata 中获取所有表的 schema
@@ -120,11 +143,18 @@ class CSVBackend(StorageBackend):
                 for csv_file in csv_files:
                     table_name = csv_file[:-4]  # 移除 .csv
                     schema = tables_schema.get(table_name, {})
-                    table = self._load_table_from_zip(zf, table_name, schema)
+                    table = self._load_table_from_zip(zf, table_name, schema, pwd=pwd)
                     tables[table_name] = table
 
             return tables
 
+        except EncryptionError:
+            raise
+        except RuntimeError as e:
+            # zipfile 在密码错误时抛出 RuntimeError
+            if "Bad password" in str(e) or "password" in str(e).lower():
+                raise EncryptionError("Incorrect password for CSV archive.")
+            raise SerializationError(f"Failed to load CSV archive: {e}")
         except Exception as e:
             raise SerializationError(f"Failed to load CSV archive: {e}")
 
@@ -139,7 +169,11 @@ class CSVBackend(StorageBackend):
 
     def _save_table_to_zip(self, zf: zipfile.ZipFile, table_name: str, table: 'Table') -> None:
         """保存单个表的 CSV 数据到ZIP"""
-        # 保存 CSV 数据到内存
+        csv_bytes = self._generate_csv_bytes(table_name, table)
+        zf.writestr(f'{table_name}.csv', csv_bytes)
+
+    def _generate_csv_bytes(self, table_name: str, table: 'Table') -> bytes:
+        """生成表的 CSV 字节数据"""
         csv_buffer = io.StringIO()
 
         if len(table.data) > 0:
@@ -152,12 +186,14 @@ class CSVBackend(StorageBackend):
                 row = self._serialize_record(record, table.columns)
                 writer.writerow(row)
 
-        # 写入ZIP（使用配置的编码）
-        csv_bytes = csv_buffer.getvalue().encode(self.options.encoding)
-        zf.writestr(f'{table_name}.csv', csv_bytes)
+        return csv_buffer.getvalue().encode(self.options.encoding)
 
     def _load_table_from_zip(
-        self, zf: zipfile.ZipFile, table_name: str, schema: Dict[str, Any]
+        self,
+        zf: zipfile.ZipFile,
+        table_name: str,
+        schema: Dict[str, Any],
+        pwd: Optional[bytes] = None
     ) -> 'Table':
         """从ZIP加载单个表"""
         from ..core.storage import Table
@@ -190,7 +226,7 @@ class CSVBackend(StorageBackend):
         table.next_id = schema.get('next_id', 1)
 
         # 加载 CSV 数据
-        with zf.open(csv_file) as f:
+        with zf.open(csv_file, pwd=pwd) as f:
             encoding = self.options.encoding
             text_stream = io.TextIOWrapper(f, encoding=encoding)
             reader = csv.DictReader(text_stream, delimiter=self.options.delimiter)
@@ -273,19 +309,50 @@ class CSVBackend(StorageBackend):
             modified_time = file_stat.st_mtime
 
             with zipfile.ZipFile(str(self.file_path), 'r') as zf:
-                if '_metadata.json' in zf.namelist():
-                    with zf.open('_metadata.json') as f:
-                        metadata = json.load(f)
+                # 检测是否加密
+                encrypted = any((info.flag_bits & 0x1) != 0 for info in zf.infolist())
+
+                if encrypted:
+                    if self.options.password:
+                        # 使用密码读取 metadata
+                        pwd = self.options.password.encode('utf-8')
+                        try:
+                            with zf.open('_metadata.json', pwd=pwd) as f:
+                                metadata = json.load(f)
+                        except RuntimeError:
+                            # 密码错误
+                            return {
+                                'engine': 'csv',
+                                'encrypted': True,
+                                'file_size': file_size,
+                                'modified': modified_time,
+                                'error': 'incorrect_password'
+                            }
+                    else:
+                        # 加密但未提供密码
+                        return {
+                            'engine': 'csv',
+                            'encrypted': True,
+                            'requires_password': True,
+                            'file_size': file_size,
+                            'modified': modified_time
+                        }
                 else:
-                    metadata = {}
+                    if '_metadata.json' in zf.namelist():
+                        with zf.open('_metadata.json') as f:
+                            metadata = json.load(f)
+                    else:
+                        metadata = {}
 
             metadata['engine'] = 'csv'
             metadata['file_size'] = file_size
             metadata['modified'] = modified_time
+            if encrypted:
+                metadata['encrypted'] = True
 
             return metadata
 
-        except:
+        except Exception:
             return {}
 
     @classmethod
@@ -325,7 +392,23 @@ class CSVBackend(StorageBackend):
                     if '_metadata.json' not in namelist:
                         return False, None
 
-                    # 尝试读取 metadata
+                    # 检测是否加密
+                    encrypted = any((info.flag_bits & 0x1) != 0 for info in zf.infolist())
+
+                    if encrypted:
+                        # 加密的 ZIP 无法直接读取 metadata，但可以识别格式
+                        csv_files = [name for name in namelist if name.endswith('.csv') and not name.startswith('_')]
+                        return True, {
+                            'engine': 'csv',
+                            'encrypted': True,
+                            'requires_password': True,
+                            'csv_file_count': len(csv_files),
+                            'file_size': file_size,
+                            'modified': file_stat.st_mtime,
+                            'confidence': 'medium'
+                        }
+
+                    # 尝试读取 metadata（未加密情况）
                     try:
                         with zf.open('_metadata.json') as f:
                             metadata = json.load(f)

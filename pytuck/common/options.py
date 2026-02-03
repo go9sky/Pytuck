@@ -33,6 +33,7 @@ class CsvBackendOptions:
     encoding: str = 'utf-8-sig'  # 字符编码（默认带 BOM，兼容 Excel）
     delimiter: str = ','  # 字段分隔符
     indent: Optional[int] = None  # json元数据缩进空格数（无缩进时为 None）
+    password: Optional[str] = None  # ZIP 解压密码（可选，使用 ZipCrypto 加密）
 
 
 @dataclass(slots=True)

@@ -17,7 +17,7 @@ import pytest
 from pytuck import Storage, Session, Column, PureBaseModel, declarative_base
 from pytuck import select, insert, update, delete
 from pytuck.core.orm import PSEUDO_PK_NAME
-from pytuck.common.exceptions import SchemaError
+from pytuck.common.exceptions import SchemaError, QueryError
 
 
 class TestNoPrimaryKey:
@@ -181,8 +181,8 @@ class TestNoPrimaryKey:
         session.close()
         db.close()
 
-    def test_get_returns_none_for_no_pk(self, tmp_path: Path) -> None:
-        """Session.get() 对无主键模型返回 None"""
+    def test_get_raises_error_for_no_pk(self, tmp_path: Path) -> None:
+        """Session.get() 对无主键模型抛出 QueryError"""
         db_file = tmp_path / 'test.db'
         db = Storage(file_path=str(db_file), engine='binary')
         Base: Type[PureBaseModel] = declarative_base(db)
@@ -195,9 +195,11 @@ class TestNoPrimaryKey:
         session.execute(insert(Log).values(message='Test'))
         session.commit()
 
-        # get() 对无主键模型应返回 None
-        result = session.get(Log, 1)
-        assert result is None
+        # get() 对无主键模型应抛出 QueryError
+        with pytest.raises(QueryError) as excinfo:
+            session.get(Log, 1)
+
+        assert 'no primary key' in str(excinfo.value).lower()
 
         session.close()
         db.close()

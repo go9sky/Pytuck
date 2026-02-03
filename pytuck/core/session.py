@@ -233,19 +233,26 @@ class Session:
         """
         通过主键获取对象
 
-        注意：无主键模型无法使用此方法，因为用户无法知道内部 rowid。
-        对于无主键模型，请使用 select() 语句进行查询。
-
         Args:
             model_class: 模型类
             pk: 主键值
 
         Returns:
-            模型实例，如果不存在返回 None；无主键模型始终返回 None
+            模型实例，如果不存在返回 None
+
+        Raises:
+            QueryError: 如果模型没有定义主键（reason='no_primary_key'）
+
+        Note:
+            无主键模型无法使用此方法，请使用 select() 语句进行查询。
         """
-        # 无主键模型不支持 get() 方法
+        # 无主键模型不支持 get() 方法，抛出明确错误
         if model_class.__primary_key__ is None:
-            return None
+            raise QueryError(
+                f"Model '{model_class.__name__}' has no primary key. "
+                f"Use select() statement to query records instead.",
+                details={'model': model_class.__name__, 'reason': 'no_primary_key'}
+            )
 
         # 先从标识映射查找
         instance = self._get_from_identity_map(model_class, pk)
@@ -257,10 +264,39 @@ class Session:
         assert table_name is not None, f"Model {model_class.__name__} must have __tablename__ defined"
 
         try:
-            record = self.storage.get_table(table_name).get(pk)
+            # 原生 SQL 模式：直接从数据库查询
+            if self.storage._native_sql_mode and self.storage._connector:
+                pk_attr_name = model_class.__primary_key__
+                # 获取主键的 Column.name
+                pk_col_name = pk_attr_name
+                if pk_attr_name in model_class.__columns__:
+                    pk_column = model_class.__columns__[pk_attr_name]
+                    pk_col_name = pk_column.name if pk_column.name else pk_attr_name
+
+                # 使用 query_rows 获取单条记录
+                rows = self.storage._connector.query_rows(
+                    table_name,
+                    where_clause=f'`{pk_col_name}` = ?',
+                    params=(pk,),
+                    limit=1
+                )
+                if not rows:
+                    return None
+                record = rows[0]
+            else:
+                # 内存模式：从 Table.data 获取
+                record = self.storage.get_table(table_name).get(pk)
+
+            # 将 Column.name 转换为属性名
+            attr_data = {}
+            for db_col_name, value in record.items():
+                if db_col_name == PSEUDO_PK_NAME:
+                    continue
+                attr_name = model_class._column_to_attr_name(db_col_name) or db_col_name
+                attr_data[attr_name] = value
 
             # 创建模型实例
-            instance = model_class(**record)
+            instance = model_class(**attr_data)
 
             # 注册到标识映射
             self._register_instance(instance)
@@ -454,17 +490,28 @@ class Session:
             # 编译并执行 INSERT
             table = self.storage.get_table(statement.model_class.__tablename__)
 
-            # 验证和序列化值
+            # 验证和序列化值（使用 Column.name 作为存储键）
             validated_data = {}
-            for col_name, value in statement._values.items():
-                if col_name in table.columns:
-                    column = table.columns[col_name]
-                    validated_data[col_name] = column.validate(value)
+            for attr_name, value in statement._values.items():
+                # 将属性名转换为 Column.name
+                if attr_name in statement.model_class.__columns__:
+                    model_column = statement.model_class.__columns__[attr_name]
+                    db_col_name = model_column.name if model_column.name else attr_name
+                    if db_col_name in table.columns:
+                        column = table.columns[db_col_name]
+                        validated_data[db_col_name] = column.validate(value)
+
+            # 获取主键的 Column.name
+            pk_attr_name = statement.model_class.__primary_key__
+            pk_col_name = pk_attr_name
+            if pk_attr_name and pk_attr_name in statement.model_class.__columns__:
+                pk_column = statement.model_class.__columns__[pk_attr_name]
+                pk_col_name = pk_column.name if pk_column.name else pk_attr_name
 
             pk = connector.insert_row(
                 statement.model_class.__tablename__,
                 validated_data,
-                statement.model_class.__primary_key__
+                pk_col_name
             )
 
             # 更新 next_id
@@ -477,28 +524,39 @@ class Session:
         elif isinstance(statement, Update):
             # 编译并执行 UPDATE
             table = self.storage.get_table(statement.model_class.__tablename__)
-            pk_name = statement.model_class.__primary_key__
+            pk_attr_name = statement.model_class.__primary_key__
 
-            # 验证值
+            # 获取主键的 Column.name
+            pk_col_name = pk_attr_name
+            if pk_attr_name and pk_attr_name in statement.model_class.__columns__:
+                pk_column = statement.model_class.__columns__[pk_attr_name]
+                pk_col_name = pk_column.name if pk_column.name else pk_attr_name
+
+            # 验证值（使用 Column.name 作为存储键）
             validated_data = {}
-            for col_name, value in statement._values.items():
-                if col_name in table.columns:
-                    column = table.columns[col_name]
-                    validated_data[col_name] = column.validate(value)
+            for attr_name, value in statement._values.items():
+                # 将属性名转换为 Column.name
+                if attr_name in statement.model_class.__columns__:
+                    model_column = statement.model_class.__columns__[attr_name]
+                    db_col_name = model_column.name if model_column.name else attr_name
+                    if db_col_name in table.columns:
+                        column = table.columns[db_col_name]
+                        validated_data[db_col_name] = column.validate(value)
 
             # 优化：主键直接更新（仅对简单 BinaryExpression 生效）
             pk_value = None
             if len(statement._where_clauses) == 1:
                 expr = statement._where_clauses[0]
                 if isinstance(expr, BinaryExpression):
-                    if expr.column.name == pk_name and expr.operator in ('=', '=='):
+                    # 比较属性名（_attr_name）而非 Column.name
+                    if expr.column._attr_name == pk_attr_name and expr.operator in ('=', '=='):
                         pk_value = expr.value
 
             if pk_value is not None:
                 # 主键直接更新
                 count = connector.update_row(
                     statement.model_class.__tablename__,
-                    pk_name,
+                    pk_col_name,
                     pk_value,
                     validated_data
                 )
@@ -511,21 +569,28 @@ class Session:
         elif isinstance(statement, Delete):
             # 编译并执行 DELETE
             table = self.storage.get_table(statement.model_class.__tablename__)
-            pk_name = statement.model_class.__primary_key__
+            pk_attr_name = statement.model_class.__primary_key__
+
+            # 获取主键的 Column.name
+            pk_col_name = pk_attr_name
+            if pk_attr_name and pk_attr_name in statement.model_class.__columns__:
+                pk_column = statement.model_class.__columns__[pk_attr_name]
+                pk_col_name = pk_column.name if pk_column.name else pk_attr_name
 
             # 优化：主键直接删除（仅对简单 BinaryExpression 生效）
             pk_value = None
             if len(statement._where_clauses) == 1:
                 expr = statement._where_clauses[0]
                 if isinstance(expr, BinaryExpression):
-                    if expr.column.name == pk_name and expr.operator in ('=', '=='):
+                    # 比较属性名（_attr_name）而非 Column.name
+                    if expr.column._attr_name == pk_attr_name and expr.operator in ('=', '=='):
                         pk_value = expr.value
 
             if pk_value is not None:
                 # 主键直接删除
                 count = connector.delete_row(
                     statement.model_class.__tablename__,
-                    pk_name,
+                    pk_col_name,
                     pk_value
                 )
                 return CursorResult(count, statement.model_class, 'delete')

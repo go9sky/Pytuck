@@ -366,9 +366,15 @@ class Query(Generic[T]):
             # 复杂表达式查询（使用 filter）
             query.filter(Student.age >= 20, Student.name != 'Alice')
         """
-        for field, value in kwargs.items():
-            # 仅支持等值条件
-            condition = Condition(field, '=', value)
+        for attr_name, value in kwargs.items():
+            # 将属性名转换为 Column.name（存储列名）
+            if hasattr(self.model_class, '__columns__') and attr_name in self.model_class.__columns__:
+                column = self.model_class.__columns__[attr_name]
+                db_col_name = column.name if column.name else attr_name
+            else:
+                db_col_name = attr_name
+            # 创建等值条件
+            condition = Condition(db_col_name, '=', value)
             self._conditions.append(condition)
         return self
 

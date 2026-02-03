@@ -251,14 +251,18 @@ db = Storage(file_path='data.json', engine='json', backend_options=json_opts)
 
 ### CSV 引擎
 
-**特点**: Excel兼容、表格格式、数据分析友好
+**特点**: Excel兼容、表格格式、数据分析友好、支持密码保护
 
 ```python
 from pytuck.common.options import CsvBackendOptions
 
 # 配置 CSV 选项
 csv_opts = CsvBackendOptions(encoding='utf-8', delimiter=',')
-db = Storage(file_path='data_dir', engine='csv', backend_options=csv_opts)
+db = Storage(file_path='data.zip', engine='csv', backend_options=csv_opts)
+
+# 启用 ZIP 密码保护（ZipCrypto 加密，兼容 WinRAR/7-Zip）
+csv_opts = CsvBackendOptions(password="my_password")
+db = Storage(file_path='secure.zip', engine='csv', backend_options=csv_opts)
 ```
 
 **适用场景**:
@@ -266,6 +270,7 @@ db = Storage(file_path='data_dir', engine='csv', backend_options=csv_opts)
 - Excel导入导出
 - 表格数据
 - 需要最小体积
+- 需要与其他工具共享加密文件
 
 ### SQLite 引擎
 
@@ -860,14 +865,56 @@ migrate_engine(
 
 Pytuck 是一个轻量级嵌入式数据库，设计目标是简单易用。以下是当前版本的限制：
 
+### 功能限制
+
 | 限制 | 说明 |
 |------|------|
 | **无 JOIN 支持** | 仅支持单表查询，不支持多表关联查询 |
 | **无聚合函数** | 不支持 COUNT, SUM, AVG, MIN, MAX 等 |
 | **无关系加载** | 不支持延迟加载和预加载关联对象 |
-| **单写入者** | 不支持并发写入，适合单进程使用 |
 | **全量保存** | 非二进制/SQLite 后端每次保存完整重写文件 |
 | **无嵌套事务** | 仅支持单层事务，不支持嵌套 |
+
+### 并发限制
+
+| 限制 | 说明 |
+|------|------|
+| **仅支持单进程** | 不支持多进程并发访问，仅建议单进程读写 |
+| **auto_flush=True 不支持多线程写入** | 多线程并发写入时会导致文件锁冲突，应使用 `auto_flush=False` 并在最后统一 `flush()` |
+| **多线程读取安全** | 支持多线程并发读取同一 Storage |
+
+### 事务语义
+
+Pytuck 的事务模型与传统 ACID 数据库略有不同：
+
+| 行为 | 说明 |
+|------|------|
+| **execute() 立即生效** | `session.execute()` 操作立即写入 Storage 内存，同一 Session 可立即查询到 |
+| **rollback() 仅清除 pending** | `session.rollback()` 只清除通过 `session.add()` 添加的 pending 对象，不会撤销已 execute 的操作 |
+| **commit() 持久化** | `session.commit()` 将数据提交；若 `auto_flush=True` 则同时写入磁盘 |
+
+```python
+# 事务行为示例
+session = Session(db)
+
+# execute() 立即写入内存
+session.execute(insert(User).values(id=1, name='Alice'))
+# 此时可以立即查询到
+user = session.execute(select(User).where(User.id == 1)).first()  # ✅ 能查到
+
+# rollback() 只影响 pending 对象
+user2 = User(id=2, name='Bob')
+session.add(user2)  # 放入 pending
+session.rollback()  # 清除 pending，但 id=1 的记录仍存在
+```
+
+### 引擎特定限制
+
+| 引擎 | 限制 |
+|------|------|
+| **SQLite** | 不支持中文列名（Column.name 参数不支持中文字符） |
+| **Excel** | I/O 性能较慢，不适合频繁读写；需要 openpyxl 依赖 |
+| **XML** | 文件体积较大，I/O 性能一般；需要 lxml 依赖 |
 
 ## 路线图 / TODO
 

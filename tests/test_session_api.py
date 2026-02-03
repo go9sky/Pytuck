@@ -438,5 +438,93 @@ class TestRelations(unittest.TestCase):
         self.assertEqual({s.name for s in students}, {'Alice', 'Bob'})
 
 
+class TestSessionGetColumnNameMapping(unittest.TestCase):
+    """测试 Session.get() 对 Column.name 与属性名不同的处理"""
+
+    def test_get_with_different_column_name(self) -> None:
+        """测试属性名与 Column.name 不同时，get() 能正确读取"""
+        db = Storage(in_memory=True)
+        Base: Type[PureBaseModel] = declarative_base(db)
+
+        class User(Base):
+            __tablename__ = 'users'
+            id = Column(int, primary_key=True)
+            user_name = Column(str, name='User Name')
+            age = Column(int)
+
+        session = Session(db)
+        session.add(User(id=1, user_name='Alice', age=18))
+        session.commit()
+
+        # 同一 session 读取
+        user = session.get(User, 1)
+        self.assertIsNotNone(user)
+        self.assertEqual(user.user_name, 'Alice')
+        self.assertEqual(user.age, 18)
+
+        session.close()
+        db.close()
+
+    def test_get_after_reload_with_different_column_name(self) -> None:
+        """测试重新加载数据后，get() 能正确读取"""
+        import tempfile
+        import os
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            file_path = os.path.join(tmp_dir, 'test.db')
+
+            # 第一次：写入数据
+            db1 = Storage(file_path=file_path)
+            Base1: Type[PureBaseModel] = declarative_base(db1)
+
+            class User1(Base1):
+                __tablename__ = 'users'
+                id = Column(int, primary_key=True)
+                user_name = Column(str, name='User Name')
+
+            session1 = Session(db1)
+            session1.add(User1(id=1, user_name='Alice'))
+            session1.commit()
+            db1.flush()
+            db1.close()
+
+            # 第二次：重新加载并读取
+            db2 = Storage(file_path=file_path)
+            Base2: Type[PureBaseModel] = declarative_base(db2)
+
+            class User2(Base2):
+                __tablename__ = 'users'
+                id = Column(int, primary_key=True)
+                user_name = Column(str, name='User Name')
+
+            session2 = Session(db2)
+            user = session2.get(User2, 1)
+
+            self.assertIsNotNone(user)
+            self.assertEqual(user.user_name, 'Alice')  # 修复前会是 None
+
+            session2.close()
+            db2.close()
+
+    def test_get_no_primary_key_raises_error(self) -> None:
+        """测试无主键模型调用 get() 时抛出明确错误"""
+        db = Storage(in_memory=True)
+        Base: Type[PureBaseModel] = declarative_base(db)
+
+        class Log(Base):
+            __tablename__ = 'logs'
+            message = Column(str)
+
+        session = Session(db)
+
+        with self.assertRaises(QueryError) as context:
+            session.get(Log, 1)
+
+        self.assertIn('no primary key', str(context.exception).lower())
+
+        session.close()
+        db.close()
+
+
 if __name__ == '__main__':
     unittest.main()

@@ -236,13 +236,14 @@ class Insert(Statement[T]):
         table_name = self.model_class.__tablename__
         assert table_name is not None, f"Model {self.model_class.__name__} must have __tablename__ defined"
 
-        # 验证和转换值
+        # 验证和转换值（使用 Column.name 作为存储键）
         validated_data: Dict[str, Any] = {}
-        for col_name, column in self.model_class.__columns__.items():
-            if col_name in self._values:
-                validated_data[col_name] = column.validate(self._values[col_name])
+        for attr_name, column in self.model_class.__columns__.items():
+            db_col_name = column.name if column.name else attr_name
+            if attr_name in self._values:
+                validated_data[db_col_name] = column.validate(self._values[attr_name])
             elif column.default is not None:
-                validated_data[col_name] = column.default
+                validated_data[db_col_name] = column.default
 
         # 插入
         pk = storage.insert(table_name, validated_data)
@@ -304,15 +305,17 @@ class Update(Statement[T]):
         if pk_name and len(self._where_clauses) == 1:
             expr = self._where_clauses[0]
             if isinstance(expr, BinaryExpression):
-                if expr.column.name == pk_name and expr.operator in ('=', '=='):
+                # 比较属性名（_attr_name）而非 Column.name
+                if expr.column._attr_name == pk_name and expr.operator in ('=', '=='):
                     pk_value = expr.value
 
-        # 验证值
+        # 验证值（使用 Column.name 作为存储键）
         validated_values: Dict[str, Any] = {}
-        for col_name, value in self._values.items():
-            if col_name in self.model_class.__columns__:
-                column = self.model_class.__columns__[col_name]
-                validated_values[col_name] = column.validate(value)
+        for attr_name, value in self._values.items():
+            if attr_name in self.model_class.__columns__:
+                column = self.model_class.__columns__[attr_name]
+                db_col_name = column.name if column.name else attr_name
+                validated_values[db_col_name] = column.validate(value)
 
         if pk_value is not None:
             # 主键直接查询（O(1)）
@@ -341,7 +344,10 @@ class Update(Statement[T]):
             for record in records:
                 # 获取主键或 rowid
                 if pk_name:
-                    pk = record[pk_name]
+                    # 使用主键列的 Column.name 访问 record
+                    pk_column = self.model_class.__columns__[pk_name]
+                    pk_db_col_name = pk_column.name if pk_column.name else pk_name
+                    pk = record[pk_db_col_name]
                 else:
                     # 无主键模型：使用内部 rowid
                     pk = record.get(PSEUDO_PK_NAME)
@@ -404,7 +410,8 @@ class Delete(Statement[T]):
         if pk_name and len(self._where_clauses) == 1:
             expr = self._where_clauses[0]
             if isinstance(expr, BinaryExpression):
-                if expr.column.name == pk_name and expr.operator in ('=', '=='):
+                # 比较属性名（_attr_name）而非 Column.name
+                if expr.column._attr_name == pk_name and expr.operator in ('=', '=='):
                     pk_value = expr.value
 
         if pk_value is not None:
@@ -434,7 +441,10 @@ class Delete(Statement[T]):
             for record in records:
                 # 获取主键或 rowid
                 if pk_name:
-                    pk = record[pk_name]
+                    # 使用主键列的 Column.name 访问 record
+                    pk_column = self.model_class.__columns__[pk_name]
+                    pk_db_col_name = pk_column.name if pk_column.name else pk_name
+                    pk = record[pk_db_col_name]
                 else:
                     # 无主键模型：使用内部 rowid
                     pk = record.get(PSEUDO_PK_NAME)

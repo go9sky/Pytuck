@@ -3,8 +3,32 @@ Pytuck 配置选项 dataclass 定义
 
 该模块定义了所有后端和连接器的配置选项，替代原有的 **kwargs 参数。
 """
+import re
 from dataclasses import dataclass, field
-from typing import Optional, Union, Dict, Literal, List
+from typing import Any, Optional, Union, Dict, Literal, List
+
+from .exceptions import ValidationError
+
+# ASCII 可打印字符正则（排除空格 0x20，包含 0x21-0x7E）
+_VALID_ZIP_PASSWORD_PATTERN = re.compile(r'^[\x21-\x7e]+$')
+
+
+def _validate_zip_password(password: Optional[str]) -> None:
+    """校验 ZIP 密码格式
+
+    Args:
+        password: 要校验的密码
+
+    Raises:
+        ValidationError: 密码包含非 ASCII 可打印字符时抛出
+    """
+    if password is not None and password != '':
+        if not _VALID_ZIP_PASSWORD_PATTERN.match(password):
+            raise ValidationError(
+                "ZIP password can only contain ASCII printable characters "
+                "(letters, digits, and symbols like !#$%&'()*+,-./:;<=>?@[\\]^_`{|}~). "
+                "Chinese, Japanese, spaces, and other non-ASCII characters are not allowed."
+            )
 
 
 @dataclass(slots=True)
@@ -33,6 +57,13 @@ class CsvBackendOptions:
     encoding: str = 'utf-8-sig'  # 字符编码（默认带 BOM，兼容 Excel）
     delimiter: str = ','  # 字段分隔符
     indent: Optional[int] = None  # json元数据缩进空格数（无缩进时为 None）
+    password: Optional[str] = None  # ZIP 解压密码（仅允许 ASCII 字符）
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        """拦截属性赋值，校验 password 字段"""
+        if name == 'password':
+            _validate_zip_password(value)
+        object.__setattr__(self, name, value)
 
 
 @dataclass(slots=True)

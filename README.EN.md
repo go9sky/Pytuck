@@ -251,20 +251,26 @@ db = Storage(file_path='data.json', engine='json', backend_options=json_opts)
 
 ### CSV Engine
 
-**Features**: Excel compatible, tabular format, data analysis friendly
+**Features**: Excel compatible, tabular format, data analysis friendly, password protection
 
 ```python
 from pytuck.common.options import CsvBackendOptions
 
 # Configure CSV options
 csv_opts = CsvBackendOptions(encoding='utf-8', delimiter=',')
-db = Storage(file_path='data_dir', engine='csv', backend_options=csv_opts)
+db = Storage(file_path='data.zip', engine='csv', backend_options=csv_opts)
+
+# Enable ZIP password protection (ZipCrypto encryption, compatible with WinRAR/7-Zip)
+csv_opts = CsvBackendOptions(password="my_password")
+db = Storage(file_path='secure.zip', engine='csv', backend_options=csv_opts)
 ```
 
 **Use Cases**:
 - Data analysis
 - Excel import/export
 - Tabular data
+- Minimal file size needed
+- Sharing encrypted files with other tools
 
 ### SQLite Engine
 
@@ -910,14 +916,56 @@ migrate_engine(
 
 Pytuck is a lightweight embedded database designed for simplicity. Here are the current limitations:
 
+### Feature Limitations
+
 | Limitation | Description |
 |------------|-------------|
 | **No JOIN support** | Single table queries only, no multi-table joins |
 | **No aggregate functions** | No COUNT, SUM, AVG, MIN, MAX support |
 | **No relationship loading** | No lazy loading or eager loading of related objects |
-| **Single writer** | No concurrent write support, suitable for single-process use |
 | **Full rewrite on save** | Non-binary/SQLite backends rewrite entire file on each save |
 | **No nested transactions** | Only single-level transactions supported |
+
+### Concurrency Limitations
+
+| Limitation | Description |
+|------------|-------------|
+| **Single process only** | Multi-process concurrent access not supported, single-process read/write recommended |
+| **auto_flush=True not thread-safe for writes** | Multi-threaded concurrent writes cause file lock conflicts; use `auto_flush=False` and call `flush()` at the end |
+| **Thread-safe reads** | Multi-threaded concurrent reads on the same Storage are supported |
+
+### Transaction Semantics
+
+Pytuck's transaction model differs slightly from traditional ACID databases:
+
+| Behavior | Description |
+|----------|-------------|
+| **execute() takes effect immediately** | `session.execute()` writes to Storage memory immediately, queryable in the same Session |
+| **rollback() only clears pending** | `session.rollback()` only clears objects added via `session.add()`, does not undo executed operations |
+| **commit() persists** | `session.commit()` commits data; if `auto_flush=True`, also writes to disk |
+
+```python
+# Transaction behavior example
+session = Session(db)
+
+# execute() writes to memory immediately
+session.execute(insert(User).values(id=1, name='Alice'))
+# Can query immediately
+user = session.execute(select(User).where(User.id == 1)).first()  # ✅ Found
+
+# rollback() only affects pending objects
+user2 = User(id=2, name='Bob')
+session.add(user2)  # Added to pending
+session.rollback()  # Clears pending, but id=1 record still exists
+```
+
+### Engine-Specific Limitations
+
+| Engine | Limitation |
+|--------|------------|
+| **SQLite** | Chinese column names not supported (Column.name parameter cannot contain Chinese characters) |
+| **Excel** | Slow I/O performance, not suitable for frequent read/write; requires openpyxl dependency |
+| **XML** | Large file size, moderate I/O performance; requires lxml dependency |
 
 ## Roadmap / TODO
 

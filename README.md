@@ -251,14 +251,18 @@ db = Storage(file_path='data.json', engine='json', backend_options=json_opts)
 
 ### CSV 引擎
 
-**特点**: Excel兼容、表格格式、数据分析友好
+**特点**: Excel兼容、表格格式、数据分析友好、支持密码保护
 
 ```python
 from pytuck.common.options import CsvBackendOptions
 
 # 配置 CSV 选项
 csv_opts = CsvBackendOptions(encoding='utf-8', delimiter=',')
-db = Storage(file_path='data_dir', engine='csv', backend_options=csv_opts)
+db = Storage(file_path='data.zip', engine='csv', backend_options=csv_opts)
+
+# 启用 ZIP 密码保护（ZipCrypto 加密，兼容 WinRAR/7-Zip）
+csv_opts = CsvBackendOptions(password="my_password")
+db = Storage(file_path='secure.zip', engine='csv', backend_options=csv_opts)
 ```
 
 **适用场景**:
@@ -266,6 +270,7 @@ db = Storage(file_path='data_dir', engine='csv', backend_options=csv_opts)
 - Excel导入导出
 - 表格数据
 - 需要最小体积
+- 需要与其他工具共享加密文件
 
 ### SQLite 引擎
 

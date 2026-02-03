@@ -251,20 +251,26 @@ db = Storage(file_path='data.json', engine='json', backend_options=json_opts)
 
 ### CSV Engine
 
-**Features**: Excel compatible, tabular format, data analysis friendly
+**Features**: Excel compatible, tabular format, data analysis friendly, password protection
 
 ```python
 from pytuck.common.options import CsvBackendOptions
 
 # Configure CSV options
 csv_opts = CsvBackendOptions(encoding='utf-8', delimiter=',')
-db = Storage(file_path='data_dir', engine='csv', backend_options=csv_opts)
+db = Storage(file_path='data.zip', engine='csv', backend_options=csv_opts)
+
+# Enable ZIP password protection (ZipCrypto encryption, compatible with WinRAR/7-Zip)
+csv_opts = CsvBackendOptions(password="my_password")
+db = Storage(file_path='secure.zip', engine='csv', backend_options=csv_opts)
 ```
 
 **Use Cases**:
 - Data analysis
 - Excel import/export
 - Tabular data
+- Minimal file size needed
+- Sharing encrypted files with other tools
 
 ### SQLite Engine
 

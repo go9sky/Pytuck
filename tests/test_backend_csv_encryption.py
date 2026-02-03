@@ -394,12 +394,38 @@ class TestCsvEncryptionEdgeCases:
             encrypted = any((info.flag_bits & 0x1) != 0 for info in zf.infolist())
             assert not encrypted
 
-    def test_unicode_password(self, tmp_path: Path) -> None:
-        """Unicode 密码支持"""
-        db_path = tmp_path / "unicode_password.zip"
-        password = "密码123中文テスト"
+    def test_unicode_password_rejected(self, tmp_path: Path) -> None:
+        """中文/Unicode 密码应在创建 Options 时被拒绝"""
+        from pytuck.common.exceptions import ValidationError
 
-        # 创建加密存储
+        with pytest.raises(ValidationError) as exc_info:
+            CsvBackendOptions(password="密码123中文")
+
+        assert "ASCII" in str(exc_info.value)
+
+    def test_password_reassignment_validated(self, tmp_path: Path) -> None:
+        """密码重新赋值时也应校验"""
+        from pytuck.common.exceptions import ValidationError
+
+        opts = CsvBackendOptions(password="valid123")
+
+        # 重新赋值非法密码应抛出异常
+        with pytest.raises(ValidationError):
+            opts.password = "密码123"
+
+    def test_space_in_password_rejected(self, tmp_path: Path) -> None:
+        """包含空格的密码应被拒绝"""
+        from pytuck.common.exceptions import ValidationError
+
+        with pytest.raises(ValidationError):
+            CsvBackendOptions(password="test password")
+
+    def test_valid_special_characters(self, tmp_path: Path) -> None:
+        """测试所有允许的特殊字符"""
+        db_path = tmp_path / "special_chars.zip"
+        # 包含各种允许的特殊字符
+        password = "Test123!@#$%^&*()-_=+[]{}|;':,./<>?"
+
         options = CsvBackendOptions(password=password)
         db = Storage(file_path=str(db_path), engine='csv', backend_options=options)
 
@@ -410,13 +436,12 @@ class TestCsvEncryptionEdgeCases:
             id = Column(int, primary_key=True)
             name = Column(str)
 
-        User.create(id=1, name='测试用户')
+        User.create(id=1, name='Test')
         db.flush()
         db.close()
 
-        # 使用相同密码读取
+        # 验证能正常读取
         db2 = Storage(file_path=str(db_path), engine='csv', backend_options=CsvBackendOptions(password=password))
-
         Base2: Type[CRUDBaseModel] = declarative_base(db2, crud=True)
 
         class User2(Base2):
@@ -426,8 +451,6 @@ class TestCsvEncryptionEdgeCases:
 
         users = User2.all()
         assert len(users) == 1
-        assert users[0].name == '测试用户'
-
         db2.close()
 
     def test_large_data_encrypted(self, tmp_path: Path) -> None:

@@ -172,7 +172,8 @@ class Column:
                 f"to {self.col_type.__name__}: {e}"
             )
 
-    def _convert_to_bool(self, value: Any) -> bool:
+    @staticmethod
+    def _convert_to_bool(value: Any) -> bool:
         """
         转换为布尔值
 
@@ -201,7 +202,8 @@ class Column:
             target_type='bool'
         )
 
-    def _convert_to_bytes(self, value: Any) -> bytes:
+    @staticmethod
+    def _convert_to_bytes(value: Any) -> bytes:
         """转换为字节类型"""
         if isinstance(value, bytes):
             return value
@@ -215,7 +217,8 @@ class Column:
             target_type='bytes'
         )
 
-    def _convert_to_datetime(self, value: Any) -> datetime:
+    @staticmethod
+    def _convert_to_datetime(value: Any) -> datetime:
         """
         转换为 datetime
 
@@ -248,7 +251,8 @@ class Column:
             target_type='datetime'
         )
 
-    def _convert_to_date(self, value: Any) -> date:
+    @staticmethod
+    def _convert_to_date(value: Any) -> date:
         """
         转换为 date
 
@@ -269,7 +273,8 @@ class Column:
             target_type='date'
         )
 
-    def _convert_to_timedelta(self, value: Any) -> timedelta:
+    @staticmethod
+    def _convert_to_timedelta(value: Any) -> timedelta:
         """
         转换为 timedelta
 
@@ -305,7 +310,8 @@ class Column:
             target_type='timedelta'
         )
 
-    def _convert_to_list(self, value: Any) -> list:
+    @staticmethod
+    def _convert_to_list(value: Any) -> list:
         """
         转换为 list
 
@@ -334,7 +340,8 @@ class Column:
             target_type='list'
         )
 
-    def _convert_to_dict(self, value: Any) -> dict:
+    @staticmethod
+    def _convert_to_dict(value: Any) -> dict:
         """
         转换为 dict
 

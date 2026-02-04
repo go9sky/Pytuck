@@ -605,7 +605,8 @@ class Session:
                 details={'statement_type': type(statement).__name__}
             )
 
-    def _deserialize_record(self, record: dict, columns: dict) -> dict:
+    @staticmethod
+    def _deserialize_record(record: dict, columns: dict) -> dict:
         """
         反序列化数据库记录
 
@@ -764,7 +765,7 @@ class Session:
 
     def query(self, model_class: Type[T]) -> Query[T]:
         """
-        创建查询构建器（SQLAlchemy 1.4 风格，不推荐）
+        创建查询构建器（SQLAlchemy 1.4 风格，不推荐，但也不警告）
 
         ⚠️ 不推荐使用：请改用 session.execute(select(...)) 风格
 
@@ -774,7 +775,7 @@ class Session:
             result = session.execute(stmt)
             users = result.all()
 
-        旧写法（仍然支持）：
+        旧写法（将依旧持续支持）：
             users = session.query(User).filter(User.age >= 18).all()
 
         Args:
@@ -783,12 +784,6 @@ class Session:
         Returns:
             Query 对象
         """
-        import warnings
-        warnings.warn(
-            "session.query() is deprecated. Use session.execute(select(...)) instead.",
-            DeprecationWarning,
-            stacklevel=2
-        )
         return Query(model_class, self.storage)
 
     @contextmanager
@@ -838,7 +833,8 @@ class Session:
 
     # ==================== Schema 操作（面向模型） ====================
 
-    def _resolve_table_name(self, model_or_table: Union[Type[PureBaseModel], str]) -> str:
+    @staticmethod
+    def _resolve_table_name(model_or_table: Union[Type[PureBaseModel], str]) -> str:
         """
         解析表名
 

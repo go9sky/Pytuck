@@ -767,7 +767,10 @@ class SQLiteBackend(StorageBackend):
             # 尝试连接 SQLite 数据库（只读模式，1秒超时）
             try:
                 import sqlite3
+            except (ImportError, ModuleNotFoundError):
+                return False, {'error': 'sqlite_not_installed'}
 
+            try:
                 # 使用只读模式连接
                 conn_str = f'file:{file_path}?mode=ro'
                 conn = sqlite3.connect(conn_str, uri=True, timeout=1.0)
@@ -829,13 +832,13 @@ class SQLiteBackend(StorageBackend):
                 finally:
                     conn.close()
 
-            except sqlite3.DatabaseError:
-                return False, {'error': 'invalid_sqlite_file'}
             except sqlite3.OperationalError as e:
                 if 'database is locked' in str(e).lower():
                     return False, {'error': 'database_locked'}
                 else:
                     return False, {'error': f'sqlite_error: {str(e)}'}
+            except sqlite3.DatabaseError:
+                return False, {'error': 'invalid_sqlite_file'}
 
         except Exception as e:
             return False, {'error': f'probe_exception: {str(e)}'}

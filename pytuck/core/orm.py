@@ -26,6 +26,219 @@ if TYPE_CHECKING:
 PSEUDO_PK_NAME: str = '_pytuck_rowid'
 
 
+# ==================== 类型转换函数（模块级别） ====================
+
+def _convert_to_bool(value: Any) -> bool:
+    """
+    转换为布尔值
+
+    True: True, 1, '1', 'true', 'True', 'yes', 'Yes'
+    False: False, 0, '0', 'false', 'False', 'no', 'No', ''
+    """
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, int):
+        return value != 0
+    if isinstance(value, str):
+        lower_val = value.lower()
+        if lower_val in ('1', 'true', 'yes'):
+            return True
+        elif lower_val in ('0', 'false', 'no', ''):
+            return False
+        else:
+            raise TypeConversionError(
+                f"Cannot convert '{value}' to bool",
+                value=value,
+                target_type='bool'
+            )
+    raise TypeConversionError(
+        f"Cannot convert {type(value).__name__} to bool",
+        value=value,
+        target_type='bool'
+    )
+
+
+def _convert_to_bytes(value: Any) -> bytes:
+    """转换为字节类型"""
+    if isinstance(value, bytes):
+        return value
+    if isinstance(value, str):
+        return value.encode('utf-8')
+    if isinstance(value, (bytearray, memoryview)):
+        return bytes(value)
+    raise TypeConversionError(
+        f"Cannot convert {type(value).__name__} to bytes",
+        value=value,
+        target_type='bytes'
+    )
+
+
+def _convert_to_datetime(value: Any) -> datetime:
+    """
+    转换为 datetime
+
+    支持的格式：
+    - datetime 对象：直接返回
+    - str: ISO 8601 格式（如 '2024-01-15T10:30:00' 或 '2024-01-15T10:30:00+08:00'）
+    - int/float: Unix 时间戳（秒）
+    - date: 转换为当天 00:00:00
+    """
+    if isinstance(value, datetime):
+        return value
+    if isinstance(value, date):
+        return datetime.combine(value, datetime.min.time())
+    if isinstance(value, str):
+        # 尝试解析 ISO 格式
+        try:
+            # Python 3.7+ 的 fromisoformat 支持大部分 ISO 8601 格式
+            return datetime.fromisoformat(value)
+        except ValueError:
+            # 尝试带 Z 后缀的 UTC 格式
+            if value.endswith('Z'):
+                return datetime.fromisoformat(value[:-1]).replace(tzinfo=timezone.utc)
+            raise
+    if isinstance(value, (int, float)):
+        # Unix 时间戳
+        return datetime.fromtimestamp(value)
+    raise TypeConversionError(
+        f"Cannot convert {type(value).__name__} to datetime",
+        value=value,
+        target_type='datetime'
+    )
+
+
+def _convert_to_date(value: Any) -> date:
+    """
+    转换为 date
+
+    支持的格式：
+    - date 对象：直接返回
+    - datetime 对象：取日期部分
+    - str: ISO 格式（如 '2024-01-15'）
+    """
+    if isinstance(value, date) and not isinstance(value, datetime):
+        return value
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, str):
+        return date.fromisoformat(value)
+    raise TypeConversionError(
+        f"Cannot convert {type(value).__name__} to date",
+        value=value,
+        target_type='date'
+    )
+
+
+def _convert_to_timedelta(value: Any) -> timedelta:
+    """
+    转换为 timedelta
+
+    支持的格式：
+    - timedelta 对象：直接返回
+    - int/float: 秒数
+    - str: 'HH:MM:SS' 或 'D days, HH:MM:SS' 格式
+    """
+    if isinstance(value, timedelta):
+        return value
+    if isinstance(value, (int, float)):
+        return timedelta(seconds=value)
+    if isinstance(value, str):
+        # 尝试解析常见格式
+        parts = value.split(':')
+        if len(parts) == 3:
+            # HH:MM:SS 格式
+            hours, minutes, seconds = parts
+            return timedelta(
+                hours=int(hours),
+                minutes=int(minutes),
+                seconds=float(seconds)
+            )
+        elif len(parts) == 2:
+            # MM:SS 格式
+            minutes, seconds = parts
+            return timedelta(minutes=int(minutes), seconds=float(seconds))
+        # 尝试纯秒数
+        return timedelta(seconds=float(value))
+    raise TypeConversionError(
+        f"Cannot convert {type(value).__name__} to timedelta",
+        value=value,
+        target_type='timedelta'
+    )
+
+
+def _convert_to_list(value: Any) -> list:
+    """
+    转换为 list
+
+    支持的格式：
+    - list: 直接返回
+    - tuple: 转换为 list
+    - str: 尝试 JSON 解析
+    """
+    import json
+    if isinstance(value, list):
+        return value
+    if isinstance(value, tuple):
+        return list(value)
+    if isinstance(value, str):
+        result = json.loads(value)
+        if not isinstance(result, list):
+            raise TypeConversionError(
+                f"JSON string does not represent a list",
+                value=value,
+                target_type='list'
+            )
+        return result
+    raise TypeConversionError(
+        f"Cannot convert {type(value).__name__} to list",
+        value=value,
+        target_type='list'
+    )
+
+
+def _convert_to_dict(value: Any) -> dict:
+    """
+    转换为 dict
+
+    支持的格式：
+    - dict: 直接返回
+    - str: 尝试 JSON 解析
+    """
+    import json
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, str):
+        result = json.loads(value)
+        if not isinstance(result, dict):
+            raise TypeConversionError(
+                f"JSON string does not represent a dict",
+                value=value,
+                target_type='dict'
+            )
+        return result
+    raise TypeConversionError(
+        f"Cannot convert {type(value).__name__} to dict",
+        value=value,
+        target_type='dict'
+    )
+
+
+# 类型转换函数注册表
+# 将 Python 类型映射到对应的转换函数
+_TYPE_CONVERTERS: Dict[type, Any] = {
+    bool: _convert_to_bool,
+    bytes: _convert_to_bytes,
+    int: int,
+    float: float,
+    str: str,
+    datetime: _convert_to_datetime,
+    date: _convert_to_date,
+    timedelta: _convert_to_timedelta,
+    list: _convert_to_list,
+    dict: _convert_to_dict,
+}
+
+
 class Column:
     """列定义
 
@@ -138,234 +351,19 @@ class Column:
                 f"got {type(value).__name__} (strict mode)"
             )
 
-        # 宽松模式：尝试类型转换
+        # 宽松模式：使用字典查找转换函数
         try:
-            if self.col_type == bool:
-                # 布尔类型特殊处理
-                return self._convert_to_bool(value)
-            elif self.col_type == bytes:
-                # bytes 类型特殊处理
-                return self._convert_to_bytes(value)
-            elif self.col_type == int:
-                # int 类型转换
-                return int(value)
-            elif self.col_type == float:
-                return float(value)
-            elif self.col_type == str:
-                return str(value)
-            elif self.col_type == datetime:
-                return self._convert_to_datetime(value)
-            elif self.col_type == date:
-                return self._convert_to_date(value)
-            elif self.col_type == timedelta:
-                return self._convert_to_timedelta(value)
-            elif self.col_type == list:
-                return self._convert_to_list(value)
-            elif self.col_type == dict:
-                return self._convert_to_dict(value)
+            converter = _TYPE_CONVERTERS.get(self.col_type)
+            if converter is not None:
+                return converter(value)
             else:
-                # 其他类型：尝试直接转换
+                # 回退：尝试直接调用类型构造函数
                 return self.col_type(value)  # type: ignore[call-arg]
         except (ValueError, TypeError) as e:
             raise ValidationError(
                 f"Column '{self.name}' Cannot convert {type(value).__name__} "
                 f"to {self.col_type.__name__}: {e}"
             )
-
-    @staticmethod
-    def _convert_to_bool(value: Any) -> bool:
-        """
-        转换为布尔值
-
-        True: True, 1, '1', 'true', 'True', 'yes', 'Yes'
-        False: False, 0, '0', 'false', 'False', 'no', 'No', ''
-        """
-        if isinstance(value, bool):
-            return value
-        if isinstance(value, int):
-            return value != 0
-        if isinstance(value, str):
-            lower_val = value.lower()
-            if lower_val in ('1', 'true', 'yes'):
-                return True
-            elif lower_val in ('0', 'false', 'no', ''):
-                return False
-            else:
-                raise TypeConversionError(
-                    f"Cannot convert '{value}' to bool",
-                    value=value,
-                    target_type='bool'
-                )
-        raise TypeConversionError(
-            f"Cannot convert {type(value).__name__} to bool",
-            value=value,
-            target_type='bool'
-        )
-
-    @staticmethod
-    def _convert_to_bytes(value: Any) -> bytes:
-        """转换为字节类型"""
-        if isinstance(value, bytes):
-            return value
-        if isinstance(value, str):
-            return value.encode('utf-8')
-        if isinstance(value, (bytearray, memoryview)):
-            return bytes(value)
-        raise TypeConversionError(
-            f"Cannot convert {type(value).__name__} to bytes",
-            value=value,
-            target_type='bytes'
-        )
-
-    @staticmethod
-    def _convert_to_datetime(value: Any) -> datetime:
-        """
-        转换为 datetime
-
-        支持的格式：
-        - datetime 对象：直接返回
-        - str: ISO 8601 格式（如 '2024-01-15T10:30:00' 或 '2024-01-15T10:30:00+08:00'）
-        - int/float: Unix 时间戳（秒）
-        - date: 转换为当天 00:00:00
-        """
-        if isinstance(value, datetime):
-            return value
-        if isinstance(value, date):
-            return datetime.combine(value, datetime.min.time())
-        if isinstance(value, str):
-            # 尝试解析 ISO 格式
-            try:
-                # Python 3.7+ 的 fromisoformat 支持大部分 ISO 8601 格式
-                return datetime.fromisoformat(value)
-            except ValueError:
-                # 尝试带 Z 后缀的 UTC 格式
-                if value.endswith('Z'):
-                    return datetime.fromisoformat(value[:-1]).replace(tzinfo=timezone.utc)
-                raise
-        if isinstance(value, (int, float)):
-            # Unix 时间戳
-            return datetime.fromtimestamp(value)
-        raise TypeConversionError(
-            f"Cannot convert {type(value).__name__} to datetime",
-            value=value,
-            target_type='datetime'
-        )
-
-    @staticmethod
-    def _convert_to_date(value: Any) -> date:
-        """
-        转换为 date
-
-        支持的格式：
-        - date 对象：直接返回
-        - datetime 对象：取日期部分
-        - str: ISO 格式（如 '2024-01-15'）
-        """
-        if isinstance(value, date) and not isinstance(value, datetime):
-            return value
-        if isinstance(value, datetime):
-            return value.date()
-        if isinstance(value, str):
-            return date.fromisoformat(value)
-        raise TypeConversionError(
-            f"Cannot convert {type(value).__name__} to date",
-            value=value,
-            target_type='date'
-        )
-
-    @staticmethod
-    def _convert_to_timedelta(value: Any) -> timedelta:
-        """
-        转换为 timedelta
-
-        支持的格式：
-        - timedelta 对象：直接返回
-        - int/float: 秒数
-        - str: 'HH:MM:SS' 或 'D days, HH:MM:SS' 格式
-        """
-        if isinstance(value, timedelta):
-            return value
-        if isinstance(value, (int, float)):
-            return timedelta(seconds=value)
-        if isinstance(value, str):
-            # 尝试解析常见格式
-            parts = value.split(':')
-            if len(parts) == 3:
-                # HH:MM:SS 格式
-                hours, minutes, seconds = parts
-                return timedelta(
-                    hours=int(hours),
-                    minutes=int(minutes),
-                    seconds=float(seconds)
-                )
-            elif len(parts) == 2:
-                # MM:SS 格式
-                minutes, seconds = parts
-                return timedelta(minutes=int(minutes), seconds=float(seconds))
-            # 尝试纯秒数
-            return timedelta(seconds=float(value))
-        raise TypeConversionError(
-            f"Cannot convert {type(value).__name__} to timedelta",
-            value=value,
-            target_type='timedelta'
-        )
-
-    @staticmethod
-    def _convert_to_list(value: Any) -> list:
-        """
-        转换为 list
-
-        支持的格式：
-        - list: 直接返回
-        - tuple: 转换为 list
-        - str: 尝试 JSON 解析
-        """
-        if isinstance(value, list):
-            return value
-        if isinstance(value, tuple):
-            return list(value)
-        if isinstance(value, str):
-            import json
-            result = json.loads(value)
-            if not isinstance(result, list):
-                raise TypeConversionError(
-                    f"JSON string does not represent a list",
-                    value=value,
-                    target_type='list'
-                )
-            return result
-        raise TypeConversionError(
-            f"Cannot convert {type(value).__name__} to list",
-            value=value,
-            target_type='list'
-        )
-
-    @staticmethod
-    def _convert_to_dict(value: Any) -> dict:
-        """
-        转换为 dict
-
-        支持的格式：
-        - dict: 直接返回
-        - str: 尝试 JSON 解析
-        """
-        if isinstance(value, dict):
-            return value
-        if isinstance(value, str):
-            import json
-            result = json.loads(value)
-            if not isinstance(result, dict):
-                raise TypeConversionError(
-                    f"JSON string does not represent a dict",
-                    value=value,
-                    target_type='dict'
-                )
-            return result
-        raise TypeConversionError(
-            f"Cannot convert {type(value).__name__} to dict",
-            value=value,
-            target_type='dict'
-        )
 
     def __repr__(self) -> str:
         return f"Column(name='{self.name}', type={self.col_type.__name__}, pk={self.primary_key})"

@@ -272,7 +272,8 @@ class JSONBackend(StorageBackend):
 
         return table
 
-    def _serialize_record(self, record: Dict[str, Any]) -> Dict[str, Any]:
+    @staticmethod
+    def _serialize_record(record: Dict[str, Any]) -> Dict[str, Any]:
         """序列化记录（处理特殊类型）
 
         与其他后端保持一致，直接存储序列化值，反序列化时根据 schema 恢复类型。
@@ -291,7 +292,8 @@ class JSONBackend(StorageBackend):
                 result[key] = value
         return result
 
-    def _deserialize_record(self, record_data: Dict[str, Any], columns: Dict[str, 'Column']) -> Dict[str, Any]:
+    @staticmethod
+    def _deserialize_record(record_data: Dict[str, Any], columns: Dict[str, 'Column']) -> Dict[str, Any]:
         """反序列化记录
 
         根据 columns schema 中的类型信息恢复特殊类型。

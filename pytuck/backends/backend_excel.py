@@ -161,7 +161,8 @@ class ExcelBackend(StorageBackend):
         if self.exists():
             self.file_path.unlink()
 
-    def _save_table_to_workbook(self, wb: 'Workbook', table_name: str, table: 'Table') -> None:
+    @staticmethod
+    def _save_table_to_workbook(wb: 'Workbook', table_name: str, table: 'Table') -> None:
         """保存单个表的数据到工作簿"""
         # 数据工作表
         data_sheet = wb.create_sheet(table_name)
@@ -193,8 +194,9 @@ class ExcelBackend(StorageBackend):
                     row.append(value)
             data_sheet.append(row)
 
+    @staticmethod
     def _load_table_from_workbook(
-        self, wb: 'Workbook', table_name: str, schema: Dict[str, Any]
+        wb: 'Workbook', table_name: str, schema: Dict[str, Any]
     ) -> 'Table':
         """从工作簿加载单个表"""
         from ..core.storage import Table

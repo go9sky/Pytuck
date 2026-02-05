@@ -334,8 +334,8 @@ class SQLiteBackend(StorageBackend):
         except Exception as e:
             raise SerializationError(f"Failed to load schema from SQLite: {e}")
 
+    @staticmethod
     def _load_table_schema_only(
-        self,
         table_name: str,
         primary_key: str,
         next_id: int,
@@ -384,7 +384,8 @@ class SQLiteBackend(StorageBackend):
         if self.exists():
             self.file_path.unlink()
 
-    def _ensure_metadata_tables(self, connector: SQLiteConnector) -> None:
+    @staticmethod
+    def _ensure_metadata_tables(connector: SQLiteConnector) -> None:
         """确保元数据表存在"""
         connector.execute('''
             CREATE TABLE IF NOT EXISTS _pytuck_metadata (
@@ -465,10 +466,9 @@ class SQLiteBackend(StorageBackend):
                 serialized_records.append(serialized_record)
             connector.insert_records(table_name, columns, serialized_records)
 
+    @staticmethod
     def _serialize_record_for_sqlite(
-        self,
-        record: Dict[str, Any],
-        columns: Dict[str, Any]
+        record: Dict[str, Any], columns: Dict[str, Any]
     ) -> Dict[str, Any]:
         """序列化记录以适应 SQLite 存储
 
@@ -494,8 +494,8 @@ class SQLiteBackend(StorageBackend):
                 result[key] = value
         return result
 
+    @staticmethod
     def _deserialize_row(
-        self,
         row: tuple,
         col_names: List[str],
         columns: Dict[str, Any]

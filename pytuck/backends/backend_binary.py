@@ -1263,6 +1263,7 @@ class BinaryBackend(StorageBackend):
 
             # 解析记录
             pos = 0
+            pk: Any = None  # 初始化 pk
 
             # Primary Key
             if pk_codec:
@@ -1308,7 +1309,8 @@ class BinaryBackend(StorageBackend):
                     col_name = col_list[col_idx].name
                     record[col_name] = value
 
-            table.data[pk] = record
+            if pk is not None:
+                table.data[pk] = record
 
         # 从索引区恢复索引（如果有）
         table_idx_data = index_data.get(table_name, {})

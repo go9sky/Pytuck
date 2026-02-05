@@ -62,7 +62,7 @@ class XMLBackend(StorageBackend):
                 self._save_table_to_xml(root, table_name, table)
 
             # 写入文件（原子性）
-            tree = etree.ElementTree(root)
+            tree: etree._ElementTree = etree.ElementTree(root)  # type: ignore
             tree.write(
                 str(temp_path),
                 pretty_print=self.options.pretty_print,

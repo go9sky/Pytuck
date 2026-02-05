@@ -319,7 +319,7 @@ class Table:
         if pk not in self._pk_offsets:
             raise RecordNotFoundError(self.name, pk)
 
-        offset: int = self._pk_offsets[pk]
+        offset: int = self._pk_offsets[pk]  # type: ignore
 
         with open(self._data_file, 'rb') as f:
             f.seek(offset)

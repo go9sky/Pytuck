@@ -12,7 +12,7 @@ import zlib
 from dataclasses import dataclass, field
 from enum import IntEnum
 from pathlib import Path
-from typing import Any, Dict, List, Set, Union, TYPE_CHECKING, BinaryIO, Tuple, Optional, Iterator
+from typing import Any, Callable, Dict, List, Set, Union, TYPE_CHECKING, BinaryIO, Tuple, Optional, Iterator
 
 if TYPE_CHECKING:
     from ..core.storage import Table
@@ -29,6 +29,42 @@ from ..common.crypto import (
     CryptoProvider, get_cipher, get_encryption_level_code, get_encryption_level_name,
     ENCRYPTION_LEVELS, CipherType
 )
+
+
+# ============== 索引值反序列化函数 ==============
+
+def _deserialize_short_str(data: bytes) -> str:
+    """反序列化短字符串（<= 255 字节）"""
+    length = data[1]
+    return data[2:2+length].decode('utf-8')
+
+
+def _deserialize_long_str(data: bytes) -> str:
+    """反序列化长字符串（<= 65535 字节）"""
+    length = struct.unpack('<H', data[1:3])[0]
+    return data[3:3+length].decode('utf-8')
+
+
+def _deserialize_json(data: bytes) -> Any:
+    """反序列化 JSON 回退"""
+    length = struct.unpack('<H', data[1:3])[0]
+    return json.loads(data[3:3+length].decode('utf-8'))
+
+
+# 索引值反序列化函数注册表
+# 类型码 -> 反序列化函数
+_INDEX_VALUE_DESERIALIZERS: Dict[int, Callable[[bytes], Any]] = {
+    0x00: lambda data: None,
+    0x01: lambda data: data[1] == 1,
+    0x02: lambda data: struct.unpack('<b', data[1:2])[0],
+    0x03: lambda data: struct.unpack('<h', data[1:3])[0],
+    0x04: lambda data: struct.unpack('<i', data[1:5])[0],
+    0x05: lambda data: struct.unpack('<q', data[1:9])[0],
+    0x06: lambda data: struct.unpack('<d', data[1:9])[0],
+    0x07: _deserialize_short_str,
+    0x08: _deserialize_long_str,
+    0xFF: _deserialize_json,
+}
 
 
 # ============== v4 数据结构定义 ==============
@@ -786,8 +822,8 @@ class BinaryBackend(StorageBackend):
         self._wal_buffer.clear()
         self._wal_buffer_size = 0
 
+    @staticmethod
     def _serialize_record_bytes(
-        self,
         pk: Any,
         record: Dict[str, Any],
         columns: Dict[str, 'Column']
@@ -933,11 +969,8 @@ class BinaryBackend(StorageBackend):
 
         return count
 
-    def _deserialize_record_bytes(
-        self,
-        data: bytes,
-        columns: Dict[str, 'Column']
-    ) -> Dict[str, Any]:
+    @staticmethod
+    def _deserialize_record_bytes(data: bytes, columns: Dict[str, 'Column']) -> Dict[str, Any]:
         """
         反序列化记录字节
 
@@ -1089,7 +1122,8 @@ class BinaryBackend(StorageBackend):
             'columns': columns
         }
 
-    def _write_table_data(self, f: BinaryIO, table: 'Table') -> Dict[Any, int]:
+    @staticmethod
+    def _write_table_data(f: BinaryIO, table: 'Table') -> Dict[Any, int]:
         """
         写入单个表的数据（记录 pk_offsets）
 
@@ -1172,12 +1206,8 @@ class BinaryBackend(StorageBackend):
 
         return pk_offsets
 
-    def _read_table_data(
-        self,
-        f: BinaryIO,
-        schema: Dict[str, Any],
-        index_data: Dict[str, Dict[str, Any]]
-    ) -> 'Table':
+    @staticmethod
+    def _read_table_data(f: BinaryIO, schema: Dict[str, Any], index_data: Dict[str, Dict[str, Any]]) -> 'Table':
         """
         根据 schema 读取表数据（从索引区恢复索引）
 
@@ -1306,7 +1336,8 @@ class BinaryBackend(StorageBackend):
 
         return table
 
-    def _write_column(self, f: BinaryIO, column: 'Column') -> None:
+    @staticmethod
+    def _write_column(f: BinaryIO, column: 'Column') -> None:
         """
         写入列定义
 
@@ -1344,7 +1375,8 @@ class BinaryBackend(StorageBackend):
         if comment_bytes:
             f.write(comment_bytes)
 
-    def _read_column(self, f: BinaryIO) -> Column:
+    @staticmethod
+    def _read_column(f: BinaryIO) -> Column:
         """读取列定义"""
         from ..core.orm import Column
 
@@ -1375,8 +1407,8 @@ class BinaryBackend(StorageBackend):
             comment=comment
         )
 
+    @staticmethod
     def _write_record(
-        self,
         f: BinaryIO,
         pk: Any,
         record: Dict[str, Any],
@@ -1439,7 +1471,8 @@ class BinaryBackend(StorageBackend):
         f.write(struct.pack('<I', len(record_data)))
         f.write(record_data)
 
-    def _read_record(self, f: BinaryIO, columns: Dict[str, Column]) -> tuple:
+    @staticmethod
+    def _read_record(f: BinaryIO, columns: Dict[str, Column]) -> tuple:
         """读取单条记录，返回 (pk, record_dict)"""
         # Record Length
         record_len = struct.unpack('<I', f.read(4))[0]
@@ -1956,7 +1989,8 @@ class BinaryBackend(StorageBackend):
 
     # ========== 高效值序列化（避免 JSON 开销） ==========
 
-    def _serialize_index_value(self, value: Any) -> bytes:
+    @staticmethod
+    def _serialize_index_value(value: Any) -> bytes:
         """
         高效序列化值（msgpack 风格）
 
@@ -1998,7 +2032,8 @@ class BinaryBackend(StorageBackend):
             json_bytes = json.dumps(value).encode('utf-8')
             return b'\xFF' + struct.pack('<H', len(json_bytes)) + json_bytes
 
-    def _deserialize_index_value(self, data: bytes) -> Any:
+    @staticmethod
+    def _deserialize_index_value(data: bytes) -> Any:
         """
         反序列化值
 
@@ -2012,29 +2047,9 @@ class BinaryBackend(StorageBackend):
             return None
 
         type_code = data[0]
+        deserializer = _INDEX_VALUE_DESERIALIZERS.get(type_code)
 
-        if type_code == 0x00:
-            return None
-        elif type_code == 0x01:
-            return data[1] == 1
-        elif type_code == 0x02:
-            return struct.unpack('<b', data[1:2])[0]
-        elif type_code == 0x03:
-            return struct.unpack('<h', data[1:3])[0]
-        elif type_code == 0x04:
-            return struct.unpack('<i', data[1:5])[0]
-        elif type_code == 0x05:
-            return struct.unpack('<q', data[1:9])[0]
-        elif type_code == 0x06:
-            return struct.unpack('<d', data[1:9])[0]
-        elif type_code == 0x07:
-            length = data[1]
-            return data[2:2+length].decode('utf-8')
-        elif type_code == 0x08:
-            length = struct.unpack('<H', data[1:3])[0]
-            return data[3:3+length].decode('utf-8')
-        elif type_code == 0xFF:
-            length = struct.unpack('<H', data[1:3])[0]
-            return json.loads(data[3:3+length].decode('utf-8'))
+        if deserializer is not None:
+            return deserializer(data)
         else:
             raise SerializationError(f"Unknown type code: {type_code}")

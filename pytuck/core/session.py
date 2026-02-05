@@ -305,7 +305,7 @@ class Session:
         except Exception:
             return None
 
-    def refresh(self, instance: T) -> None:
+    def refresh(self, instance: PureBaseModel) -> None:
         """
         从数据库刷新实例的所有属性
 
@@ -683,7 +683,7 @@ class Session:
         if instance not in self._dirty_objects and instance not in self._new_objects:
             self._dirty_objects.append(instance)
 
-    def merge(self, instance: T) -> T:
+    def merge(self, instance: PureBaseModel) -> PureBaseModel:
         """
         合并一个 detached 实例到会话中
 

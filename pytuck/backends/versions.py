@@ -4,9 +4,10 @@
 各引擎的格式版本独立于库版本管理，便于向后兼容检测。
 版本号为整数，每次格式变更时递增。
 """
+from typing import Dict
 
 # 各引擎的当前格式版本
-ENGINE_FORMAT_VERSIONS = {
+ENGINE_FORMAT_VERSIONS: Dict[str, int] = {
     'binary': 4,   # v4: WAL + 双Header + 增量写入
     'csv': 2,      # v2: 统一元数据结构 + 添加表和列 comment 支持
     'excel': 2,    # v2: 统一元数据结构 + 添加表和列 comment 支持

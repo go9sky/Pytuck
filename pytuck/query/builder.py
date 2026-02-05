@@ -15,6 +15,17 @@ if TYPE_CHECKING:
     from ..core.storage import Storage
 
 
+_OPERATOR_EVAL = {
+    '=': lambda x, y: x == y,
+    '>': lambda x, y: x > y,
+    '<': lambda x, y: x < y,
+    '>=': lambda x, y: x >= y,
+    '<=': lambda x, y: x <= y,
+    '!=': lambda x, y: x != y,
+    'IN': lambda x, y: x in y
+}
+
+
 class Condition:
     """查询条件"""
 
@@ -26,7 +37,12 @@ class Condition:
             field: 字段名
             operator: 操作符 ('=', '>', '<', '>=', '<=', '!=', 'IN')
             value: 比较值
+
+        Raises:
+            QueryError: 如果操作符不被支持
         """
+        if operator not in _OPERATOR_EVAL:
+            raise QueryError(f"Unsupported operator: {operator}")
         self.field = field
         self.operator = operator
         self.value = value
@@ -43,25 +59,8 @@ class Condition:
         """
         if self.field not in record:
             return False
-
         field_value = record[self.field]
-
-        if self.operator == '=':
-            return bool(field_value == self.value)
-        elif self.operator == '>':
-            return bool(field_value > self.value)
-        elif self.operator == '<':
-            return bool(field_value < self.value)
-        elif self.operator == '>=':
-            return bool(field_value >= self.value)
-        elif self.operator == '<=':
-            return bool(field_value <= self.value)
-        elif self.operator == '!=':
-            return bool(field_value != self.value)
-        elif self.operator == 'IN':
-            return bool(field_value in self.value)
-        else:
-            raise QueryError(f"Unsupported operator: {self.operator}")
+        return bool(_OPERATOR_EVAL[self.operator](field_value, self.value))
 
     def __repr__(self) -> str:
         return f"Condition({self.field} {self.operator} {self.value})"

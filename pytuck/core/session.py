@@ -4,13 +4,13 @@ Session - 会话管理器
 提供类似 SQLAlchemy 的 Session 模式，统一管理数据库操作。
 """
 
-from typing import Any, Dict, List, Optional, Type, Tuple, TYPE_CHECKING, Union, Generator, overload
+from typing import Any, Dict, List, Optional, Type, Tuple, Union, Generator, overload
 from contextlib import contextmanager
 
 from ..common.typing import T
 from ..common.exceptions import QueryError, TransactionError
 from ..common.options import SyncOptions, SyncResult
-from ..query.builder import Query, BinaryExpression, LogicalExpression
+from ..query.builder import Query, BinaryExpression
 from ..query.result import Result, CursorResult
 from ..query.statements import Statement, Insert, Select, Update, Delete
 from .storage import Storage
@@ -433,9 +433,6 @@ class Session:
         from ..query.statements import Select, Insert, Update, Delete
         from ..query.compiler import QueryCompiler
         from ..query.result import Result, CursorResult
-        import json
-        from datetime import datetime, date, timedelta
-        from .types import TypeRegistry
 
         compiler = QueryCompiler()
 
@@ -445,7 +442,6 @@ class Session:
         if isinstance(statement, Select):
             # 编译并执行 SELECT
             if compiler.can_compile(statement):
-                compiled = compiler.compile(statement)
 
                 # 从编译后的 SQL 中提取 WHERE 部分
                 # 使用 connector 的 query_rows 方法
@@ -568,7 +564,6 @@ class Session:
 
         elif isinstance(statement, Delete):
             # 编译并执行 DELETE
-            table = self.storage.get_table(statement.model_class.__tablename__)
             pk_attr_name = statement.model_class.__primary_key__
 
             # 获取主键的 Column.name
@@ -868,7 +863,8 @@ class Session:
         Returns:
             SyncResult: 同步结果
 
-        Example:
+        Example::
+
             from pytuck import SyncOptions
 
             result = session.sync_schema(User)

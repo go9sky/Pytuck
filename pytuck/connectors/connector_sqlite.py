@@ -505,7 +505,8 @@ class SQLiteConnector(DatabaseConnector):
         if self.conn is not None:
             self.conn.commit()
 
-    def _serialize_value(self, value: Any) -> Any:
+    @staticmethod
+    def _serialize_value(value: Any) -> Any:
         """
         序列化值为 SQLite 兼容格式
 

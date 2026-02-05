@@ -5,7 +5,7 @@ Pytuck 数据库连接器抽象基类
 """
 
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Tuple, Optional, Type
+from typing import Any, Dict, List, Tuple, Optional
 
 from ..common.options import ConnectorOptions
 from ..common.exceptions import UnsupportedOperationError

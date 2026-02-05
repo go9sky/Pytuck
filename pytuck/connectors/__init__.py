@@ -10,7 +10,7 @@ Pytuck 数据库连接器模块
 - duckdb: DuckDB 数据库（未来扩展）
 """
 
-from typing import Any, Dict, Type, Optional
+from typing import Dict, Type, Optional
 
 from .base import DatabaseConnector
 from .connector_sqlite import SQLiteConnector

@@ -8,14 +8,14 @@ Pytuck ORM层
 import sys
 from typing import (
     Any, Callable, Dict, List, Optional, Type, Union, TYPE_CHECKING,
-    overload, Literal, Tuple, Generic, cast
+    overload, Literal, Generic, cast
 )
 from datetime import datetime, date, timedelta, timezone
 
 from ..common.exceptions import ValidationError, TypeConversionError, SchemaError
 from ..common.options import SyncOptions
 from ..common.typing import RelationshipT, ColumnTypes
-from .types import TypeCode, TypeRegistry
+from .types import TypeRegistry
 
 if TYPE_CHECKING:
     from .storage import Storage

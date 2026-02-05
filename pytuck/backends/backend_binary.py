@@ -1144,14 +1144,12 @@ class BinaryBackend(StorageBackend):
 
         # 缓存编解码器（避免重复查找）
         codec_cache: Dict[str, tuple] = {}
-        pk_col = None
         pk_codec = None
         for col in table.columns.values():
             assert col.name is not None, "Column name must be set"
             type_code, codec = TypeRegistry.get_codec(col.col_type)
             codec_cache[col.name] = (type_code, codec)
             if col.primary_key:
-                pk_col = col
                 pk_codec = codec
 
         # 批量写入缓冲区
@@ -1238,13 +1236,11 @@ class BinaryBackend(StorageBackend):
 
         # 缓存编解码器
         codec_cache: Dict[int, tuple] = {}
-        pk_col = None
         pk_codec = None
         for col in col_list:
             type_code, codec = TypeRegistry.get_codec(col.col_type)
             codec_cache[type_code] = (col.col_type, codec)
             if col.primary_key:
-                pk_col = col
                 pk_codec = codec
 
         # Record Count

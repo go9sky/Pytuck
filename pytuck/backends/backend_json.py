@@ -7,7 +7,7 @@ Pytuck JSON存储引擎
 import json
 import inspect
 from pathlib import Path
-from typing import Any, Dict, Callable, Union, TYPE_CHECKING, Tuple, Optional
+from typing import Any, Dict, Union, TYPE_CHECKING, Tuple, Optional
 from datetime import datetime
 from .base import StorageBackend
 from ..common.exceptions import SerializationError, ConfigurationError

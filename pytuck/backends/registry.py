@@ -245,7 +245,7 @@ def is_valid_pytuck_database_engine(file_path: Union[str, Path], engine_name: st
 
     Args:
         file_path: 数据库文件路径
-        engine_name: 引擎名称（binary, json, csv, excel, xml, sqlite）
+        engine_name: 引擎名称（`binary`, `json`, `csv`, `excel`, `xml`, `sqlite`）
 
     Returns:
         bool: 是否为指定引擎的有效数据库

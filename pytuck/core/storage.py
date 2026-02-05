@@ -319,7 +319,7 @@ class Table:
         if pk not in self._pk_offsets:
             raise RecordNotFoundError(self.name, pk)
 
-        offset = self._pk_offsets[pk]
+        offset: int = self._pk_offsets[pk]
 
         with open(self._data_file, 'rb') as f:
             f.seek(offset)
@@ -1366,7 +1366,7 @@ class Storage:
 
         # 排序
         if order_by and order_by in table.columns:
-            def sort_key(record: Dict[str, Any]) -> tuple:
+            def sort_key(_record: Dict[str, Any]) -> tuple:
                 """
                 排序键函数
 
@@ -1374,7 +1374,7 @@ class Storage:
                 - None 值在升序时排在最后，降序时排在最前
                 - 使用元组 (优先级, 值) 实现：优先级 0 表示有值，1 表示 None
                 """
-                value = record.get(order_by)
+                value = _record.get(order_by)
                 # 处理 None 值：升序时 None 排在最后 (1, 0)，降序时排在最前 (0, 0)
                 if value is None:
                     return (1, 0) if not order_desc else (0, 0)
@@ -1489,7 +1489,6 @@ class Storage:
                 params.append(child.value)
         else:
             # AND 或 OR
-            connector_str = ' AND ' if condition.operator == 'AND' else ' OR '
             for child in condition.conditions:
                 if isinstance(child, CompositeCondition):
                     child_sql, child_params = self._compile_composite_condition(child)

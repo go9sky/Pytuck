@@ -7,7 +7,7 @@ SQLAlchemy 2.0 风格的 Statement API
 from typing import Any, Dict, List, Optional, Tuple, Type, Generic, TYPE_CHECKING, Union
 from abc import ABC, abstractmethod
 
-from ..common.types import T
+from ..common.typing import T
 from ..common.exceptions import QueryError
 from ..core.orm import PSEUDO_PK_NAME
 

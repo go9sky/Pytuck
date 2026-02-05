@@ -13,7 +13,7 @@ from typing import Any, Dict, List, Iterator, Tuple, Optional, Generator, Type, 
 from contextlib import contextmanager
 
 from ..common.options import BackendOptions, SyncOptions, SyncResult
-from ..common.types import ColumnTypes
+from ..common.typing import ColumnTypes
 from ..common.utils import validate_sql_identifier
 from .orm import Column, PSEUDO_PK_NAME
 from .index import HashIndex

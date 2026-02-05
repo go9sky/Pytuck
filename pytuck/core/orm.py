@@ -14,7 +14,7 @@ from datetime import datetime, date, timedelta, timezone
 
 from ..common.exceptions import ValidationError, TypeConversionError, SchemaError
 from ..common.options import SyncOptions
-from ..common.types import RelationshipT, ColumnTypes
+from ..common.typing import RelationshipT, ColumnTypes
 from .types import TypeCode, TypeRegistry
 
 if TYPE_CHECKING:

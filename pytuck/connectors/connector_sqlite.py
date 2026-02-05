@@ -12,7 +12,7 @@ from typing import Any, Dict, List, Tuple, Optional, Type
 from .base import DatabaseConnector
 from ..common.options import SqliteConnectorOptions
 from ..common.exceptions import DatabaseConnectionError, TableNotFoundError
-from ..common.types import ColumnTypes
+from ..common.typing import ColumnTypes
 from ..core.types import TypeRegistry
 
 

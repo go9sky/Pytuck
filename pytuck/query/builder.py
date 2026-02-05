@@ -6,7 +6,7 @@ Pytuck 查询构建器
 
 from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Generic, TYPE_CHECKING, Union
 
-from ..common.types import T
+from ..common.typing import T
 from ..common.exceptions import QueryError
 from ..core.orm import PSEUDO_PK_NAME
 

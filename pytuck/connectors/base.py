@@ -9,7 +9,7 @@ from typing import Any, Dict, List, Tuple, Optional, Type
 
 from ..common.options import ConnectorOptions
 from ..common.exceptions import UnsupportedOperationError
-from ..common.types import ColumnTypes
+from ..common.typing import ColumnTypes
 
 
 class DatabaseConnector(ABC):

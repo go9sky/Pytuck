@@ -6,7 +6,7 @@ Result - 查询结果包装器
 
 from typing import Any, Dict, List, Optional, Type, Generic, TYPE_CHECKING
 
-from ..common.types import T
+from ..common.typing import T
 from ..common.exceptions import QueryError, UnsupportedOperationError
 from ..core.orm import PSEUDO_PK_NAME
 

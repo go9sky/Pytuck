@@ -7,7 +7,7 @@ Session - 会话管理器
 from typing import Any, Dict, List, Optional, Type, Tuple, TYPE_CHECKING, Union, Generator, overload
 from contextlib import contextmanager
 
-from ..common.types import T
+from ..common.typing import T
 from ..common.exceptions import QueryError, TransactionError
 from ..common.options import SyncOptions, SyncResult
 from ..query.builder import Query, BinaryExpression, LogicalExpression

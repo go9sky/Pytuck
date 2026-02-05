@@ -13,7 +13,7 @@ import base64
 from datetime import datetime, date, timedelta, timezone
 
 from ..common.exceptions import SerializationError
-from ..common.types import ColumnTypes
+from ..common.typing import ColumnTypes
 
 
 class TypeCode(IntEnum):

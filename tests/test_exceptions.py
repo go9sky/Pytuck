@@ -354,9 +354,8 @@ class TestQueryError:
         """条件中使用无效操作符"""
         from pytuck.query.builder import Condition
 
-        cond = Condition("age", "INVALID", 20)
         with pytest.raises(QueryError) as exc_info:
-            cond.evaluate({"age": 25})
+            Condition("age", "INVALID", 20)
 
         assert "Unsupported operator" in str(exc_info.value)
 

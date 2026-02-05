@@ -326,7 +326,7 @@ class TypeRegistry:
     }
 
     @classmethod
-    def get_codec(cls, col_type: Type) -> Tuple[TypeCode, TypeCodec]:
+    def get_codec(cls, col_type: ColumnTypes) -> Tuple[TypeCode, TypeCodec]:
         """获取类型的编解码器"""
         if col_type not in cls._codecs:
             raise SerializationError(f"Unsupported type: {col_type}")
@@ -346,7 +346,7 @@ class TypeRegistry:
         return cls.get_codec(py_type)
 
     @classmethod
-    def register(cls, py_type: Type, type_code: TypeCode, codec: TypeCodec) -> None:
+    def register(cls, py_type: ColumnTypes, type_code: TypeCode, codec: TypeCodec) -> None:
         """注册自定义类型"""
         cls._codecs[py_type] = (type_code, codec)
         cls._type_code_to_type[type_code] = py_type
@@ -371,7 +371,7 @@ class TypeRegistry:
     _name_to_type = {v: k for k, v in _type_names.items()}
 
     @classmethod
-    def get_type_name(cls, col_type: Type) -> str:
+    def get_type_name(cls, col_type: ColumnTypes) -> str:
         """获取类型的字符串名称
 
         Args:
@@ -383,7 +383,7 @@ class TypeRegistry:
         return cls._type_names.get(col_type, 'str')
 
     @classmethod
-    def get_type_by_name(cls, name: str) -> Type:
+    def get_type_by_name(cls, name: str) -> ColumnTypes:
         """根据名称获取类型
 
         Args:

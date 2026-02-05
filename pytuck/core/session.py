@@ -661,8 +661,8 @@ class Session:
                 self._identity_map[key] = instance
 
         # 设置实例的 session 引用，用于脏跟踪
-        setattr(instance, '_pytuck_session', self)
-        setattr(instance, '_pytuck_state', 'persistent')
+        instance._pytuck_session = self
+        instance._pytuck_state = 'persistent'
 
     def _get_from_identity_map(self, model_class: Type[T], pk: Any) -> Optional[T]:
         """

@@ -4,7 +4,7 @@ Pytuck 查询构建器
 提供链式查询API
 """
 
-from typing import Any, List, Optional, Tuple, Type, Generic, TYPE_CHECKING, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Generic, TYPE_CHECKING, Union
 
 from ..common.types import T
 from ..common.exceptions import QueryError
@@ -15,7 +15,7 @@ if TYPE_CHECKING:
     from ..core.storage import Storage
 
 
-_OPERATOR_EVAL = {
+_OPERATOR_EVAL: Dict[str, Callable[[Any, Any], bool]] = {
     '=': lambda x, y: x == y,
     '>': lambda x, y: x > y,
     '<': lambda x, y: x < y,

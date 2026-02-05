@@ -13,7 +13,7 @@ from typing import Any, Dict, List, Iterator, Tuple, Optional, Generator, Type, 
 from contextlib import contextmanager
 
 from ..common.options import BackendOptions, SyncOptions, SyncResult
-from ..common.types import Column_Types
+from ..common.types import ColumnTypes
 from ..common.utils import validate_sql_identifier
 from .orm import Column, PSEUDO_PK_NAME
 from .index import HashIndex
@@ -1002,7 +1002,7 @@ class Storage:
         self._connector.commit()
 
     @staticmethod
-    def _get_sql_type(col_type: Column_Types) -> str:
+    def _get_sql_type(col_type: ColumnTypes) -> str:
         """获取 Python 类型对应的 SQLite 类型"""
         type_mapping = {
             int: 'INTEGER',

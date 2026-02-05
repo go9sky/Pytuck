@@ -7,14 +7,14 @@ Pytuck ORM层
 """
 import sys
 from typing import (
-    Any, Dict, List, Optional, Type, Union, TYPE_CHECKING,
+    Any, Callable, Dict, List, Optional, Type, Union, TYPE_CHECKING,
     overload, Literal, Tuple, Generic, cast
 )
 from datetime import datetime, date, timedelta, timezone
 
 from ..common.exceptions import ValidationError, TypeConversionError, SchemaError
 from ..common.options import SyncOptions
-from ..common.types import RelationshipT, Column_Types
+from ..common.types import RelationshipT, ColumnTypes
 from .types import TypeCode, TypeRegistry
 
 if TYPE_CHECKING:
@@ -225,7 +225,7 @@ def _convert_to_dict(value: Any) -> dict:
 
 # 类型转换函数注册表
 # 将 Python 类型映射到对应的转换函数
-_TYPE_CONVERTERS: Dict[type, Any] = {
+_TYPE_CONVERTERS: Dict[type, Callable[[Any], Any]] = {
     bool: _convert_to_bool,
     bytes: _convert_to_bytes,
     int: int,
@@ -256,7 +256,7 @@ class Column:
                  '_attr_name', '_owner_class', 'strict']
 
     def __init__(self,
-                 col_type: Column_Types,
+                 col_type: ColumnTypes,
                  *,
                  name: Optional[str] = None,
                  nullable: bool = True,

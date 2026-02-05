@@ -6,12 +6,13 @@ Pytuck 类型系统
 
 from abc import ABC, abstractmethod
 from enum import IntEnum
-from typing import Any, Type, Tuple
+from typing import Any, Type, Tuple, Dict
 import struct
 import json
 from datetime import datetime, date, timedelta, timezone
 
 from ..common.exceptions import SerializationError
+from ..common.types import ColumnTypes
 
 
 class TypeCode(IntEnum):
@@ -298,7 +299,7 @@ class DictCodec(TypeCodec):
 class TypeRegistry:
     """类型注册表"""
 
-    _codecs = {
+    _codecs: Dict[ColumnTypes, Tuple[TypeCode, TypeCodec]] = {
         int: (TypeCode.INT, IntCodec()),
         str: (TypeCode.STR, StrCodec()),
         float: (TypeCode.FLOAT, FloatCodec()),
@@ -311,7 +312,7 @@ class TypeRegistry:
         dict: (TypeCode.DICT, DictCodec()),
     }
 
-    _type_code_to_type = {
+    _type_code_to_type: Dict[TypeCode, ColumnTypes] = {
         TypeCode.INT: int,
         TypeCode.STR: str,
         TypeCode.FLOAT: float,
@@ -332,7 +333,7 @@ class TypeRegistry:
         return cls._codecs[col_type]
 
     @classmethod
-    def get_type_from_code(cls, type_code: TypeCode) -> Type:
+    def get_type_from_code(cls, type_code: TypeCode) -> ColumnTypes:
         """根据类型编码获取Python类型"""
         if type_code not in cls._type_code_to_type:
             raise SerializationError(f"Unknown type code: {type_code}")

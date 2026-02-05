@@ -481,8 +481,10 @@ class PureBaseModel:
     __relationships__: Dict[str, 'Relationship'] = {}
 
     def __init__(self, **kwargs: Any):
-        """初始化模型实例"""
-        raise NotImplementedError("This method should be overridden by declarative_base")
+        """初始化模型实例
+
+        - 此方法应由 declarative_base 方法来重写。
+        """
 
     def __setattr__(self, name: str, value: Any) -> None:
         """
@@ -1036,6 +1038,7 @@ def _create_pure_base(
 
         def __init__(self, **kwargs: Any):
             """初始化模型实例"""
+            super().__init__(**kwargs)
             for col_name, column in self.__columns__.items():
                 if col_name in kwargs:
                     value = column.validate(kwargs[col_name])
@@ -1136,6 +1139,7 @@ def _create_crud_base(
         def __init__(self, **kwargs: Any):
             """初始化模型实例"""
             # CRUD 基类特有：跟踪是否从数据库加载
+            super().__init__(**kwargs)
             self._loaded_from_db = False
 
             for col_name, column in self.__columns__.items():

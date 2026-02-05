@@ -12,6 +12,7 @@ from typing import Any, Dict, List, Tuple, Optional, Type
 from .base import DatabaseConnector
 from ..common.options import SqliteConnectorOptions
 from ..common.exceptions import DatabaseConnectionError, TableNotFoundError
+from ..common.types import ColumnTypes
 from ..core.types import TypeRegistry
 
 
@@ -36,7 +37,7 @@ class SQLiteConnector(DatabaseConnector):
     DB_TYPE = 'sqlite'
     REQUIRED_DEPENDENCIES: List[str] = []  # sqlite3 是内置模块
 
-    TYPE_TO_SQL: Dict[Type, str] = {
+    TYPE_TO_SQL: Dict[ColumnTypes, str] = {
         # 基础类型
         int: 'INTEGER',
         str: 'TEXT',
@@ -51,7 +52,7 @@ class SQLiteConnector(DatabaseConnector):
         dict: 'TEXT',        # JSON 字符串存储
     }
 
-    SQL_TO_TYPE: Dict[str, Type] = {
+    SQL_TO_TYPE: Dict[str, ColumnTypes] = {
         # 整数类型
         'INTEGER': int,
         'INT': int,

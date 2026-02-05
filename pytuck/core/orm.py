@@ -19,6 +19,7 @@ from .types import TypeCode, TypeRegistry
 
 if TYPE_CHECKING:
     from .storage import Storage
+    from .session import Session
     from ..query import Query, BinaryExpression
 
 
@@ -491,18 +492,18 @@ class PureBaseModel:
         这样 session.flush()/commit() 就能检测到修改。
         """
         old_value = None
-        should_mark_dirty = False
+        session: Optional['Session'] = None
 
         if (hasattr(self.__class__, name) and
             isinstance(getattr(self.__class__, name), Column) and
-            hasattr(self, '_pytuck_session')):
+            hasattr(self, '_pytuck_session')
+        ):
             old_value = self.__dict__.get(name)
             session = getattr(self, '_pytuck_session')
-            should_mark_dirty = (session is not None and old_value != value)
 
         object.__setattr__(self, name, value)
 
-        if should_mark_dirty:
+        if session is not None and old_value != value:
             session._mark_dirty(self)
 
     # ==================== 列名映射辅助方法 ====================

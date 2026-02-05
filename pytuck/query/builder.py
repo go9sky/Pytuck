@@ -11,7 +11,7 @@ from ..common.exceptions import QueryError
 from ..core.orm import PSEUDO_PK_NAME
 
 if TYPE_CHECKING:
-    from ..core.orm import PureBaseModel, Column
+    from ..core.orm import Column
     from ..core.storage import Storage
 
 
@@ -450,12 +450,6 @@ class Query(Generic[T]):
             模型实例列表
         """
         records = self._execute()
-
-        # 获取主键名（支持新旧两种风格）
-        pk_name = (
-            getattr(self.model_class, '__primary_key__', None) or
-            getattr(self.model_class, '_primary_key', 'id')
-        )
 
         # 转换为模型实例
         instances = []

@@ -4,7 +4,7 @@ SQLAlchemy 2.0 风格的 Statement API
 提供 select, insert, update, delete 语句构建器
 """
 
-from typing import Any, Dict, List, Optional, Tuple, Type, Generic, TYPE_CHECKING, Union
+from typing import Any, Dict, List, Optional, Tuple, Type, Generic, TYPE_CHECKING
 from abc import ABC, abstractmethod
 
 from ..common.typing import T
@@ -12,7 +12,6 @@ from ..common.exceptions import QueryError
 from ..core.orm import PSEUDO_PK_NAME
 
 if TYPE_CHECKING:
-    from ..core.orm import PureBaseModel, Column
     from .builder import BinaryExpression, LogicalExpression, ExpressionType
     from ..core.storage import Storage
 
@@ -168,7 +167,7 @@ class Select(Statement[T]):
 
     def _execute(self, storage: 'Storage') -> List[Dict[str, Any]]:
         """执行查询，返回记录字典列表"""
-        from .builder import Condition, BinaryExpression, LogicalExpression, ConditionType
+        from .builder import BinaryExpression, LogicalExpression, ConditionType
 
         # 转换 Expression 为 Condition（支持 BinaryExpression 和 LogicalExpression）
         conditions: List[ConditionType] = []
@@ -293,7 +292,7 @@ class Update(Statement[T]):
 
     def _execute(self, storage: 'Storage') -> int:
         """执行更新，返回受影响的行数"""
-        from .builder import Condition, BinaryExpression, LogicalExpression, ConditionType
+        from .builder import BinaryExpression, LogicalExpression, ConditionType
 
         table_name = self.model_class.__tablename__
         assert table_name is not None, f"Model {self.model_class.__name__} must have __tablename__ defined"
@@ -398,7 +397,7 @@ class Delete(Statement[T]):
 
     def _execute(self, storage: 'Storage') -> int:
         """执行删除，返回受影响的行数"""
-        from .builder import Condition, BinaryExpression, LogicalExpression, ConditionType
+        from .builder import BinaryExpression, LogicalExpression, ConditionType
 
         table_name = self.model_class.__tablename__
         assert table_name is not None, f"Model {self.model_class.__name__} must have __tablename__ defined"

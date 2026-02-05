@@ -7,7 +7,7 @@ Pytuck 外部数据库源适配器
 实际实现位于 pytuck.connectors 模块。
 """
 
-from typing import Any, List, Optional
+from typing import List, Optional
 
 from ..connectors import (
     DatabaseConnector,

@@ -11,7 +11,6 @@ from ..common.exceptions import QueryError, UnsupportedOperationError
 from ..core.orm import PSEUDO_PK_NAME
 
 if TYPE_CHECKING:
-    from ..core.orm import PureBaseModel
     from ..core.session import Session
 
 

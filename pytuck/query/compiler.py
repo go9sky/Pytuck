@@ -6,7 +6,7 @@ SQL 语句编译器
 
 import json
 from datetime import datetime, date, timedelta
-from typing import Any, Dict, List, NamedTuple, Optional, Tuple, Type, TYPE_CHECKING
+from typing import Any, List, NamedTuple, Optional, Tuple, Type, TYPE_CHECKING
 
 from ..common.exceptions import QueryError
 from ..core.types import TypeRegistry
@@ -14,7 +14,6 @@ from ..core.types import TypeRegistry
 if TYPE_CHECKING:
     from .statements import Statement, Select, Insert, Update, Delete
     from .builder import BinaryExpression, LogicalExpression
-    from ..core.orm import Column
 
 
 class CompiledQuery(NamedTuple):
@@ -377,7 +376,8 @@ class QueryCompiler:
 
             return connector.join(parts), params
 
-    def _convert_op(self, op: str) -> str:
+    @staticmethod
+    def _convert_op(op: str) -> str:
         """
         转换操作符为 SQL 操作符
 
@@ -445,7 +445,8 @@ class QueryCompiler:
         else:
             return value
 
-    def _serialize_value_by_type(self, value: Any) -> Any:
+    @staticmethod
+    def _serialize_value_by_type(value: Any) -> Any:
         """
         基于值的类型序列化
 

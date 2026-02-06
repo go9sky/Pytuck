@@ -108,8 +108,9 @@ class SQLiteConnector(DatabaseConnector):
         if self.options.isolation_level is not None:
             connect_kwargs['isolation_level'] = self.options.isolation_level
 
-        self.conn = sqlite3.connect(self.db_path, **connect_kwargs)
-        self.conn.row_factory = sqlite3.Row
+        conn = sqlite3.connect(self.db_path, **connect_kwargs)
+        conn.row_factory = sqlite3.Row
+        self.conn = conn
 
     def close(self) -> None:
         """关闭连接"""

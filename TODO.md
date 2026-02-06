@@ -36,40 +36,11 @@
 
 ## 计划中的功能
 
-### Web UI 界面支持
+### ~~Web UI 界面支持~~ ✅ 已完成
 
-**目标**：为独立的 Web UI 库（如 Pytuck-view）提供 API 支持
+**已发布为独立项目 [pytuck-view](https://github.com/pytuck/pytuck-view)**，轻量级数据浏览器，提供 Web 界面查看本地 Pytuck 数据库。
 
-**核心技术特性**：
-- 数据库结构反射和元数据查询接口
-- 表数据的分页查询和导出功能
-- 实时数据变更通知接口
-- RESTful API 风格的数据操作端点
-
-**预期用户界面功能**：
-- 可视化数据库表结构浏览
-- 图形化数据增删改查操作
-- SQL 风格查询构建器界面
-- 数据导入/导出向导
-- 存储引擎管理界面
-
-**预期 API 设计**：
-```python
-# 数据库反射 API
-storage.get_table_info()  # 获取所有表信息
-storage.get_column_info(table_name)  # 获取表列信息
-
-# 分页查询 API
-storage.paginate(table_name, page=1, per_page=20, filters=...)
-
-# Web 友好的查询构建
-storage.build_query(table=User, conditions=[...], sort=...)
-```
-
-**架构设计理念**：
-- 关注点分离：Pytuck 专注于核心 ORM，UI 作为独立库开发
-- API 优先：为 Web UI 提供专门的 API 接口
-- 可扩展性：通过标准化的 API，支持多种不同的 UI 实现
+安装：`pip install pytuck-view`
 
 ### ORM 事件钩子系统
 
@@ -290,10 +261,7 @@ results = session.query(
   - 数据导入导出
   - Schema 迁移
 
-- [ ] **Pytuck-Admin** - Web 管理界面（即 Pytuck-view）
-  - 可视化数据库管理
-  - 查询构建器
-  - 实时监控
+- [x] **Pytuck-view** - Web 数据浏览器（[GitHub](https://github.com/pytuck/pytuck-view) | [Gitee](https://gitee.com/pytuck/pytuck-view) | `pip install pytuck-view`）
 
 ### 集成支持
 

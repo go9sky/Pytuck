@@ -7,8 +7,7 @@ name = "pytuck"
 version = "0.6.3"
 description = "Lightweight Python document database - No SQL, multi-engine, pluggable persistence"
 readme = "README.md"
-license = "MIT"
-license-files = ["LICENSE"]
+license = {text = "MIT"}
 authors = [
     {name = "go9sky"}
 ]

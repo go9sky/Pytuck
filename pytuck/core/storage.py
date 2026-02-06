@@ -9,7 +9,7 @@ import json
 import sqlite3
 from datetime import datetime, date, timedelta
 from pathlib import Path
-from typing import Any, Dict, List, Iterator, Tuple, Optional, Generator, Type, TYPE_CHECKING, Sequence
+from typing import Any, Dict, List, Iterator, Tuple, Optional, Generator, Type, Union, TYPE_CHECKING, Sequence
 from contextlib import contextmanager
 
 from ..common.options import BackendOptions, SyncOptions, SyncResult
@@ -496,7 +496,7 @@ class Storage:
 
     def __init__(
         self,
-        file_path: Optional[str] = None,
+        file_path: Optional[Union[str, Path]] = None,
         in_memory: bool = False,
         engine: str = 'binary',
         auto_flush: bool = False,
@@ -506,13 +506,17 @@ class Storage:
         初始化存储引擎
 
         Args:
-            file_path: 数据文件路径（None表示纯内存）
+            file_path: 数据文件路径，支持字符串或 Path 对象（None表示纯内存）
             in_memory: 是否纯内存模式
             engine: 后端引擎名称（'binary', 'json', 'csv', 'sqlite', 'excel', 'xml'）
             auto_flush: 是否自动刷新到磁盘
             backend_options: 强类型的后端配置选项对象（JsonBackendOptions, CsvBackendOptions等）
         """
-        self.file_path = file_path
+        # 路径统一处理：边界转换为 Path 对象
+        if file_path is not None and str(file_path) != '':
+            self.file_path: Optional[Path] = Path(file_path).expanduser()
+        else:
+            self.file_path = None
         self.in_memory: bool = in_memory or (file_path is None)
         self.engine_name = engine
         self.auto_flush = auto_flush
@@ -538,14 +542,14 @@ class Storage:
 
         # 初始化后端
         self.backend: Optional[StorageBackend] = None
-        if not self.in_memory and file_path:
+        if not self.in_memory and self.file_path:
             # 如果没有提供选项，使用默认选项
             if backend_options is None:
                 from ..common.options import get_default_backend_options
                 backend_options = get_default_backend_options(engine)
 
             from ..backends import get_backend
-            self.backend = get_backend(engine, file_path, backend_options)
+            self.backend = get_backend(engine, self.file_path, backend_options)
 
             # 如果文件存在，自动加载
             if self.backend.exists():

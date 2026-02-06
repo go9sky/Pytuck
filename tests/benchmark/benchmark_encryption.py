@@ -114,7 +114,7 @@ def benchmark_one(
     # === 写入测试 ===
     start_time = time.perf_counter()
 
-    db = Storage(file_path=str(db_path), engine=engine, backend_options=write_opts)
+    db = Storage(file_path=db_path, engine=engine, backend_options=write_opts)
     Base: Type[PureBaseModel] = declarative_base(db)
 
     class User(Base):
@@ -146,7 +146,7 @@ def benchmark_one(
     # === 读取测试 ===
     start_time = time.perf_counter()
 
-    db = Storage(file_path=str(db_path), engine=engine, backend_options=read_opts)
+    db = Storage(file_path=db_path, engine=engine, backend_options=read_opts)
     Base2: Type[PureBaseModel] = declarative_base(db)
 
     class User2(Base2):

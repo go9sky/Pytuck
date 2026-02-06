@@ -86,13 +86,13 @@ class BackendRegistry:
         return list(cls._backends.keys())
 
 
-def get_backend(engine: str, file_path: str, options: BackendOptions) -> StorageBackend:
+def get_backend(engine: str, file_path: Union[str, Path], options: BackendOptions) -> StorageBackend:
     """
     获取后端实例（工厂函数）
 
     Args:
         engine: 引擎名称（'binary', 'json', 'csv', 'sqlite', 'excel', 'xml'）
-        file_path: 文件路径
+        file_path: 文件路径（字符串或 Path 对象）
         options: 强类型的后端配置选项对象
 
     Returns:

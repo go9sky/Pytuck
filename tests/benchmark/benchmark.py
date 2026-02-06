@@ -243,7 +243,7 @@ class EngineBenchmark:
                     pass
 
         # 创建存储
-        db = Storage(file_path=str(self.file_path), engine=self.engine_name)
+        db = Storage(file_path=self.file_path, engine=self.engine_name)
         Base = declarative_base(db)
 
         # 定义测试模型
@@ -359,7 +359,7 @@ class EngineBenchmark:
     def benchmark_load(self) -> float:
         """测试从磁盘加载性能"""
         with Timer() as t:
-            db = Storage(file_path=str(self.file_path), engine=self.engine_name)
+            db = Storage(file_path=self.file_path, engine=self.engine_name)
         db.close()
         return t.elapsed
 
@@ -370,7 +370,7 @@ class EngineBenchmark:
 
         options = BinaryBackendOptions(lazy_load=True)
         with Timer() as t:
-            db = Storage(file_path=str(self.file_path), engine='binary', backend_options=options)
+            db = Storage(file_path=self.file_path, engine='binary', backend_options=options)
         db.close()
         return t.elapsed
 
@@ -388,7 +388,7 @@ class EngineBenchmark:
             return None
 
         options = BinaryBackendOptions(lazy_load=True)
-        db = Storage(file_path=str(self.file_path), engine='binary', backend_options=options)
+        db = Storage(file_path=self.file_path, engine='binary', backend_options=options)
         Base = declarative_base(db)
 
         class BenchmarkUser(Base):

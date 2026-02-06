@@ -922,7 +922,6 @@ Pytuck is a lightweight embedded database designed for simplicity. Here are the 
 |------------|-------------|
 | **No JOIN support** | Single table queries only, no multi-table joins |
 | **No aggregate functions** | No COUNT, SUM, AVG, MIN, MAX support |
-| **No relationship loading** | No lazy loading or eager loading of related objects |
 | **Full rewrite on save** | Non-binary/SQLite backends rewrite entire file on each save |
 | **No nested transactions** | Only single-level transactions supported |
 
@@ -1037,27 +1036,20 @@ session.rollback()  # Clears pending, but id=1 record still exists
 > 📋 For detailed development plans, please refer to [TODO.md](./TODO.md)
 
 - [x] **Web UI Data Browser** - Released as standalone project [pytuck-view](https://github.com/pytuck/pytuck-view) (`pip install pytuck-view`)
-- [ ] **ORM Event Hooks System** - Complete event system based on SQLAlchemy event pattern
-- [ ] **JOIN Support** - Multi-table relational queries
-- [ ] **Aggregate Functions** - COUNT, SUM, AVG, MIN, MAX, etc.
-- [ ] **Relationship Lazy Loading** - Optimize associated data loading performance
-- [ ] **Concurrent Access Support** - Multi-process/thread-safe access
+- [ ] **ORM Event Hooks** - Model-level + Storage-level event callbacks
+- [ ] **Relationship Prefetch** - Batch load related data, solving the N+1 problem
+- [ ] **Query Index Optimization** - Automatically use indexes for range queries and sorting
+- [ ] **Bulk Operations** - bulk_insert / bulk_update API
 
 ### Planned Engines
 
-- [ ] DuckDB - Analytical database engine
-- [ ] TinyDB - Pure Python document database
-- [ ] PyDbLite3 - Pure Python in-memory database
-- [ ] diskcache - Disk-based cache engine
+- [ ] DuckDB - Embedded analytical database
+- [ ] LMDB - High-performance embedded key-value database
 
 ### Planned Optimizations
 
 - [ ] Incremental save for non-binary backends (currently full rewrite on each save)
-- [ ] Binary engine Compaction (space reclaim) mechanism
-- [ ] Use `tempfile` module for safer temporary file handling
-- [ ] Streaming read/write for large datasets
-- [ ] Connection pooling for SQLite backend
-- [ ] Relationship and lazy loading enhancements
+- [ ] Binary encryption + lazy loading compatibility (block-level encryption)
 
 ## Examples
 

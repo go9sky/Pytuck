@@ -9,6 +9,7 @@ Pytuck 类型检查测试
 运行 mypy: mypy --config-file mypy.ini pytuck
 """
 
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -22,11 +23,16 @@ def test_mypy_pytuck() -> None:
     mypy_ini = project_root / 'mypy.ini'
     pytuck_dir = project_root / 'pytuck'
 
+    # 确保子进程使用 UTF-8 编码（Windows CI 环境默认 cp1252 会导致读取配置文件失败）
+    env = os.environ.copy()
+    env['PYTHONUTF8'] = '1'
+
     result = subprocess.run(
         [sys.executable, '-m', 'mypy', str(pytuck_dir), '--config-file', str(mypy_ini)],
         capture_output=True,
         text=True,
-        cwd=str(project_root)
+        cwd=str(project_root),
+        env=env
     )
     assert result.returncode == 0, f"mypy errors:\n{result.stdout}\n{result.stderr}"
 

@@ -1036,7 +1036,7 @@ session.rollback()  # Clears pending, but id=1 record still exists
 
 > 📋 For detailed development plans, please refer to [TODO.md](./TODO.md)
 
-- [ ] **Web UI Interface Support** - Provide API support for independent Web UI library
+- [x] **Web UI Data Browser** - Released as standalone project [pytuck-view](https://github.com/pytuck/pytuck-view) (`pip install pytuck-view`)
 - [ ] **ORM Event Hooks System** - Complete event system based on SQLAlchemy event pattern
 - [ ] **JOIN Support** - Multi-table relational queries
 - [ ] **Aggregate Functions** - COUNT, SUM, AVG, MIN, MAX, etc.

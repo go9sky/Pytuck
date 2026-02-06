@@ -985,7 +985,7 @@ session.rollback()  # 清除 pending，但 id=1 的记录仍存在
 
 > 📋 详细开发计划请参阅 [TODO.md](./TODO.md)
 
-- [ ] **Web UI 界面支持** - 为独立 Web UI 库提供 API 支持
+- [x] **Web UI 数据浏览器** - 已发布为独立项目 [pytuck-view](https://github.com/pytuck/pytuck-view)（`pip install pytuck-view`）
 - [ ] **ORM 事件钩子系统** - 基于 SQLAlchemy 事件模式的完整事件系统
 - [ ] **JOIN 支持** - 多表关联查询
 - [ ] **聚合函数** - COUNT, SUM, AVG, MIN, MAX 等

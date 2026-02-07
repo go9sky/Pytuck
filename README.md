@@ -985,8 +985,8 @@ session.rollback()  # 清除 pending，但 id=1 的记录仍存在
 > 📋 详细开发计划请参阅 [TODO.md](./TODO.md)
 
 - [x] **Web UI 数据浏览器** - 已发布为独立项目 [pytuck-view](https://github.com/pytuck/pytuck-view)（`pip install pytuck-view`）
-- [ ] **ORM 事件钩子** - Model 级 + Storage 级事件回调
-- [ ] **关系预取（prefetch）** - 批量加载关联数据，解决 N+1 问题
+- [x] **ORM 事件钩子** - Model 级 + Storage 级事件回调
+- [x] **关系预取（prefetch）** - 批量加载关联数据，解决 N+1 问题
 - [ ] **查询索引优化** - 自动利用索引加速范围查询和排序
 - [ ] **批量操作优化** - bulk_insert / bulk_update API
 

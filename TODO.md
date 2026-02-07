@@ -31,49 +31,12 @@
 - [x] 无主键模型支持（使用内部隐式 `_pytuck_rowid`）
 - [x] 逻辑组合查询 OR/AND/NOT（`or_()`, `and_()`, `not_()`）
 - [x] 外部文件加载功能 load_table（CSV/Excel → 模型对象列表）
+- [x] ORM 事件钩子（Model 级 + Storage 级事件回调）
+- [x] 关系预取 API（prefetch，批量加载关联数据解决 N+1 问题）
 
 ---
 
 ## 近期计划
-
-### ORM 事件钩子（精简版）
-
-**目标**：轻量级的事件回调系统，覆盖最常见的使用场景
-
-**两级事件**：
-- **Model 级**：`before_insert` / `after_insert`、`before_update` / `after_update`、`before_delete` / `after_delete`
-- **Storage 级**：`before_flush` / `after_flush`
-
-**预期用法**：
-```python
-from pytuck.core import event
-
-# 装饰器注册
-@event.listens_for(User, 'before_insert')
-def set_timestamp(instance):
-    instance.created_at = datetime.now()
-
-# 函数式注册
-event.listen(User, 'after_update', audit_changes)
-```
-
-**应用场景**：自动时间戳、数据验证、审计日志、缓存失效
-
-### 关系预取 API（prefetch）
-
-**目标**：批量加载关联数据，解决 Relationship 的 N+1 查询问题
-
-**现状**：Relationship 延迟加载时，每个实例首次访问关联属性都会触发单独查询（有缓存但首次加载仍逐个查），遍历 N 条记录会产生 N 次额外查询。
-
-**预期 API**：
-```python
-# 批量预取
-users = session.execute(select(User)).all()
-prefetch(users, 'orders')  # 单次查询加载所有用户的订单
-
-# 或通过查询选项
-stmt = select(User).options(prefetch('orders'))
-```
 
 ### 查询索引优化
 

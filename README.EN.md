@@ -1036,8 +1036,8 @@ session.rollback()  # Clears pending, but id=1 record still exists
 > 📋 For detailed development plans, please refer to [TODO.md](./TODO.md)
 
 - [x] **Web UI Data Browser** - Released as standalone project [pytuck-view](https://github.com/pytuck/pytuck-view) (`pip install pytuck-view`)
-- [ ] **ORM Event Hooks** - Model-level + Storage-level event callbacks
-- [ ] **Relationship Prefetch** - Batch load related data, solving the N+1 problem
+- [x] **ORM Event Hooks** - Model-level + Storage-level event callbacks
+- [x] **Relationship Prefetch** - Batch load related data, solving the N+1 problem
 - [ ] **Query Index Optimization** - Automatically use indexes for range queries and sorting
 - [ ] **Bulk Operations** - bulk_insert / bulk_update API
 

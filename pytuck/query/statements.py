@@ -60,6 +60,7 @@ class Select(Statement[T]):
         _order_by_fields: List of (field_name, desc) tuples for multi-column ordering
         _limit_value: Maximum number of records to return
         _offset_value: Number of records to skip
+        _options: List of query options (e.g., PrefetchOption)
     """
 
     def __init__(self, model_class: Type[T]) -> None:
@@ -68,6 +69,7 @@ class Select(Statement[T]):
         self._order_by_fields: List[Tuple[str, bool]] = []  # [(field, desc), ...]
         self._limit_value: Optional[int] = None
         self._offset_value: int = 0
+        self._options: List[Any] = []
 
     def where(self, *expressions: 'ExpressionType') -> 'Select[T]':
         """
@@ -163,6 +165,26 @@ class Select(Statement[T]):
     def offset(self, n: int) -> 'Select[T]':
         """偏移"""
         self._offset_value = n
+        return self
+
+    def options(self, *opts: Any) -> 'Select[T]':
+        """
+        添加查询选项（如 prefetch）
+
+        Args:
+            *opts: 查询选项对象（如 prefetch('orders')）
+
+        Returns:
+            Select 对象（链式调用）
+
+        Example:
+            from pytuck import prefetch
+
+            stmt = select(User).options(prefetch('orders'))
+            result = session.execute(stmt)
+            users = result.all()  # orders 已批量加载
+        """
+        self._options.extend(opts)
         return self
 
     def _execute(self, storage: 'Storage') -> List[Dict[str, Any]]:

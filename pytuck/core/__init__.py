@@ -15,6 +15,7 @@ from .orm import (
 from .storage import Storage
 from .session import Session
 from .event import event
+from .prefetch import prefetch, PrefetchOption
 
 
 __all__ = [
@@ -30,4 +31,7 @@ __all__ = [
     'Session',
     # Event
     'event',
+    # Prefetch
+    'prefetch',
+    'PrefetchOption',
 ]

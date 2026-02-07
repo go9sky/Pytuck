@@ -415,7 +415,9 @@ class Session:
         if isinstance(statement, Select):
             records = statement._execute(self.storage)
             # 传递 session 引用给 Result，用于自动注册实例
-            return Result(records, statement.model_class, 'select', session=self)
+            # 传递 options（如 prefetch 选项）给 Result
+            return Result(records, statement.model_class, 'select', session=self,
+                          options=getattr(statement, '_options', []))
 
         elif isinstance(statement, Insert):
             pk = statement._execute(self.storage)
@@ -494,12 +496,14 @@ class Session:
 
                 # 反序列化记录
                 records = [self._deserialize_record(row, table.columns) for row in rows]
-                return Result(records, statement.model_class, 'select', session=self)
+                return Result(records, statement.model_class, 'select', session=self,
+                              options=getattr(statement, '_options', []))
 
             else:
                 # 回退到内存执行
                 records = statement._execute(self.storage)
-                return Result(records, statement.model_class, 'select', session=self)
+                return Result(records, statement.model_class, 'select', session=self,
+                              options=getattr(statement, '_options', []))
 
         elif isinstance(statement, Insert):
             # 编译并执行 INSERT

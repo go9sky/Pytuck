@@ -8,39 +8,54 @@
 
 ---
 
-## [0.6.3] - 2026-02-03
+## [0.7.0] - 2026-02-07
 
 ### 新增
 
-- **CSV 后端 ZIP 密码保护**
-  - 新增 `CsvBackendOptions.password` 选项，支持创建加密 ZIP 文件
-  - 使用 ZipCrypto 加密算法（纯 Python 实现，无外部依赖）
-  - 生成的加密 ZIP 兼容 WinRAR、7-Zip 等通用解压工具
+- **ORM 事件钩子**
+  - 支持 Model 级事件：`before_insert`/`after_insert`、`before_update`/`after_update`、`before_delete`/`after_delete`
+  - 支持 Storage 级事件：`before_flush`/`after_flush`
+  - 支持装饰器和函数式两种注册方式
   - 示例：
     ```python
-    from pytuck.common.options import CsvBackendOptions
+    from pytuck import event
 
-    # 创建加密 CSV 存储
-    opts = CsvBackendOptions(password="my_password")
-    db = Storage(file_path="data.zip", engine="csv", backend_options=opts)
+    @event.listens_for(User, 'before_insert')
+    def set_timestamp(instance):
+        instance.created_at = datetime.now()
+
+    # 函数式注册
+    event.listen(User, 'after_update', audit_changes)
+
+    # Storage 级事件
+    event.listen(db, 'before_flush', lambda storage: print("flushing..."))
+
+    # 移除监听器
+    event.remove(User, 'before_insert', set_timestamp)
     ```
-  - **安全性说明**：ZipCrypto 加密强度较弱，仅适合防止随意查看。如需高安全性，建议使用 Binary 后端的加密功能（支持 ChaCha20）
 
-- **查询条件列名映射**
-  - 支持在查询条件中使用模型字段名，自动转换为数据库列名
-  - 使用 `Column(type, name='db_column')` 定义列时，查询条件自动映射
+- **关系预取 API（prefetch）**
+  - 新增 `prefetch()` 函数，批量预取关联数据，解决 N+1 查询问题
+  - 支持独立函数调用和查询选项两种方式
+  - 支持一对多和多对一关系
+  - 示例：
+    ```python
+    from pytuck import prefetch, select
 
-### 修复
+    # 方式1：独立函数
+    users = session.execute(select(User)).all()
+    prefetch(users, 'orders')          # 单次查询加载所有用户的订单
+    prefetch(users, 'orders', 'profile')  # 支持多个关系名
 
-- **数据库列名映射问题**
-  - 修复查询条件中列名映射和匹配问题
+    # 方式2：查询选项
+    stmt = select(User).options(prefetch('orders'))
+    users = session.execute(stmt).all()  # orders 已批量加载
+    ```
 
-- **无主键模型 get 方法**
-  - 修复 `session.get()` 对无主键模型的处理
-  - 改进数据映射逻辑
+- **Select.options() 方法**
+  - 新增查询选项链式调用支持，目前用于 prefetch 预取
 
 ### 测试
 
-- 添加 CSV 后端 ZIP 加密功能测试（12 个测试用例）
-- 添加配置错误、多线程安全、高级查询功能等测试用例
-- 添加引擎元数据规范和错误恢复测试
+- 添加 ORM 事件钩子测试（35 个测试用例）
+- 添加关系预取测试（23 个测试用例）

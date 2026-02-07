@@ -11,39 +11,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [0.6.3] - 2026-02-03
+## [0.7.0] - 2026-02-07
 
 ### Added
 
-- **CSV Backend ZIP Password Protection**
-  - Added `CsvBackendOptions.password` option to create encrypted ZIP files
-  - Uses ZipCrypto encryption (pure Python, no external dependencies)
-  - Generated encrypted ZIP is compatible with WinRAR, 7-Zip and other tools
+- **ORM Event Hooks**
+  - Model-level events: `before_insert`/`after_insert`, `before_update`/`after_update`, `before_delete`/`after_delete`
+  - Storage-level events: `before_flush`/`after_flush`
+  - Supports both decorator and functional registration
   - Example:
     ```python
-    from pytuck.common.options import CsvBackendOptions
+    from pytuck import event
 
-    # Create encrypted CSV storage
-    opts = CsvBackendOptions(password="my_password")
-    db = Storage(file_path="data.zip", engine="csv", backend_options=opts)
+    @event.listens_for(User, 'before_insert')
+    def set_timestamp(instance):
+        instance.created_at = datetime.now()
+
+    # Functional registration
+    event.listen(User, 'after_update', audit_changes)
+
+    # Storage-level events
+    event.listen(db, 'before_flush', lambda storage: print("flushing..."))
+
+    # Remove listener
+    event.remove(User, 'before_insert', set_timestamp)
     ```
-  - **Security Note**: ZipCrypto is a weak encryption, suitable for casual protection only. For high security, use Binary backend encryption (ChaCha20)
 
-- **Query Condition Column Name Mapping**
-  - Support using model field names in query conditions with automatic conversion to database column names
-  - When using `Column(type, name='db_column')`, query conditions are automatically mapped
+- **Relationship Prefetch API**
+  - Added `prefetch()` function for batch loading related data, solving the N+1 query problem
+  - Supports both standalone function call and query option styles
+  - Supports one-to-many and many-to-one relationships
+  - Example:
+    ```python
+    from pytuck import prefetch, select
 
-### Fixed
+    # Style 1: Standalone function
+    users = session.execute(select(User)).all()
+    prefetch(users, 'orders')              # Single query loads all users' orders
+    prefetch(users, 'orders', 'profile')   # Multiple relationship names
 
-- **Database Column Name Mapping Issue**
-  - Fixed column name mapping and matching in query conditions
+    # Style 2: Query option
+    stmt = select(User).options(prefetch('orders'))
+    users = session.execute(stmt).all()    # orders are batch-loaded
+    ```
 
-- **Primary Key-less Model get() Method**
-  - Fixed `session.get()` handling for primary key-less models
-  - Improved data mapping logic
+- **Select.options() Method**
+  - Added query option chaining support, currently used for prefetch
 
 ### Tests
 
-- Added CSV backend ZIP encryption tests (12 test cases)
-- Added configuration error, multi-thread safety, and advanced query tests
-- Added engine metadata specification and error recovery tests
+- Added ORM event hooks tests (35 test cases)
+- Added relationship prefetch tests (23 test cases)

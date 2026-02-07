@@ -14,6 +14,7 @@ from .orm import (
 )
 from .storage import Storage
 from .session import Session
+from .event import event
 
 
 __all__ = [
@@ -27,4 +28,6 @@ __all__ = [
     # Storage & Session
     'Storage',
     'Session',
+    # Event
+    'event',
 ]

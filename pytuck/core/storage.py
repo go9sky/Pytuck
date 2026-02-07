@@ -17,6 +17,7 @@ from ..common.typing import ColumnTypes
 from ..common.utils import validate_sql_identifier
 from .orm import Column, PSEUDO_PK_NAME
 from .index import HashIndex
+from .event import event
 from ..query import Condition, CompositeCondition, ConditionType
 from ..common.exceptions import (
     TableNotFoundError,
@@ -1782,6 +1783,7 @@ class Storage:
     def flush(self) -> None:
         """强制写入磁盘"""
         if self.backend and self._dirty:
+            event.dispatch_storage(self, 'before_flush')
             self.backend.save(self.tables)
             self._dirty = False
             # 重置 WAL 计数器（checkpoint 会清空 WAL）
@@ -1790,6 +1792,7 @@ class Storage:
             # 首次保存 binary 引擎后，启用 WAL 模式
             if self.engine_name == 'binary' and not self._use_wal:
                 self._init_wal_mode()
+            event.dispatch_storage(self, 'after_flush')
 
     def close(self) -> None:
         """关闭数据库"""

@@ -1061,6 +1061,7 @@ def _create_crud_base(
     sync_options: Optional[SyncOptions] = None
 ) -> Type[CRUDBaseModel]:
     """创建带 CRUD 方法的模型基类"""
+    from .event import event
 
     class DeclarativeCRUDBase(CRUDBaseModel):
         """声明式 CRUD 模型基类"""
@@ -1159,14 +1160,6 @@ def _create_crud_base(
 
         def save(self) -> None:
             """保存记录（insert or update）"""
-            # 准备数据（使用 Column.name 作为存储键）
-            data = {}
-            for attr_name, column in self.__columns__.items():
-                value = getattr(self, attr_name, None)
-                # 使用 Column.name 作为存储键
-                db_col_name = column.name if column.name else attr_name
-                data[db_col_name] = value
-
             table_name = self.__tablename__
             assert table_name is not None, f"Model {self.__class__.__name__} must have __tablename__ defined"
 
@@ -1180,15 +1173,35 @@ def _create_crud_base(
 
             if pk_value is None or not self._loaded_from_db:
                 # Insert
+                event.dispatch_model(self.__class__, 'before_insert', self)
+
+                # 构建数据（在 before 事件之后，确保回调修改生效）
+                data = {}
+                for attr_name, column in self.__columns__.items():
+                    value = getattr(self, attr_name, None)
+                    db_col_name = column.name if column.name else attr_name
+                    data[db_col_name] = value
+
                 pk_value = storage.insert(table_name, data)
                 if pk_name:
                     setattr(self, pk_name, pk_value)
                 else:
                     setattr(self, '_pytuck_rowid', pk_value)
                 self._loaded_from_db = True
+                event.dispatch_model(self.__class__, 'after_insert', self)
             else:
                 # Update
+                event.dispatch_model(self.__class__, 'before_update', self)
+
+                # 构建数据（在 before 事件之后，确保回调修改生效）
+                data = {}
+                for attr_name, column in self.__columns__.items():
+                    value = getattr(self, attr_name, None)
+                    db_col_name = column.name if column.name else attr_name
+                    data[db_col_name] = value
+
                 storage.update(table_name, pk_value, data)
+                event.dispatch_model(self.__class__, 'after_update', self)
 
         def delete(self) -> None:
             """删除当前记录"""
@@ -1204,8 +1217,14 @@ def _create_crud_base(
             table_name = self.__tablename__
             assert table_name is not None, f"Model {self.__class__.__name__} must have __tablename__ defined"
 
+            # 触发 before_delete 事件
+            event.dispatch_model(self.__class__, 'before_delete', self)
+
             storage.delete(table_name, pk_value)
             self._loaded_from_db = False
+
+            # 触发 after_delete 事件
+            event.dispatch_model(self.__class__, 'after_delete', self)
 
         def refresh(self) -> None:
             """从数据库刷新数据"""

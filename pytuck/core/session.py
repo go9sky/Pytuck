@@ -15,6 +15,7 @@ from ..query.result import Result, CursorResult
 from ..query.statements import Statement, Insert, Select, Update, Delete
 from .storage import Storage
 from .orm import PureBaseModel, Column, PSEUDO_PK_NAME
+from .event import event
 
 
 class Session:
@@ -121,6 +122,9 @@ class Session:
             table_name = instance.__tablename__
             assert table_name is not None, f"Model {instance.__class__.__name__} must have __tablename__ defined"
 
+            # 触发 before_insert 事件（可在回调中修改实例字段）
+            event.dispatch_model(instance.__class__, 'before_insert', instance)
+
             # 构建要插入的数据（使用 Column.name 作为存储键）
             data = {}
             for attr_name, column in instance.__columns__.items():
@@ -152,6 +156,9 @@ class Session:
             # 注册到标识映射（使用统一的方法，设置 session 引用）
             self._register_instance(instance)
 
+            # 触发 after_insert 事件（实例已有 pk，已刷新）
+            event.dispatch_model(instance.__class__, 'after_insert', instance)
+
         # 2. 处理待更新对象
         for instance in self._dirty_objects:
             table_name = instance.__tablename__
@@ -162,6 +169,9 @@ class Session:
                 pk = getattr(instance, pk_name)
             else:
                 pk = getattr(instance, '_pytuck_rowid', None)
+
+            # 触发 before_update 事件（可在回调中修改实例字段）
+            event.dispatch_model(instance.__class__, 'before_update', instance)
 
             # 构建要更新的数据（使用 Column.name 作为存储键）
             data = {}
@@ -183,6 +193,9 @@ class Session:
                     attr_name = instance._column_to_attr_name(db_col_name) or db_col_name
                     object.__setattr__(instance, attr_name, value)
 
+            # 触发 after_update 事件（实例已刷新）
+            event.dispatch_model(instance.__class__, 'after_update', instance)
+
         # 3. 处理待删除对象
         for instance in self._deleted_objects:
             table_name = instance.__tablename__
@@ -194,6 +207,9 @@ class Session:
             else:
                 pk = getattr(instance, '_pytuck_rowid', None)
 
+            # 触发 before_delete 事件
+            event.dispatch_model(instance.__class__, 'before_delete', instance)
+
             # 从数据库删除
             self.storage.delete(table_name, pk)
 
@@ -204,6 +220,9 @@ class Session:
                 key = (instance.__class__, (PSEUDO_PK_NAME, pk))
             if key in self._identity_map:
                 del self._identity_map[key]
+
+            # 触发 after_delete 事件（已从数据库和 identity map 移除）
+            event.dispatch_model(instance.__class__, 'after_delete', instance)
 
         # 清空待处理列表
         self._new_objects.clear()

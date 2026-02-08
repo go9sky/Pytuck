@@ -6,7 +6,7 @@ Pytuck 索引实现
 
 from abc import ABC, abstractmethod
 from bisect import bisect_left, bisect_right
-from typing import Any, Dict, List, Set
+from typing import Any, Dict, List, Optional, Set
 
 
 class BaseIndex(ABC):
@@ -72,8 +72,8 @@ class BaseIndex(ABC):
 
     def range_query(
         self,
-        min_val: Any,
-        max_val: Any,
+        min_val: Optional[Any] = None,
+        max_val: Optional[Any] = None,
         include_min: bool = True,
         include_max: bool = True
     ) -> Set[Any]:
@@ -81,8 +81,8 @@ class BaseIndex(ABC):
         范围查询（默认不支持）
 
         Args:
-            min_val: 最小值
-            max_val: 最大值
+            min_val: 最小值（None 表示无下界）
+            max_val: 最大值（None 表示无上界）
             include_min: 是否包含最小值
             include_max: 是否包含最大值
 
@@ -251,8 +251,8 @@ class SortedIndex(BaseIndex):
 
     def range_query(
         self,
-        min_val: Any,
-        max_val: Any,
+        min_val: Optional[Any] = None,
+        max_val: Optional[Any] = None,
         include_min: bool = True,
         include_max: bool = True
     ) -> Set[Any]:
@@ -260,23 +260,29 @@ class SortedIndex(BaseIndex):
         范围查询
 
         Args:
-            min_val: 最小值
-            max_val: 最大值
+            min_val: 最小值（None 表示无下界）
+            max_val: 最大值（None 表示无上界）
             include_min: 是否包含最小值
             include_max: 是否包含最大值
 
         Returns:
             匹配的主键集合
         """
-        if include_min:
-            left = bisect_left(self.sorted_values, min_val)
+        if min_val is None:
+            left = 0
         else:
-            left = bisect_right(self.sorted_values, min_val)
+            if include_min:
+                left = bisect_left(self.sorted_values, min_val)
+            else:
+                left = bisect_right(self.sorted_values, min_val)
 
-        if include_max:
-            right = bisect_right(self.sorted_values, max_val)
+        if max_val is None:
+            right = len(self.sorted_values)
         else:
-            right = bisect_left(self.sorted_values, max_val)
+            if include_max:
+                right = bisect_right(self.sorted_values, max_val)
+            else:
+                right = bisect_left(self.sorted_values, max_val)
 
         result: Set[Any] = set()
         for value in self.sorted_values[left:right]:

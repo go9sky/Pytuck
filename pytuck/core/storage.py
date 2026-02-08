@@ -16,7 +16,7 @@ from ..common.options import BackendOptions, SyncOptions, SyncResult
 from ..common.typing import ColumnTypes
 from ..common.utils import validate_sql_identifier
 from .orm import Column, PSEUDO_PK_NAME
-from .index import HashIndex
+from .index import BaseIndex, HashIndex, SortedIndex
 from .event import event
 from ..query import Condition, CompositeCondition, ConditionType
 from ..common.exceptions import (
@@ -102,7 +102,7 @@ class Table:
         self.primary_key = primary_key  # None 表示无主键
         self.comment = comment
         self.data: Dict[Any, Dict[str, Any]] = {}  # {pk: record}
-        self.indexes: Dict[str, HashIndex] = {}  # {column_name: HashIndex}
+        self.indexes: Dict[str, BaseIndex] = {}  # {column_name: BaseIndex}
         self.next_id = 1
 
         # 懒加载支持
@@ -343,6 +343,10 @@ class Table:
         """
         为列创建索引
 
+        根据 Column.index 的值决定创建哪种索引：
+        - True 或 'hash'：创建 HashIndex（哈希索引，等值查询 O(1)）
+        - 'sorted'：创建 SortedIndex（有序索引，支持范围查询和排序）
+
         Args:
             column_name: 列名
 
@@ -356,8 +360,17 @@ class Table:
             # 索引已存在
             return
 
+        # 根据 Column.index 决定索引类型
+        column = self.columns[column_name]
+        index_type = column.index
+        if index_type is True:
+            index_type = 'hash'
+
         # 创建索引
-        index = HashIndex(column_name)
+        if index_type == 'sorted':
+            index: BaseIndex = SortedIndex(column_name)
+        else:
+            index = HashIndex(column_name)
 
         # 为现有数据建立索引
         for pk, record in self.data.items():
@@ -462,13 +475,13 @@ class Table:
             raise ColumnNotFoundError(self.name, column_name)
         self.columns[column_name].comment = comment
 
-    def update_column_index(self, column_name: str, index: bool) -> None:
+    def update_column_index(self, column_name: str, index: Union[bool, str]) -> None:
         """
         更新列的索引设置
 
         Args:
             column_name: 字段名（Column.name），而非 Python 属性名
-            index: 是否创建索引
+            index: 索引设置。False=不建索引，True/'hash'=哈希索引，'sorted'=有序索引
 
         Raises:
             ColumnNotFoundError: 列不存在
@@ -480,13 +493,22 @@ class Table:
         old_index = column.index
         column.index = index
 
-        if index and not old_index:
+        # 规范化新旧值用于比较
+        old_normalized = 'hash' if old_index is True else old_index
+        new_normalized = 'hash' if index is True else index
+
+        if new_normalized and not old_normalized:
             # 需要创建索引
             self.build_index(column_name)
-        elif not index and old_index:
+        elif not new_normalized and old_normalized:
             # 需要删除索引
             if column_name in self.indexes:
                 del self.indexes[column_name]
+        elif new_normalized and old_normalized and new_normalized != old_normalized:
+            # 索引类型改变，删旧建新
+            if column_name in self.indexes:
+                del self.indexes[column_name]
+            self.build_index(column_name)
 
     def __repr__(self) -> str:
         return f"Table(name='{self.name}', records={len(self.data)}, indexes={len(self.indexes)})"
@@ -1333,7 +1355,7 @@ class Storage:
 
         for condition in simple_conditions:
             if condition.operator == '=' and condition.field in table.indexes:
-                # 使用索引查询
+                # 使用索引查询（等值）
                 index = table.indexes[condition.field]
                 pks = index.lookup(condition.value)
 
@@ -1341,6 +1363,29 @@ class Storage:
                     candidate_pks = pks
                 else:
                     # 取交集，缩小候选集
+                    candidate_pks = candidate_pks.intersection(pks)
+            elif (condition.operator in ('>', '>=', '<', '<=')
+                  and condition.field in table.indexes
+                  and table.indexes[condition.field].supports_range_query()):
+                # 使用有序索引范围查询
+                sorted_idx = table.indexes[condition.field]
+                min_val, max_val = None, None
+                include_min, include_max = True, True
+
+                if condition.operator == '>':
+                    min_val, include_min = condition.value, False
+                elif condition.operator == '>=':
+                    min_val, include_min = condition.value, True
+                elif condition.operator == '<':
+                    max_val, include_max = condition.value, False
+                elif condition.operator == '<=':
+                    max_val, include_max = condition.value, True
+
+                pks = sorted_idx.range_query(min_val, max_val, include_min, include_max)
+
+                if candidate_pks is None:
+                    candidate_pks = pks
+                else:
                     candidate_pks = candidate_pks.intersection(pks)
             else:
                 # 无索引的条件保留后续过滤
@@ -1351,53 +1396,132 @@ class Storage:
             candidate_pks = set(table.data.keys())
             remaining_simple_conditions = simple_conditions
 
-        # 过滤记录
-        results = []
-        for pk in candidate_pks:
-            if pk in table.data:
+        # 检查是否可以使用索引排序
+        use_index_order = (
+            order_by
+            and order_by in table.indexes
+            and table.indexes[order_by].supports_range_query()
+        )
+
+        if use_index_order:
+            # 使用有序索引排序：按索引顺序遍历，同时过滤 + 分页，可提前停止
+            assert order_by is not None  # use_index_order 为 True 时 order_by 必定非 None
+            sorted_idx = table.indexes[order_by]
+            assert isinstance(sorted_idx, SortedIndex)
+            ordered_pks = sorted_idx.get_sorted_pks(reverse=order_desc)
+
+            # 索引中不包含 None 值的记录，需要额外处理
+            # 收集 None 值记录的 pk（不在索引中的候选记录）
+            indexed_pk_set = set(ordered_pks)
+            none_value_pks = [pk for pk in candidate_pks if pk not in indexed_pk_set]
+
+            # 过滤 None 值记录
+            none_results: List[Dict[str, Any]] = []
+            if none_value_pks:
+                for pk in none_value_pks:
+                    if pk not in table.data:
+                        continue
+                    record = table.data[pk]
+                    if not all(cond.evaluate(record) for cond in remaining_simple_conditions):
+                        continue
+                    if not all(cond.evaluate(record) for cond in composite_conditions):
+                        continue
+                    record_copy = record.copy()
+                    if not table.primary_key:
+                        record_copy[PSEUDO_PK_NAME] = pk
+                    none_results.append(record_copy)
+
+            results: List[Dict[str, Any]] = []
+            skipped = 0
+
+            def _append_with_paging(rec: Dict[str, Any]) -> bool:
+                """追加记录并处理分页，返回是否已达到 limit"""
+                nonlocal skipped
+                if offset > 0 and skipped < offset:
+                    skipped += 1
+                    return False
+                results.append(rec)
+                return limit is not None and len(results) >= limit
+
+            if order_desc:
+                # 降序：None 排在最前
+                for rec in none_results:
+                    if _append_with_paging(rec):
+                        return results
+            # 有值记录按索引排序
+            for pk in ordered_pks:
+                if pk not in candidate_pks:
+                    continue
+                if pk not in table.data:
+                    continue
                 record = table.data[pk]
-                # 评估简单条件
                 if not all(cond.evaluate(record) for cond in remaining_simple_conditions):
                     continue
-                # 评估复合条件（OR/AND/NOT）
                 if not all(cond.evaluate(record) for cond in composite_conditions):
                     continue
 
                 record_copy = record.copy()
-                # 无主键表：注入内部 rowid
                 if not table.primary_key:
                     record_copy[PSEUDO_PK_NAME] = pk
-                results.append(record_copy)
 
-        # 排序
-        if order_by and order_by in table.columns:
-            def sort_key(_record: Dict[str, Any]) -> tuple:
-                """
-                排序键函数
+                if _append_with_paging(record_copy):
+                    return results
 
-                排序规则：
-                - None 值在升序时排在最后，降序时排在最前
-                - 使用元组 (优先级, 值) 实现：优先级 0 表示有值，1 表示 None
-                """
-                value = _record.get(order_by)
-                # 处理 None 值：升序时 None 排在最后 (1, 0)，降序时排在最前 (0, 0)
-                if value is None:
-                    return (1, 0) if not order_desc else (0, 0)
-                return (0, value) if not order_desc else (1, value)
+            if not order_desc:
+                # 升序：None 排在最后
+                for rec in none_results:
+                    if _append_with_paging(rec):
+                        return results
 
-            try:
-                results.sort(key=sort_key, reverse=order_desc)
-            except TypeError:
-                # 如果比较失败（比如混合类型），按字符串排序
-                results.sort(key=lambda r: str(r.get(order_by, '')), reverse=order_desc)
+            return results
+        else:
+            # 常规路径：遍历 candidate_pks → 过滤 → 排序 → 分页
+            results = []
+            for pk in candidate_pks:
+                if pk in table.data:
+                    record = table.data[pk]
+                    # 评估简单条件
+                    if not all(cond.evaluate(record) for cond in remaining_simple_conditions):
+                        continue
+                    # 评估复合条件（OR/AND/NOT）
+                    if not all(cond.evaluate(record) for cond in composite_conditions):
+                        continue
 
-        # 分页
-        if offset > 0:
-            results = results[offset:]
-        if limit is not None and limit > 0:
-            results = results[:limit]
+                    record_copy = record.copy()
+                    # 无主键表：注入内部 rowid
+                    if not table.primary_key:
+                        record_copy[PSEUDO_PK_NAME] = pk
+                    results.append(record_copy)
 
-        return results
+            # 排序
+            if order_by and order_by in table.columns:
+                def sort_key(_record: Dict[str, Any]) -> tuple:
+                    """
+                    排序键函数
+
+                    排序规则：
+                    - None 值在升序时排在最后，降序时排在最前
+                    - 使用元组 (优先级, 值) 实现：优先级 0 表示有值，1 表示 None
+                    """
+                    value = _record.get(order_by)
+                    # 处理 None 值：升序时 None 排在最后 (1, 0)，降序时排在最前 (0, 0)
+                    if value is None:
+                        return (1, 0) if not order_desc else (0, 0)
+                    return (0, value) if not order_desc else (1, value)
+
+                try:
+                    results.sort(key=sort_key, reverse=order_desc)
+                except TypeError:
+                    # 如果比较失败（比如混合类型），按字符串排序
+                    results.sort(key=lambda r: str(r.get(order_by, '')), reverse=order_desc)
+
+            # 分页
+            if offset > 0:
+                results = results[offset:]
+            if limit is not None and limit > 0:
+                results = results[:limit]
+
+            return results
 
     def _query_native_sql(
         self,

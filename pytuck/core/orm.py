@@ -262,7 +262,7 @@ class Column:
                  name: Optional[str] = None,
                  nullable: bool = True,
                  primary_key: bool = False,
-                 index: bool = False,
+                 index: Union[bool, str] = False,
                  default: Any = None,
                  foreign_key: Optional[tuple] = None,
                  comment: Optional[str] = None,
@@ -275,7 +275,7 @@ class Column:
             name: 列名（可选，默认使用变量名）
             nullable: 是否可空
             primary_key: 是否为主键
-            index: 是否建立索引
+            index: 索引设置。False=不建索引，True/'hash'=哈希索引，'sorted'=有序索引
             default: 默认值
             foreign_key: 外键关系 (table_name, column_name)
             comment: 列备注/注释
@@ -285,7 +285,12 @@ class Column:
         self.col_type = col_type
         self.nullable = nullable
         self.primary_key = primary_key
-        self.index = index
+        # 验证索引类型
+        if isinstance(index, str) and index not in ('hash', 'sorted'):
+            raise ValidationError(
+                f"Unsupported index type: '{index}'. Use True, False, 'hash', or 'sorted'"
+            )
+        self.index: Union[bool, str] = index
         self.default = default
         self.foreign_key = foreign_key
         self.comment = comment

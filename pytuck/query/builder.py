@@ -510,10 +510,18 @@ class Query(Generic[T]):
             raise QueryError(f"No table name defined for {self.model_class.__name__}")
 
         # 从存储引擎查询
-        records: List[dict] = storage.query(table_name, self._conditions)
+        if len(self._order_by_fields) == 1:
+            # 单列排序：下推给 Storage.query（可利用 SortedIndex 优化）
+            field, desc = self._order_by_fields[0]
+            records: List[dict] = storage.query(
+                table_name, self._conditions,
+                order_by=field, order_desc=desc
+            )
+        else:
+            records = storage.query(table_name, self._conditions)
 
         # 多列排序（从后往前排序，确保优先级正确）
-        if self._order_by_fields:
+        if len(self._order_by_fields) > 1:
             # 反向遍历，先按低优先级排序，再按高优先级排序
             # 利用 Python 排序的稳定性，最终实现多列排序
             for field, desc in reversed(self._order_by_fields):

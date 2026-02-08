@@ -58,7 +58,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Select.options() Method**
   - Added query option chaining support, currently used for prefetch
 
+- **Query Index Optimization**
+  - `Column` now supports specifying index type: `index='hash'` (hash index) or `index='sorted'` (sorted index)
+  - Range queries (`>`, `>=`, `<`, `<=`) automatically use SortedIndex for acceleration, avoiding full table scans
+  - `order_by` sorting automatically leverages SortedIndex ordering, with inline pagination (early stopping)
+  - `SortedIndex.range_query()` supports open-ended queries (`None` boundaries)
+  - Backward compatible: `index=True` still creates HashIndex
+  - Example:
+    ```python
+    class User(Base):
+        __tablename__ = 'users'
+        id = Column(int, primary_key=True)
+        name = Column(str, index=True)        # Hash index (equality query acceleration)
+        age = Column(int, index='sorted')      # Sorted index (range query + sorting acceleration)
+
+    # Range queries automatically use sorted index
+    stmt = select(User).where(User.age >= 18, User.age < 30)
+
+    # Sorting automatically uses sorted index (no full-data sorting needed)
+    stmt = select(User).order_by('age').limit(10)
+    ```
+
 ### Tests
 
 - Added ORM event hooks tests (35 test cases)
 - Added relationship prefetch tests (23 test cases)
+- Added query index optimization tests (42 test cases)

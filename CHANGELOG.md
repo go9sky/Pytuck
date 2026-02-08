@@ -55,7 +55,29 @@
 - **Select.options() 方法**
   - 新增查询选项链式调用支持，目前用于 prefetch 预取
 
+- **查询索引优化**
+  - `Column` 支持指定索引类型：`index='hash'`（哈希索引）或 `index='sorted'`（有序索引）
+  - 范围查询（`>`, `>=`, `<`, `<=`）自动使用 SortedIndex 加速，避免全表扫描
+  - `order_by` 排序自动利用 SortedIndex 的有序性，支持内联分页（提前停止）
+  - `SortedIndex.range_query()` 支持开区间查询（`None` 边界）
+  - 向后兼容：`index=True` 仍创建 HashIndex
+  - 示例：
+    ```python
+    class User(Base):
+        __tablename__ = 'users'
+        id = Column(int, primary_key=True)
+        name = Column(str, index=True)        # 哈希索引（等值查询加速）
+        age = Column(int, index='sorted')      # 有序索引（范围查询+排序加速）
+
+    # 范围查询自动使用有序索引
+    stmt = select(User).where(User.age >= 18, User.age < 30)
+
+    # 排序自动使用有序索引（无需全量排序）
+    stmt = select(User).order_by('age').limit(10)
+    ```
+
 ### 测试
 
 - 添加 ORM 事件钩子测试（35 个测试用例）
 - 添加关系预取测试（23 个测试用例）
+- 添加查询索引优化测试（42 个测试用例）

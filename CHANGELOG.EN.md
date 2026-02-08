@@ -79,8 +79,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     stmt = select(User).order_by('age').limit(10)
     ```
 
+### Performance Benchmark (Query Index Optimization)
+
+> Test environment: 100,000 records, age field range 1-100, comparing No Index / HashIndex / SortedIndex
+
+**Storage.query (Low-level Engine)**
+
+| Scenario | No Index | SortedIndex | Speedup |
+|----------|----------|-------------|---------|
+| Range query `age BETWEEN 30 AND 50` (~21% data) | 10.00s | 3.16s | **3.2x** |
+| High selectivity `age > 95` (~5% data) | 7.95s | 541ms | **14.7x** |
+| Full `order_by('age')` | 7.21s | 8.01s | 0.9x |
+
+**select() API (High-level)**
+
+| Scenario | No Index | SortedIndex | Speedup |
+|----------|----------|-------------|---------|
+| Range query `age BETWEEN X AND Y` | 33.60s | 28.28s | **1.2x** |
+| High selectivity `age > 95` | 10.19s | 2.96s | **3.4x** |
+| Combo `range + order_by + limit` | 6.51s | 4.48s | **1.5x** |
+
+**Key Findings**:
+- Range queries are SortedIndex's primary strength — bisect locates boundaries to reduce scan volume
+- Higher selectivity (fewer matching records) yields greater speedup — up to **14.7x** at the engine level
+- Upper-layer API speedup is lower than engine-level due to fixed model instantiation overhead
+- Pure sorting shows no improvement since Python's C-level timsort is already highly optimized
+- Combined queries (range + sort + pagination) benefit from reduced candidate set before sorting
+
+> Run benchmark: `python tests/benchmark/benchmark_index.py -n 100000`
+
 ### Tests
 
 - Added ORM event hooks tests (35 test cases)
 - Added relationship prefetch tests (23 test cases)
 - Added query index optimization tests (42 test cases)
+- Added index optimization benchmark script (`tests/benchmark/benchmark_index.py`)

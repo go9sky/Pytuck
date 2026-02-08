@@ -26,7 +26,7 @@ A lightweight, pure Python document database with multi-engine support. No SQL r
 - **SQLAlchemy 2.0 Style API** - Modern query builders (`select()`, `insert()`, `update()`, `delete()`)
 - **Generic Type Hints** - Complete generic support with precise IDE type inference (`List[User]` instead of `List[PureBaseModel]`)
 - **Pythonic Query Syntax** - Use native Python operators (`User.age >= 18`)
-- **Index Optimization** - Hash indexes for accelerated queries
+- **Index Optimization** - Hash and sorted indexes for accelerated queries, range queries and sorting automatically leverage indexes
 - **Type Safety** - Automatic type validation and conversion (loose/strict modes), supports 10 field types
 - **Relationships** - Supports one-to-many and many-to-one with lazy loading + auto caching
 - **Independent Data Models** - Accessible after session close, usable like Pydantic
@@ -551,12 +551,23 @@ Add indexes to fields to accelerate queries:
 ```python
 class Student(Base):
     __tablename__ = 'students'
-    name = Column(str, index=True)  # Create index
+    name = Column(str, index=True)           # Hash index (equality query acceleration)
+    age = Column(int, index='sorted')         # Sorted index (range query + sorting acceleration)
 
-# Index query (automatically optimized)
+# Equality query (uses hash index)
 stmt = select(Student).filter_by(name='Bob')
 result = session.execute(stmt)
 bob = result.first()
+
+# Range query (automatically uses sorted index)
+stmt = select(Student).where(Student.age >= 18, Student.age < 30)
+result = session.execute(stmt)
+adults = result.all()
+
+# Sorting query (automatically uses sorted index, no full-data sorting needed)
+stmt = select(Student).order_by('age').limit(10)
+result = session.execute(stmt)
+youngest = result.all()
 ```
 
 ### Query Operators
@@ -1038,7 +1049,7 @@ session.rollback()  # Clears pending, but id=1 record still exists
 - [x] **Web UI Data Browser** - Released as standalone project [pytuck-view](https://github.com/pytuck/pytuck-view) (`pip install pytuck-view`)
 - [x] **ORM Event Hooks** - Model-level + Storage-level event callbacks
 - [x] **Relationship Prefetch** - Batch load related data, solving the N+1 problem
-- [ ] **Query Index Optimization** - Automatically use indexes for range queries and sorting
+- [x] **Query Index Optimization** - Automatically use indexes for range queries and sorting
 - [ ] **Bulk Operations** - bulk_insert / bulk_update API
 
 ### Planned Engines

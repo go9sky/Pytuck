@@ -33,21 +33,11 @@
 - [x] 外部文件加载功能 load_table（CSV/Excel → 模型对象列表）
 - [x] ORM 事件钩子（Model 级 + Storage 级事件回调）
 - [x] 关系预取 API（prefetch，批量加载关联数据解决 N+1 问题）
+- [x] 查询索引优化（SortedIndex 范围查询加速 + order_by 索引排序 + Column 索引类型指定）
 
 ---
 
 ## 近期计划
-
-### 查询索引优化
-
-**目标**：自动利用已有的 SortedIndex 加速范围查询和排序
-
-**现状**：`index.py` 中已实现 SortedIndex（支持范围查询），但 `Storage.query` 中仅对 HashIndex 做了等值优化，范围查询（`<`, `>`, `>=`, `<=`）和排序仍依赖全量 Python 遍历/排序。
-
-**改进方向**：
-- 范围查询条件自动使用 SortedIndex
-- `order_by` 利用 SortedIndex 避免全量排序
-- 支持在 `Column` 中指定索引类型（`index='hash'` 或 `index='sorted'`）
 
 ### 批量操作优化（bulk_insert / bulk_update）
 

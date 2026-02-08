@@ -26,7 +26,7 @@
 - **SQLAlchemy 2.0 风格 API** - 现代化的查询构建器（`select()`, `insert()`, `update()`, `delete()`）
 - **泛型类型提示** - 完整的泛型支持，IDE智能提示精确到具体模型类型（`List[User]` 而非 `List[PureBaseModel]`）
 - **Pythonic 查询语法** - 使用原生 Python 运算符构建查询（`User.age >= 18`）
-- **索引优化** - 哈希索引加速查询
+- **索引优化** - 哈希索引和有序索引加速查询，范围查询和排序自动利用索引
 - **类型安全** - 自动类型验证和转换（宽松/严格模式），支持 10 种字段类型
 - **关联关系** - 支持一对多和多对一关联，延迟加载+自动缓存
 - **独立数据模型** - Session 关闭后仍可访问，像 Pydantic 一样使用
@@ -551,12 +551,23 @@ session.commit()
 ```python
 class Student(Base):
     __tablename__ = 'students'
-    name = Column(str, index=True)  # 创建索引
+    name = Column(str, index=True)           # 哈希索引（等值查询加速）
+    age = Column(int, index='sorted')         # 有序索引（范围查询+排序加速）
 
-# 索引查询（自动优化）
+# 等值查询（使用哈希索引）
 stmt = select(Student).filter_by(name='Bob')
 result = session.execute(stmt)
 bob = result.first()
+
+# 范围查询（自动使用有序索引）
+stmt = select(Student).where(Student.age >= 18, Student.age < 30)
+result = session.execute(stmt)
+adults = result.all()
+
+# 排序查询（自动使用有序索引，无需全量排序）
+stmt = select(Student).order_by('age').limit(10)
+result = session.execute(stmt)
+youngest = result.all()
 ```
 
 ### 查询操作符
@@ -987,7 +998,7 @@ session.rollback()  # 清除 pending，但 id=1 的记录仍存在
 - [x] **Web UI 数据浏览器** - 已发布为独立项目 [pytuck-view](https://github.com/pytuck/pytuck-view)（`pip install pytuck-view`）
 - [x] **ORM 事件钩子** - Model 级 + Storage 级事件回调
 - [x] **关系预取（prefetch）** - 批量加载关联数据，解决 N+1 问题
-- [ ] **查询索引优化** - 自动利用索引加速范围查询和排序
+- [x] **查询索引优化** - 自动利用索引加速范围查询和排序
 - [ ] **批量操作优化** - bulk_insert / bulk_update API
 
 ### 计划增加的引擎

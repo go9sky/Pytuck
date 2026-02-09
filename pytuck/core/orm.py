@@ -7,7 +7,7 @@ Pytuck ORM层
 """
 import sys
 from typing import (
-    Any, Callable, Dict, List, Optional, Type, Union, TYPE_CHECKING,
+    Any, Callable, Dict, List, Optional, Tuple, Type, Union, TYPE_CHECKING,
     overload, Literal, Generic, cast
 )
 from datetime import datetime, date, timedelta, timezone
@@ -1261,6 +1261,103 @@ def _create_crud_base(
             instance = cls(**kwargs)
             instance.save()
             return instance
+
+        @classmethod
+        def bulk_insert(cls, instances: List['DeclarativeCRUDBase']) -> List[Any]:
+            """
+            批量插入实例（立即写入内存）
+
+            Args:
+                instances: 模型实例列表
+
+            Returns:
+                插入的主键列表
+            """
+            if not instances:
+                return []
+
+            # 触发 before_bulk_insert 事件
+            event.dispatch_model_bulk(cls, 'before_bulk_insert', instances)
+
+            # 构建数据字典列表
+            records: List[Dict[str, Any]] = []
+            for instance in instances:
+                data: Dict[str, Any] = {}
+                for attr_name, column in cls.__columns__.items():
+                    value = getattr(instance, attr_name, None)
+                    db_col_name = column.name if column.name else attr_name
+                    data[db_col_name] = value
+                records.append(data)
+
+            table_name = cls.__tablename__
+            assert table_name is not None, f"Model {cls.__name__} must have __tablename__ defined"
+
+            # 批量插入到 Storage
+            pks = storage.bulk_insert(table_name, records)
+
+            # 设置主键到实例
+            pk_name = cls.__primary_key__
+            for i, instance in enumerate(instances):
+                pk = pks[i]
+                if pk_name:
+                    setattr(instance, pk_name, pk)
+                else:
+                    setattr(instance, '_pytuck_rowid', pk)
+                instance._loaded_from_db = True
+
+            # 触发 after_bulk_insert 事件
+            event.dispatch_model_bulk(cls, 'after_bulk_insert', instances)
+
+            return pks
+
+        @classmethod
+        def bulk_update(cls, instances: List['DeclarativeCRUDBase']) -> int:
+            """
+            批量更新实例（立即写入内存，更新全部字段）
+
+            Args:
+                instances: 模型实例列表（必须已有主键）
+
+            Returns:
+                更新的记录数
+            """
+            if not instances:
+                return 0
+
+            # 触发 before_bulk_update 事件
+            event.dispatch_model_bulk(cls, 'before_bulk_update', instances)
+
+            table_name = cls.__tablename__
+            assert table_name is not None, f"Model {cls.__name__} must have __tablename__ defined"
+            pk_name = cls.__primary_key__
+
+            # 构建 (pk, data) 元组列表
+            updates: List[Tuple[Any, Dict[str, Any]]] = []
+            for instance in instances:
+                if pk_name:
+                    pk = getattr(instance, pk_name, None)
+                else:
+                    pk = getattr(instance, '_pytuck_rowid', None)
+
+                if pk is None:
+                    raise ValidationError(
+                        "Cannot bulk update instance without primary key or rowid"
+                    )
+
+                data: Dict[str, Any] = {}
+                for attr_name, column in cls.__columns__.items():
+                    value = getattr(instance, attr_name, None)
+                    db_col_name = column.name if column.name else attr_name
+                    data[db_col_name] = value
+                updates.append((pk, data))
+
+            # 批量更新到 Storage
+            count = storage.bulk_update(table_name, updates)
+
+            # 触发 after_bulk_update 事件
+            event.dispatch_model_bulk(cls, 'after_bulk_update', instances)
+
+            return count
 
         @classmethod
         def get(cls, pk: Any) -> Optional['DeclarativeCRUDBase']:

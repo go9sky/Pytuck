@@ -7,6 +7,8 @@ Model 级事件：
 - before_insert / after_insert
 - before_update / after_update
 - before_delete / after_delete
+- before_bulk_insert / after_bulk_insert
+- before_bulk_update / after_bulk_update
 
 Storage 级事件：
 - before_flush / after_flush
@@ -37,6 +39,8 @@ MODEL_EVENTS: Set[str] = {
     'before_insert', 'after_insert',
     'before_update', 'after_update',
     'before_delete', 'after_delete',
+    'before_bulk_insert', 'after_bulk_insert',
+    'before_bulk_update', 'after_bulk_update',
 }
 STORAGE_EVENTS: Set[str] = {
     'before_flush', 'after_flush',
@@ -130,6 +134,19 @@ class EventManager:
         key = (model_class, event_name)
         for fn in self._model_listeners.get(key, []):
             fn(instance)
+
+    def dispatch_model_bulk(self, model_class: type, event_name: str, instances: List[Any]) -> None:
+        """
+        分发 Model 级批量事件
+
+        Args:
+            model_class: 模型类
+            event_name: 事件名称（如 'before_bulk_insert'）
+            instances: 模型实例列表
+        """
+        key = (model_class, event_name)
+        for fn in self._model_listeners.get(key, []):
+            fn(instances)
 
     def dispatch_storage(self, storage: Any, event_name: str) -> None:
         """

@@ -8,7 +8,7 @@ from typing import Any, Dict, List, Optional, Type, Tuple, Union, Generator, ove
 from contextlib import contextmanager
 
 from ..common.typing import T
-from ..common.exceptions import QueryError, TransactionError
+from ..common.exceptions import QueryError, TransactionError, ValidationError
 from ..common.options import SyncOptions, SyncResult
 from ..query.builder import Query, BinaryExpression
 from ..query.result import Result, CursorResult
@@ -247,6 +247,138 @@ class Session:
         self._dirty_objects.clear()
         self._deleted_objects.clear()
         self._identity_map.clear()
+
+    def bulk_insert(self, instances: List[PureBaseModel]) -> List[Any]:
+        """
+        批量插入模型实例（立即写入内存）
+
+        调用时直接写入 Storage 内存，commit() 仅负责 auto_flush 磁盘持久化。
+        触发 before_bulk_insert / after_bulk_insert 事件，不触发逐条事件。
+
+        与 add_all() 的区别：
+        - add_all() 将实例标记为待插入，commit() 时逐条写入
+        - bulk_insert() 立即批量写入 Storage，性能更优
+
+        Args:
+            instances: 模型实例列表（必须是同一模型类）
+
+        Returns:
+            插入的主键列表
+
+        Raises:
+            ValidationError: 包含不同模型类
+            DuplicateKeyError: 主键重复
+        """
+        if not instances:
+            return []
+
+        # 验证：所有实例必须是同一模型类
+        model_class = instances[0].__class__
+        for inst in instances[1:]:
+            if inst.__class__ is not model_class:
+                raise ValidationError(
+                    f"All instances must be the same model class. "
+                    f"Expected {model_class.__name__}, got {inst.__class__.__name__}"
+                )
+
+        table_name = model_class.__tablename__
+        assert table_name is not None, f"Model {model_class.__name__} must have __tablename__ defined"
+
+        # 触发 before_bulk_insert 事件
+        event.dispatch_model_bulk(model_class, 'before_bulk_insert', instances)
+
+        # 构建数据字典列表
+        records: List[Dict[str, Any]] = []
+        for instance in instances:
+            data: Dict[str, Any] = {}
+            for attr_name, column in instance.__columns__.items():
+                value = getattr(instance, attr_name, None)
+                if value is not None:
+                    db_col_name = column.name if column.name else attr_name
+                    data[db_col_name] = value
+            records.append(data)
+
+        # 批量插入到 Storage
+        pks = self.storage.bulk_insert(table_name, records)
+
+        # 设置主键到实例 + 注册到 identity map
+        pk_name = model_class.__primary_key__
+        for i, instance in enumerate(instances):
+            pk = pks[i]
+            if pk_name:
+                setattr(instance, pk_name, pk)
+            else:
+                setattr(instance, '_pytuck_rowid', pk)
+            self._register_instance(instance)
+
+        # 触发 after_bulk_insert 事件
+        event.dispatch_model_bulk(model_class, 'after_bulk_insert', instances)
+
+        return pks
+
+    def bulk_update(self, instances: List[PureBaseModel]) -> int:
+        """
+        批量更新模型实例（立即写入内存，更新全部字段）
+
+        调用时直接写入 Storage 内存，commit() 仅负责 auto_flush 磁盘持久化。
+        触发 before_bulk_update / after_bulk_update 事件，不触发逐条事件。
+
+        Args:
+            instances: 模型实例列表（必须是同一模型类，且已有主键）
+
+        Returns:
+            更新的记录数
+
+        Raises:
+            ValidationError: 包含不同模型类或缺少主键
+            RecordNotFoundError: 某条记录不存在
+        """
+        if not instances:
+            return 0
+
+        # 验证：所有实例必须是同一模型类
+        model_class = instances[0].__class__
+        for inst in instances[1:]:
+            if inst.__class__ is not model_class:
+                raise ValidationError(
+                    f"All instances must be the same model class. "
+                    f"Expected {model_class.__name__}, got {inst.__class__.__name__}"
+                )
+
+        table_name = model_class.__tablename__
+        assert table_name is not None, f"Model {model_class.__name__} must have __tablename__ defined"
+        pk_name = model_class.__primary_key__
+
+        # 触发 before_bulk_update 事件
+        event.dispatch_model_bulk(model_class, 'before_bulk_update', instances)
+
+        # 构建 (pk, data) 元组列表
+        updates: List[Tuple[Any, Dict[str, Any]]] = []
+        for instance in instances:
+            if pk_name:
+                pk = getattr(instance, pk_name, None)
+            else:
+                pk = getattr(instance, '_pytuck_rowid', None)
+
+            if pk is None:
+                raise ValidationError(
+                    "Cannot bulk update instance without primary key or rowid"
+                )
+
+            data: Dict[str, Any] = {}
+            for attr_name, column in instance.__columns__.items():
+                value = getattr(instance, attr_name, None)
+                db_col_name = column.name if column.name else attr_name
+                data[db_col_name] = value
+            updates.append((pk, data))
+
+        # 批量更新到 Storage
+        count = self.storage.bulk_update(table_name, updates)
+
+        # 触发 after_bulk_update 事件
+        event.dispatch_model_bulk(model_class, 'after_bulk_update', instances)
+
+        return count
 
     def get(self, model_class: Type[T], pk: Any) -> Optional[T]:
         """

@@ -268,6 +268,154 @@ class Table:
         # 删除记录
         del self.data[pk]
 
+    def bulk_insert(self, records: List[Dict[str, Any]]) -> List[Any]:
+        """
+        批量插入记录
+
+        优化点：批量分配主键、批量验证字段、批量更新索引。
+
+        Args:
+            records: 记录字典列表
+
+        Returns:
+            插入的主键列表
+
+        Raises:
+            DuplicateKeyError: 主键重复
+            ValidationError: 字段验证失败
+        """
+        if not records:
+            return []
+
+        pks: List[Any] = []
+
+        # 第一阶段：批量分配主键
+        has_user_pk = self.primary_key and self.primary_key in self.columns
+        if has_user_pk:
+            pk_column = self.columns[self.primary_key]  # type: ignore[index]
+            auto_count = 0
+            # 先统计需要自动分配主键的数量
+            for record in records:
+                pk = record.get(self.primary_key)  # type: ignore[arg-type]
+                if pk is None:
+                    if pk_column.col_type == int:
+                        auto_count += 1
+                    else:
+                        raise ValidationError(
+                            f"Primary key '{self.primary_key}' must be provided",
+                            table_name=self.name,
+                            column_name=self.primary_key
+                        )
+            # 一次性预留主键范围
+            start_id = self.next_id
+            self.next_id += auto_count
+            auto_idx = 0
+
+            for record in records:
+                pk = record.get(self.primary_key)  # type: ignore[arg-type]
+                pk = self._normalize_pk(pk)
+                if pk is None:
+                    pk = start_id + auto_idx
+                    auto_idx += 1
+                    record[self.primary_key] = pk  # type: ignore[index]
+                else:
+                    record[self.primary_key] = pk  # type: ignore[index]
+                    if pk in self.data:
+                        raise DuplicateKeyError(self.name, pk)
+                # 检查已分配的主键是否与前面的冲突
+                if pk in self.data:
+                    raise DuplicateKeyError(self.name, pk)
+                pks.append(pk)
+        else:
+            # 无用户主键：批量分配 rowid
+            start_id = self.next_id
+            self.next_id += len(records)
+            for i in range(len(records)):
+                pks.append(start_id + i)
+
+        # 检查批次内主键无重复
+        if len(set(pks)) != len(pks):
+            # 找出重复的主键
+            seen: Dict[Any, int] = {}
+            for pk in pks:
+                if pk in seen:
+                    raise DuplicateKeyError(self.name, pk)
+                seen[pk] = 1
+
+        # 第二阶段：批量验证字段并存储记录
+        for i, record in enumerate(records):
+            pk = pks[i]
+            validated_record: Dict[str, Any] = {}
+            for col_name, column in self.columns.items():
+                value = record.get(col_name)
+                validated_value = column.validate(value)
+                validated_record[col_name] = validated_value
+            self.data[pk] = validated_record
+
+        # 第三阶段：批量更新索引
+        for col_name, index in self.indexes.items():
+            for i, pk in enumerate(pks):
+                value = self.data[pk].get(col_name)
+                if value is not None:
+                    index.insert(value, pk)
+
+        # 更新 next_id（处理手动指定的大主键）
+        for pk in pks:
+            if isinstance(pk, int) and pk >= self.next_id:
+                self.next_id = pk + 1
+
+        return pks
+
+    def bulk_update(self, updates: List[Tuple[Any, Dict[str, Any]]]) -> int:
+        """
+        批量更新记录
+
+        Args:
+            updates: (pk, data) 元组列表
+
+        Returns:
+            更新的记录数
+
+        Raises:
+            RecordNotFoundError: 记录不存在
+            ValidationError: 字段验证失败
+        """
+        if not updates:
+            return 0
+
+        count = 0
+
+        for pk, record in updates:
+            pk = self._normalize_pk(pk)
+            if pk not in self.data:
+                raise RecordNotFoundError(self.name, pk)
+
+            old_record = self.data[pk]
+
+            # 验证和处理字段
+            validated_record = old_record.copy()
+            for col_name, value in record.items():
+                if col_name in self.columns:
+                    column = self.columns[col_name]
+                    validated_record[col_name] = column.validate(value)
+
+            # 更新索引（先删除旧值，再插入新值）
+            for col_name, index in self.indexes.items():
+                old_value = old_record.get(col_name)
+                new_value = validated_record.get(col_name)
+
+                if old_value != new_value:
+                    if old_value is not None:
+                        index.remove(old_value, pk)
+                    if new_value is not None:
+                        index.insert(new_value, pk)
+
+            # 存储记录
+            self.data[pk] = validated_record
+            count += 1
+
+        return count
+
     def get(self, pk: Any) -> Dict[str, Any]:
         """
         获取记录（支持懒加载）
@@ -1221,6 +1369,83 @@ class Storage:
             self._write_wal(3, table_name, pk)  # 3 = DELETE
         elif self.auto_flush:
             self.flush()
+
+    def bulk_insert(self, table_name: str, records: List[Dict[str, Any]]) -> List[Any]:
+        """
+        批量插入记录
+
+        Args:
+            table_name: 表名
+            records: 数据字典列表
+
+        Returns:
+            主键列表
+        """
+        if not records:
+            return []
+
+        table = self.get_table(table_name)
+
+        # 原生 SQL 模式：逐条走原生插入
+        if self._native_sql_mode and self._connector:
+            pks: List[Any] = []
+            for data in records:
+                pk = self._insert_native_sql(table_name, table, data)
+                pks.append(pk)
+            return pks
+
+        # 内存模式：批量插入
+        pks = table.bulk_insert(records)
+        self._dirty = True
+
+        # WAL 批量写入
+        if self._use_wal:
+            for pk in pks:
+                record = table.data.get(pk)
+                if record:
+                    self._write_wal(1, table_name, pk, record, table.columns)  # 1 = INSERT
+        elif self.auto_flush:
+            self.flush()
+
+        return pks
+
+    def bulk_update(self, table_name: str, updates: List[Tuple[Any, Dict[str, Any]]]) -> int:
+        """
+        批量更新记录
+
+        Args:
+            table_name: 表名
+            updates: (pk, data) 元组列表
+
+        Returns:
+            更新的记录数
+        """
+        if not updates:
+            return 0
+
+        table = self.get_table(table_name)
+
+        # 原生 SQL 模式：逐条走原生更新
+        if self._native_sql_mode and self._connector:
+            for pk, data in updates:
+                self._update_native_sql(table_name, table, pk, data)
+            return len(updates)
+
+        # 内存模式：批量更新
+        count = table.bulk_update(updates)
+        self._dirty = True
+
+        # WAL 批量写入
+        if self._use_wal:
+            for pk, _ in updates:
+                pk = table._normalize_pk(pk)
+                record = table.data.get(pk)
+                if record:
+                    self._write_wal(2, table_name, pk, record, table.columns)  # 2 = UPDATE
+        elif self.auto_flush:
+            self.flush()
+
+        return count
 
     def select(self, table_name: str, pk: Any) -> Dict[str, Any]:
         """

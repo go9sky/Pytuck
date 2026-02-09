@@ -1050,7 +1050,7 @@ session.rollback()  # Clears pending, but id=1 record still exists
 - [x] **ORM Event Hooks** - Model-level + Storage-level event callbacks
 - [x] **Relationship Prefetch** - Batch load related data, solving the N+1 problem
 - [x] **Query Index Optimization** - Automatically use indexes for range queries and sorting
-- [ ] **Bulk Operations** - bulk_insert / bulk_update API
+- [x] **Bulk Operations** - `bulk_insert` / `bulk_update` API for efficient batch inserts and updates
 
 ### Planned Engines
 

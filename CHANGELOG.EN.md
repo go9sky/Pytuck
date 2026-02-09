@@ -79,6 +79,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     stmt = select(User).order_by('age').limit(10)
     ```
 
+- **Bulk Operations (bulk_insert / bulk_update)**
+  - `Session.bulk_insert(instances)` — Batch insert model instance list, immediately writes to memory
+  - `Session.bulk_update(instances)` — Batch update model instance list, immediately writes to memory
+  - `CRUDBaseModel.bulk_insert(instances)` / `CRUDBaseModel.bulk_update(instances)` — Active Record style
+  - Batch PK allocation (pre-reserve ID ranges), batch index updates, batch WAL writes
+  - New bulk events: `before_bulk_insert` / `after_bulk_insert` / `before_bulk_update` / `after_bulk_update`
+  - **Difference from `session.add_all()`**: `add_all()` executes one-by-one during `commit()` with per-record events; `bulk_insert()` executes immediately in batch, skipping per-record events and select-back, offering better performance
+  - Example:
+    ```python
+    # Session layer
+    users = [User(name='Alice', age=20), User(name='Bob', age=22)]
+    session.bulk_insert(users)   # Immediately writes to memory, auto-assigns PKs
+    session.commit()             # Persists to disk
+
+    # Active Record layer
+    User.bulk_insert([User(name='Carol'), User(name='Dave')])
+
+    # Bulk update
+    for u in users:
+        u.age += 1
+    session.bulk_update(users)
+    ```
+
 ### Performance Benchmark (Query Index Optimization)
 
 > Test environment: 100,000 records, age field range 1-100, comparing No Index / HashIndex / SortedIndex
@@ -114,3 +137,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added relationship prefetch tests (23 test cases)
 - Added query index optimization tests (42 test cases)
 - Added index optimization benchmark script (`tests/benchmark/benchmark_index.py`)
+- Added bulk operations tests (34 test cases)

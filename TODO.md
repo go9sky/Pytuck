@@ -34,31 +34,13 @@
 - [x] ORM 事件钩子（Model 级 + Storage 级事件回调）
 - [x] 关系预取 API（prefetch，批量加载关联数据解决 N+1 问题）
 - [x] 查询索引优化（SortedIndex 范围查询加速 + order_by 索引排序 + Column 索引类型指定）
+- [x] 批量操作优化（`bulk_insert` / `bulk_update`，批量主键分配 + 批量索引更新 + 批量事件）
 
 ---
 
 ## 近期计划
 
-### 批量操作优化（bulk_insert / bulk_update）
-
-**目标**：提供高效的批量操作 API
-
-**现状**：当前逐条 insert 有循环开销（每条记录独立进行类型验证、主键分配、索引更新）。
-
-**预期 API**：
-```python
-# 批量插入
-session.bulk_insert(User, [
-    {'name': 'Alice', 'age': 20},
-    {'name': 'Bob', 'age': 22},
-])
-
-# 批量更新
-session.bulk_update(User, [
-    {'id': 1, 'age': 21},
-    {'id': 2, 'age': 23},
-])
-```
+（暂无）
 
 ---
 

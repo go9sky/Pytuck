@@ -8,7 +8,7 @@
 
 ---
 
-## [0.7.0] - 2026-02-07
+## [0.7.0] - 2026-02-09
 
 ### 新增
 
@@ -76,6 +76,29 @@
     stmt = select(User).order_by('age').limit(10)
     ```
 
+- **批量操作优化（bulk_insert / bulk_update）**
+  - `Session.bulk_insert(instances)` — 批量插入模型实例列表，立即写入内存
+  - `Session.bulk_update(instances)` — 批量更新模型实例列表，立即写入内存
+  - `CRUDBaseModel.bulk_insert(instances)` / `CRUDBaseModel.bulk_update(instances)` — Active Record 模式
+  - 批量主键分配（一次性预留 ID 范围）、批量索引更新、WAL 批量写入
+  - 新增批量事件：`before_bulk_insert` / `after_bulk_insert` / `before_bulk_update` / `after_bulk_update`
+  - **与 `session.add_all()` 的区别**：`add_all()` 在 `commit()` 时逐条执行并触发逐条事件；`bulk_insert()` 调用时立即批量执行，跳过逐条事件和 select 回读，性能更优
+  - 示例：
+    ```python
+    # Session 层
+    users = [User(name='Alice', age=20), User(name='Bob', age=22)]
+    session.bulk_insert(users)   # 立即写入内存，自动分配主键
+    session.commit()             # 持久化到磁盘
+
+    # Active Record 层
+    User.bulk_insert([User(name='Carol'), User(name='Dave')])
+
+    # 批量更新
+    for u in users:
+        u.age += 1
+    session.bulk_update(users)
+    ```
+
 ### 性能基准（查询索引优化）
 
 > 测试环境：100,000 条记录，age 字段范围 1-100，对比无索引 / HashIndex / SortedIndex
@@ -111,3 +134,4 @@
 - 添加关系预取测试（23 个测试用例）
 - 添加查询索引优化测试（42 个测试用例）
 - 添加索引优化性能基准测试脚本（`tests/benchmark/benchmark_index.py`）
+- 添加批量操作测试（34 个测试用例）

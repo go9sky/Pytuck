@@ -999,7 +999,7 @@ session.rollback()  # 清除 pending，但 id=1 的记录仍存在
 - [x] **ORM 事件钩子** - Model 级 + Storage 级事件回调
 - [x] **关系预取（prefetch）** - 批量加载关联数据，解决 N+1 问题
 - [x] **查询索引优化** - 自动利用索引加速范围查询和排序
-- [ ] **批量操作优化** - bulk_insert / bulk_update API
+- [x] **批量操作优化** - `bulk_insert` / `bulk_update` API，高效批量插入和更新
 
 ### 计划增加的引擎
 

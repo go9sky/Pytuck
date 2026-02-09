@@ -94,7 +94,8 @@ class XORCipher:
         """
         self.keystream = self._expand_key(key, 256)
 
-    def _expand_key(self, key: bytes, length: int) -> bytes:
+    @staticmethod
+    def _expand_key(key: bytes, length: int) -> bytes:
         """
         扩展密钥到指定长度
 

@@ -7,23 +7,237 @@ Pytuck ORM层
 """
 import sys
 from typing import (
-    Any, Dict, List, Optional, Type, Union, TYPE_CHECKING,
-    overload, Literal, Tuple, Generic, cast
+    Any, Callable, Dict, List, Optional, Tuple, Type, Union, TYPE_CHECKING,
+    overload, Literal, Generic, cast
 )
 from datetime import datetime, date, timedelta, timezone
 
 from ..common.exceptions import ValidationError, TypeConversionError, SchemaError
 from ..common.options import SyncOptions
-from ..common.types import RelationshipT, Column_Types
-from .types import TypeCode, TypeRegistry
+from ..common.typing import RelationshipT, ColumnTypes
+from .types import TypeRegistry
 
 if TYPE_CHECKING:
     from .storage import Storage
+    from .session import Session
     from ..query import Query, BinaryExpression
 
 
 # 无主键时使用的内部 rowid 保留键名
 PSEUDO_PK_NAME: str = '_pytuck_rowid'
+
+
+# ==================== 类型转换函数（模块级别） ====================
+
+def _convert_to_bool(value: Any) -> bool:
+    """
+    转换为布尔值
+
+    True: True, 1, '1', 'true', 'True', 'yes', 'Yes'
+    False: False, 0, '0', 'false', 'False', 'no', 'No', ''
+    """
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, int):
+        return value != 0
+    if isinstance(value, str):
+        lower_val = value.lower()
+        if lower_val in ('1', 'true', 'yes'):
+            return True
+        elif lower_val in ('0', 'false', 'no', ''):
+            return False
+        else:
+            raise TypeConversionError(
+                f"Cannot convert '{value}' to bool",
+                value=value,
+                target_type='bool'
+            )
+    raise TypeConversionError(
+        f"Cannot convert {type(value).__name__} to bool",
+        value=value,
+        target_type='bool'
+    )
+
+
+def _convert_to_bytes(value: Any) -> bytes:
+    """转换为字节类型"""
+    if isinstance(value, bytes):
+        return value
+    if isinstance(value, str):
+        return value.encode('utf-8')
+    if isinstance(value, (bytearray, memoryview)):
+        return bytes(value)
+    raise TypeConversionError(
+        f"Cannot convert {type(value).__name__} to bytes",
+        value=value,
+        target_type='bytes'
+    )
+
+
+def _convert_to_datetime(value: Any) -> datetime:
+    """
+    转换为 datetime
+
+    支持的格式：
+    - datetime 对象：直接返回
+    - str: ISO 8601 格式（如 '2024-01-15T10:30:00' 或 '2024-01-15T10:30:00+08:00'）
+    - int/float: Unix 时间戳（秒）
+    - date: 转换为当天 00:00:00
+    """
+    if isinstance(value, datetime):
+        return value
+    if isinstance(value, date):
+        return datetime.combine(value, datetime.min.time())
+    if isinstance(value, str):
+        # 尝试解析 ISO 格式
+        try:
+            # Python 3.7+ 的 fromisoformat 支持大部分 ISO 8601 格式
+            return datetime.fromisoformat(value)
+        except ValueError:
+            # 尝试带 Z 后缀的 UTC 格式
+            if value.endswith('Z'):
+                return datetime.fromisoformat(value[:-1]).replace(tzinfo=timezone.utc)
+            raise
+    if isinstance(value, (int, float)):
+        # Unix 时间戳
+        return datetime.fromtimestamp(value)
+    raise TypeConversionError(
+        f"Cannot convert {type(value).__name__} to datetime",
+        value=value,
+        target_type='datetime'
+    )
+
+
+def _convert_to_date(value: Any) -> date:
+    """
+    转换为 date
+
+    支持的格式：
+    - date 对象：直接返回
+    - datetime 对象：取日期部分
+    - str: ISO 格式（如 '2024-01-15'）
+    """
+    if isinstance(value, date) and not isinstance(value, datetime):
+        return value
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, str):
+        return date.fromisoformat(value)
+    raise TypeConversionError(
+        f"Cannot convert {type(value).__name__} to date",
+        value=value,
+        target_type='date'
+    )
+
+
+def _convert_to_timedelta(value: Any) -> timedelta:
+    """
+    转换为 timedelta
+
+    支持的格式：
+    - timedelta 对象：直接返回
+    - int/float: 秒数
+    - str: 'HH:MM:SS' 或 'D days, HH:MM:SS' 格式
+    """
+    if isinstance(value, timedelta):
+        return value
+    if isinstance(value, (int, float)):
+        return timedelta(seconds=value)
+    if isinstance(value, str):
+        # 尝试解析常见格式
+        parts = value.split(':')
+        if len(parts) == 3:
+            # HH:MM:SS 格式
+            hours, minutes, seconds = parts
+            return timedelta(
+                hours=int(hours),
+                minutes=int(minutes),
+                seconds=float(seconds)
+            )
+        elif len(parts) == 2:
+            # MM:SS 格式
+            minutes, seconds = parts
+            return timedelta(minutes=int(minutes), seconds=float(seconds))
+        # 尝试纯秒数
+        return timedelta(seconds=float(value))
+    raise TypeConversionError(
+        f"Cannot convert {type(value).__name__} to timedelta",
+        value=value,
+        target_type='timedelta'
+    )
+
+
+def _convert_to_list(value: Any) -> list:
+    """
+    转换为 list
+
+    支持的格式：
+    - list: 直接返回
+    - tuple: 转换为 list
+    - str: 尝试 JSON 解析
+    """
+    import json
+    if isinstance(value, list):
+        return value
+    if isinstance(value, tuple):
+        return list(value)
+    if isinstance(value, str):
+        result = json.loads(value)
+        if not isinstance(result, list):
+            raise TypeConversionError(
+                f"JSON string does not represent a list",
+                value=value,
+                target_type='list'
+            )
+        return result
+    raise TypeConversionError(
+        f"Cannot convert {type(value).__name__} to list",
+        value=value,
+        target_type='list'
+    )
+
+
+def _convert_to_dict(value: Any) -> dict:
+    """
+    转换为 dict
+
+    支持的格式：
+    - dict: 直接返回
+    - str: 尝试 JSON 解析
+    """
+    import json
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, str):
+        result = json.loads(value)
+        if not isinstance(result, dict):
+            raise TypeConversionError(
+                f"JSON string does not represent a dict",
+                value=value,
+                target_type='dict'
+            )
+        return result
+    raise TypeConversionError(
+        f"Cannot convert {type(value).__name__} to dict",
+        value=value,
+        target_type='dict'
+    )
+
+
+# 类型转换函数注册表
+# 将 Python 类型映射到对应的转换函数
+_TYPE_CONVERTERS: Dict[type, Callable[[Any], Any]] = {
+    bool: _convert_to_bool,
+    bytes: _convert_to_bytes,
+    int: int,
+    float: float,
+    str: str,
+    datetime: _convert_to_datetime,
+    date: _convert_to_date,
+    timedelta: _convert_to_timedelta,
+    list: _convert_to_list,
+    dict: _convert_to_dict,
+}
 
 
 class Column:
@@ -43,12 +257,12 @@ class Column:
                  '_attr_name', '_owner_class', 'strict']
 
     def __init__(self,
-                 col_type: Column_Types,
+                 col_type: ColumnTypes,
                  *,
                  name: Optional[str] = None,
                  nullable: bool = True,
                  primary_key: bool = False,
-                 index: bool = False,
+                 index: Union[bool, str] = False,
                  default: Any = None,
                  foreign_key: Optional[tuple] = None,
                  comment: Optional[str] = None,
@@ -61,7 +275,7 @@ class Column:
             name: 列名（可选，默认使用变量名）
             nullable: 是否可空
             primary_key: 是否为主键
-            index: 是否建立索引
+            index: 索引设置。False=不建索引，True/'hash'=哈希索引，'sorted'=有序索引
             default: 默认值
             foreign_key: 外键关系 (table_name, column_name)
             comment: 列备注/注释
@@ -71,7 +285,12 @@ class Column:
         self.col_type = col_type
         self.nullable = nullable
         self.primary_key = primary_key
-        self.index = index
+        # 验证索引类型
+        if isinstance(index, str) and index not in ('hash', 'sorted'):
+            raise ValidationError(
+                f"Unsupported index type: '{index}'. Use True, False, 'hash', or 'sorted'"
+            )
+        self.index: Union[bool, str] = index
         self.default = default
         self.foreign_key = foreign_key
         self.comment = comment
@@ -138,227 +357,19 @@ class Column:
                 f"got {type(value).__name__} (strict mode)"
             )
 
-        # 宽松模式：尝试类型转换
+        # 宽松模式：使用字典查找转换函数
         try:
-            if self.col_type == bool:
-                # 布尔类型特殊处理
-                return self._convert_to_bool(value)
-            elif self.col_type == bytes:
-                # bytes 类型特殊处理
-                return self._convert_to_bytes(value)
-            elif self.col_type == int:
-                # int 类型转换
-                return int(value)
-            elif self.col_type == float:
-                return float(value)
-            elif self.col_type == str:
-                return str(value)
-            elif self.col_type == datetime:
-                return self._convert_to_datetime(value)
-            elif self.col_type == date:
-                return self._convert_to_date(value)
-            elif self.col_type == timedelta:
-                return self._convert_to_timedelta(value)
-            elif self.col_type == list:
-                return self._convert_to_list(value)
-            elif self.col_type == dict:
-                return self._convert_to_dict(value)
+            converter = _TYPE_CONVERTERS.get(self.col_type)
+            if converter is not None:
+                return converter(value)
             else:
-                # 其他类型：尝试直接转换
+                # 回退：尝试直接调用类型构造函数
                 return self.col_type(value)  # type: ignore[call-arg]
         except (ValueError, TypeError) as e:
             raise ValidationError(
                 f"Column '{self.name}' Cannot convert {type(value).__name__} "
                 f"to {self.col_type.__name__}: {e}"
             )
-
-    def _convert_to_bool(self, value: Any) -> bool:
-        """
-        转换为布尔值
-
-        True: True, 1, '1', 'true', 'True', 'yes', 'Yes'
-        False: False, 0, '0', 'false', 'False', 'no', 'No', ''
-        """
-        if isinstance(value, bool):
-            return value
-        if isinstance(value, int):
-            return value != 0
-        if isinstance(value, str):
-            lower_val = value.lower()
-            if lower_val in ('1', 'true', 'yes'):
-                return True
-            elif lower_val in ('0', 'false', 'no', ''):
-                return False
-            else:
-                raise TypeConversionError(
-                    f"Cannot convert '{value}' to bool",
-                    value=value,
-                    target_type='bool'
-                )
-        raise TypeConversionError(
-            f"Cannot convert {type(value).__name__} to bool",
-            value=value,
-            target_type='bool'
-        )
-
-    def _convert_to_bytes(self, value: Any) -> bytes:
-        """转换为字节类型"""
-        if isinstance(value, bytes):
-            return value
-        if isinstance(value, str):
-            return value.encode('utf-8')
-        if isinstance(value, (bytearray, memoryview)):
-            return bytes(value)
-        raise TypeConversionError(
-            f"Cannot convert {type(value).__name__} to bytes",
-            value=value,
-            target_type='bytes'
-        )
-
-    def _convert_to_datetime(self, value: Any) -> datetime:
-        """
-        转换为 datetime
-
-        支持的格式：
-        - datetime 对象：直接返回
-        - str: ISO 8601 格式（如 '2024-01-15T10:30:00' 或 '2024-01-15T10:30:00+08:00'）
-        - int/float: Unix 时间戳（秒）
-        - date: 转换为当天 00:00:00
-        """
-        if isinstance(value, datetime):
-            return value
-        if isinstance(value, date):
-            return datetime.combine(value, datetime.min.time())
-        if isinstance(value, str):
-            # 尝试解析 ISO 格式
-            try:
-                # Python 3.7+ 的 fromisoformat 支持大部分 ISO 8601 格式
-                return datetime.fromisoformat(value)
-            except ValueError:
-                # 尝试带 Z 后缀的 UTC 格式
-                if value.endswith('Z'):
-                    return datetime.fromisoformat(value[:-1]).replace(tzinfo=timezone.utc)
-                raise
-        if isinstance(value, (int, float)):
-            # Unix 时间戳
-            return datetime.fromtimestamp(value)
-        raise TypeConversionError(
-            f"Cannot convert {type(value).__name__} to datetime",
-            value=value,
-            target_type='datetime'
-        )
-
-    def _convert_to_date(self, value: Any) -> date:
-        """
-        转换为 date
-
-        支持的格式：
-        - date 对象：直接返回
-        - datetime 对象：取日期部分
-        - str: ISO 格式（如 '2024-01-15'）
-        """
-        if isinstance(value, date) and not isinstance(value, datetime):
-            return value
-        if isinstance(value, datetime):
-            return value.date()
-        if isinstance(value, str):
-            return date.fromisoformat(value)
-        raise TypeConversionError(
-            f"Cannot convert {type(value).__name__} to date",
-            value=value,
-            target_type='date'
-        )
-
-    def _convert_to_timedelta(self, value: Any) -> timedelta:
-        """
-        转换为 timedelta
-
-        支持的格式：
-        - timedelta 对象：直接返回
-        - int/float: 秒数
-        - str: 'HH:MM:SS' 或 'D days, HH:MM:SS' 格式
-        """
-        if isinstance(value, timedelta):
-            return value
-        if isinstance(value, (int, float)):
-            return timedelta(seconds=value)
-        if isinstance(value, str):
-            # 尝试解析常见格式
-            parts = value.split(':')
-            if len(parts) == 3:
-                # HH:MM:SS 格式
-                hours, minutes, seconds = parts
-                return timedelta(
-                    hours=int(hours),
-                    minutes=int(minutes),
-                    seconds=float(seconds)
-                )
-            elif len(parts) == 2:
-                # MM:SS 格式
-                minutes, seconds = parts
-                return timedelta(minutes=int(minutes), seconds=float(seconds))
-            # 尝试纯秒数
-            return timedelta(seconds=float(value))
-        raise TypeConversionError(
-            f"Cannot convert {type(value).__name__} to timedelta",
-            value=value,
-            target_type='timedelta'
-        )
-
-    def _convert_to_list(self, value: Any) -> list:
-        """
-        转换为 list
-
-        支持的格式：
-        - list: 直接返回
-        - tuple: 转换为 list
-        - str: 尝试 JSON 解析
-        """
-        if isinstance(value, list):
-            return value
-        if isinstance(value, tuple):
-            return list(value)
-        if isinstance(value, str):
-            import json
-            result = json.loads(value)
-            if not isinstance(result, list):
-                raise TypeConversionError(
-                    f"JSON string does not represent a list",
-                    value=value,
-                    target_type='list'
-                )
-            return result
-        raise TypeConversionError(
-            f"Cannot convert {type(value).__name__} to list",
-            value=value,
-            target_type='list'
-        )
-
-    def _convert_to_dict(self, value: Any) -> dict:
-        """
-        转换为 dict
-
-        支持的格式：
-        - dict: 直接返回
-        - str: 尝试 JSON 解析
-        """
-        if isinstance(value, dict):
-            return value
-        if isinstance(value, str):
-            import json
-            result = json.loads(value)
-            if not isinstance(result, dict):
-                raise TypeConversionError(
-                    f"JSON string does not represent a dict",
-                    value=value,
-                    target_type='dict'
-                )
-            return result
-        raise TypeConversionError(
-            f"Cannot convert {type(value).__name__} to dict",
-            value=value,
-            target_type='dict'
-        )
 
     def __repr__(self) -> str:
         return f"Column(name='{self.name}', type={self.col_type.__name__}, pk={self.primary_key})"
@@ -475,8 +486,10 @@ class PureBaseModel:
     __relationships__: Dict[str, 'Relationship'] = {}
 
     def __init__(self, **kwargs: Any):
-        """初始化模型实例"""
-        raise NotImplementedError("This method should be overridden by declarative_base")
+        """初始化模型实例
+
+        - 此方法应由 declarative_base 方法来重写。
+        """
 
     def __setattr__(self, name: str, value: Any) -> None:
         """
@@ -486,18 +499,18 @@ class PureBaseModel:
         这样 session.flush()/commit() 就能检测到修改。
         """
         old_value = None
-        should_mark_dirty = False
+        session: Optional['Session'] = None
 
         if (hasattr(self.__class__, name) and
             isinstance(getattr(self.__class__, name), Column) and
-            hasattr(self, '_pytuck_session')):
+            hasattr(self, '_pytuck_session')
+        ):
             old_value = self.__dict__.get(name)
             session = getattr(self, '_pytuck_session')
-            should_mark_dirty = (session is not None and old_value != value)
 
         object.__setattr__(self, name, value)
 
-        if should_mark_dirty:
+        if session is not None and old_value != value:
             session._mark_dirty(self)
 
     # ==================== 列名映射辅助方法 ====================
@@ -1030,6 +1043,7 @@ def _create_pure_base(
 
         def __init__(self, **kwargs: Any):
             """初始化模型实例"""
+            super().__init__(**kwargs)
             for col_name, column in self.__columns__.items():
                 if col_name in kwargs:
                     value = column.validate(kwargs[col_name])
@@ -1052,6 +1066,7 @@ def _create_crud_base(
     sync_options: Optional[SyncOptions] = None
 ) -> Type[CRUDBaseModel]:
     """创建带 CRUD 方法的模型基类"""
+    from .event import event
 
     class DeclarativeCRUDBase(CRUDBaseModel):
         """声明式 CRUD 模型基类"""
@@ -1130,6 +1145,7 @@ def _create_crud_base(
         def __init__(self, **kwargs: Any):
             """初始化模型实例"""
             # CRUD 基类特有：跟踪是否从数据库加载
+            super().__init__(**kwargs)
             self._loaded_from_db = False
 
             for col_name, column in self.__columns__.items():
@@ -1149,14 +1165,6 @@ def _create_crud_base(
 
         def save(self) -> None:
             """保存记录（insert or update）"""
-            # 准备数据（使用 Column.name 作为存储键）
-            data = {}
-            for attr_name, column in self.__columns__.items():
-                value = getattr(self, attr_name, None)
-                # 使用 Column.name 作为存储键
-                db_col_name = column.name if column.name else attr_name
-                data[db_col_name] = value
-
             table_name = self.__tablename__
             assert table_name is not None, f"Model {self.__class__.__name__} must have __tablename__ defined"
 
@@ -1170,15 +1178,35 @@ def _create_crud_base(
 
             if pk_value is None or not self._loaded_from_db:
                 # Insert
+                event.dispatch_model(self.__class__, 'before_insert', self)
+
+                # 构建数据（在 before 事件之后，确保回调修改生效）
+                data = {}
+                for attr_name, column in self.__columns__.items():
+                    value = getattr(self, attr_name, None)
+                    db_col_name = column.name if column.name else attr_name
+                    data[db_col_name] = value
+
                 pk_value = storage.insert(table_name, data)
                 if pk_name:
                     setattr(self, pk_name, pk_value)
                 else:
                     setattr(self, '_pytuck_rowid', pk_value)
                 self._loaded_from_db = True
+                event.dispatch_model(self.__class__, 'after_insert', self)
             else:
                 # Update
+                event.dispatch_model(self.__class__, 'before_update', self)
+
+                # 构建数据（在 before 事件之后，确保回调修改生效）
+                data = {}
+                for attr_name, column in self.__columns__.items():
+                    value = getattr(self, attr_name, None)
+                    db_col_name = column.name if column.name else attr_name
+                    data[db_col_name] = value
+
                 storage.update(table_name, pk_value, data)
+                event.dispatch_model(self.__class__, 'after_update', self)
 
         def delete(self) -> None:
             """删除当前记录"""
@@ -1194,8 +1222,14 @@ def _create_crud_base(
             table_name = self.__tablename__
             assert table_name is not None, f"Model {self.__class__.__name__} must have __tablename__ defined"
 
+            # 触发 before_delete 事件
+            event.dispatch_model(self.__class__, 'before_delete', self)
+
             storage.delete(table_name, pk_value)
             self._loaded_from_db = False
+
+            # 触发 after_delete 事件
+            event.dispatch_model(self.__class__, 'after_delete', self)
 
         def refresh(self) -> None:
             """从数据库刷新数据"""
@@ -1227,6 +1261,103 @@ def _create_crud_base(
             instance = cls(**kwargs)
             instance.save()
             return instance
+
+        @classmethod
+        def bulk_insert(cls, instances: List['DeclarativeCRUDBase']) -> List[Any]:
+            """
+            批量插入实例（立即写入内存）
+
+            Args:
+                instances: 模型实例列表
+
+            Returns:
+                插入的主键列表
+            """
+            if not instances:
+                return []
+
+            # 触发 before_bulk_insert 事件
+            event.dispatch_model_bulk(cls, 'before_bulk_insert', instances)
+
+            # 构建数据字典列表
+            records: List[Dict[str, Any]] = []
+            for instance in instances:
+                data: Dict[str, Any] = {}
+                for attr_name, column in cls.__columns__.items():
+                    value = getattr(instance, attr_name, None)
+                    db_col_name = column.name if column.name else attr_name
+                    data[db_col_name] = value
+                records.append(data)
+
+            table_name = cls.__tablename__
+            assert table_name is not None, f"Model {cls.__name__} must have __tablename__ defined"
+
+            # 批量插入到 Storage
+            pks = storage.bulk_insert(table_name, records)
+
+            # 设置主键到实例
+            pk_name = cls.__primary_key__
+            for i, instance in enumerate(instances):
+                pk = pks[i]
+                if pk_name:
+                    setattr(instance, pk_name, pk)
+                else:
+                    setattr(instance, '_pytuck_rowid', pk)
+                instance._loaded_from_db = True
+
+            # 触发 after_bulk_insert 事件
+            event.dispatch_model_bulk(cls, 'after_bulk_insert', instances)
+
+            return pks
+
+        @classmethod
+        def bulk_update(cls, instances: List['DeclarativeCRUDBase']) -> int:
+            """
+            批量更新实例（立即写入内存，更新全部字段）
+
+            Args:
+                instances: 模型实例列表（必须已有主键）
+
+            Returns:
+                更新的记录数
+            """
+            if not instances:
+                return 0
+
+            # 触发 before_bulk_update 事件
+            event.dispatch_model_bulk(cls, 'before_bulk_update', instances)
+
+            table_name = cls.__tablename__
+            assert table_name is not None, f"Model {cls.__name__} must have __tablename__ defined"
+            pk_name = cls.__primary_key__
+
+            # 构建 (pk, data) 元组列表
+            updates: List[Tuple[Any, Dict[str, Any]]] = []
+            for instance in instances:
+                if pk_name:
+                    pk = getattr(instance, pk_name, None)
+                else:
+                    pk = getattr(instance, '_pytuck_rowid', None)
+
+                if pk is None:
+                    raise ValidationError(
+                        "Cannot bulk update instance without primary key or rowid"
+                    )
+
+                data: Dict[str, Any] = {}
+                for attr_name, column in cls.__columns__.items():
+                    value = getattr(instance, attr_name, None)
+                    db_col_name = column.name if column.name else attr_name
+                    data[db_col_name] = value
+                updates.append((pk, data))
+
+            # 批量更新到 Storage
+            count = storage.bulk_update(table_name, updates)
+
+            # 触发 after_bulk_update 事件
+            event.dispatch_model_bulk(cls, 'after_bulk_update', instances)
+
+            return count
 
         @classmethod
         def get(cls, pk: Any) -> Optional['DeclarativeCRUDBase']:

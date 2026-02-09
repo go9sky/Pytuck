@@ -46,14 +46,10 @@ def compute_hash(value: Any) -> int:
     if value is None:
         return 0
 
-    if isinstance(value, (int, float)):
-        return hash(value)
-    elif isinstance(value, str):
+    if isinstance(value, (int, float, str, bool)):
         return hash(value)
     elif isinstance(value, bytes):
         return int(hashlib.md5(value).hexdigest()[:16], 16)
-    elif isinstance(value, bool):
-        return hash(value)
     else:
         return hash(str(value))
 

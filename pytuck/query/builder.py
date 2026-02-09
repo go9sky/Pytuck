@@ -4,15 +4,26 @@ Pytuck 查询构建器
 提供链式查询API
 """
 
-from typing import Any, List, Optional, Tuple, Type, Generic, TYPE_CHECKING, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Generic, TYPE_CHECKING, Union
 
-from ..common.types import T
+from ..common.typing import T
 from ..common.exceptions import QueryError
 from ..core.orm import PSEUDO_PK_NAME
 
 if TYPE_CHECKING:
-    from ..core.orm import PureBaseModel, Column
+    from ..core.orm import Column
     from ..core.storage import Storage
+
+
+_OPERATOR_EVAL: Dict[str, Callable[[Any, Any], bool]] = {
+    '=': lambda x, y: x == y,
+    '>': lambda x, y: x > y,
+    '<': lambda x, y: x < y,
+    '>=': lambda x, y: x >= y,
+    '<=': lambda x, y: x <= y,
+    '!=': lambda x, y: x != y,
+    'IN': lambda x, y: x in y
+}
 
 
 class Condition:
@@ -26,7 +37,12 @@ class Condition:
             field: 字段名
             operator: 操作符 ('=', '>', '<', '>=', '<=', '!=', 'IN')
             value: 比较值
+
+        Raises:
+            QueryError: 如果操作符不被支持
         """
+        if operator not in _OPERATOR_EVAL:
+            raise QueryError(f"Unsupported operator: {operator}")
         self.field = field
         self.operator = operator
         self.value = value
@@ -43,25 +59,8 @@ class Condition:
         """
         if self.field not in record:
             return False
-
         field_value = record[self.field]
-
-        if self.operator == '=':
-            return bool(field_value == self.value)
-        elif self.operator == '>':
-            return bool(field_value > self.value)
-        elif self.operator == '<':
-            return bool(field_value < self.value)
-        elif self.operator == '>=':
-            return bool(field_value >= self.value)
-        elif self.operator == '<=':
-            return bool(field_value <= self.value)
-        elif self.operator == '!=':
-            return bool(field_value != self.value)
-        elif self.operator == 'IN':
-            return bool(field_value in self.value)
-        else:
-            raise QueryError(f"Unsupported operator: {self.operator}")
+        return bool(_OPERATOR_EVAL[self.operator](field_value, self.value))
 
     def __repr__(self) -> str:
         return f"Condition({self.field} {self.operator} {self.value})"
@@ -452,12 +451,6 @@ class Query(Generic[T]):
         """
         records = self._execute()
 
-        # 获取主键名（支持新旧两种风格）
-        pk_name = (
-            getattr(self.model_class, '__primary_key__', None) or
-            getattr(self.model_class, '_primary_key', 'id')
-        )
-
         # 转换为模型实例
         instances = []
         for record in records:
@@ -517,10 +510,18 @@ class Query(Generic[T]):
             raise QueryError(f"No table name defined for {self.model_class.__name__}")
 
         # 从存储引擎查询
-        records: List[dict] = storage.query(table_name, self._conditions)
+        if len(self._order_by_fields) == 1:
+            # 单列排序：下推给 Storage.query（可利用 SortedIndex 优化）
+            field, desc = self._order_by_fields[0]
+            records: List[dict] = storage.query(
+                table_name, self._conditions,
+                order_by=field, order_desc=desc
+            )
+        else:
+            records = storage.query(table_name, self._conditions)
 
         # 多列排序（从后往前排序，确保优先级正确）
-        if self._order_by_fields:
+        if len(self._order_by_fields) > 1:
             # 反向遍历，先按低优先级排序，再按高优先级排序
             # 利用 Python 排序的稳定性，最终实现多列排序
             for field, desc in reversed(self._order_by_fields):

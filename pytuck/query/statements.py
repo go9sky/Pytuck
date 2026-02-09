@@ -4,15 +4,14 @@ SQLAlchemy 2.0 风格的 Statement API
 提供 select, insert, update, delete 语句构建器
 """
 
-from typing import Any, Dict, List, Optional, Tuple, Type, Generic, TYPE_CHECKING, Union
+from typing import Any, Dict, List, Optional, Tuple, Type, Generic, TYPE_CHECKING
 from abc import ABC, abstractmethod
 
-from ..common.types import T
+from ..common.typing import T
 from ..common.exceptions import QueryError
 from ..core.orm import PSEUDO_PK_NAME
 
 if TYPE_CHECKING:
-    from ..core.orm import PureBaseModel, Column
     from .builder import BinaryExpression, LogicalExpression, ExpressionType
     from ..core.storage import Storage
 
@@ -61,6 +60,7 @@ class Select(Statement[T]):
         _order_by_fields: List of (field_name, desc) tuples for multi-column ordering
         _limit_value: Maximum number of records to return
         _offset_value: Number of records to skip
+        _options: List of query options (e.g., PrefetchOption)
     """
 
     def __init__(self, model_class: Type[T]) -> None:
@@ -69,6 +69,7 @@ class Select(Statement[T]):
         self._order_by_fields: List[Tuple[str, bool]] = []  # [(field, desc), ...]
         self._limit_value: Optional[int] = None
         self._offset_value: int = 0
+        self._options: List[Any] = []
 
     def where(self, *expressions: 'ExpressionType') -> 'Select[T]':
         """
@@ -166,9 +167,29 @@ class Select(Statement[T]):
         self._offset_value = n
         return self
 
+    def options(self, *opts: Any) -> 'Select[T]':
+        """
+        添加查询选项（如 prefetch）
+
+        Args:
+            *opts: 查询选项对象（如 prefetch('orders')）
+
+        Returns:
+            Select 对象（链式调用）
+
+        Example:
+            from pytuck import prefetch
+
+            stmt = select(User).options(prefetch('orders'))
+            result = session.execute(stmt)
+            users = result.all()  # orders 已批量加载
+        """
+        self._options.extend(opts)
+        return self
+
     def _execute(self, storage: 'Storage') -> List[Dict[str, Any]]:
         """执行查询，返回记录字典列表"""
-        from .builder import Condition, BinaryExpression, LogicalExpression, ConditionType
+        from .builder import BinaryExpression, LogicalExpression, ConditionType
 
         # 转换 Expression 为 Condition（支持 BinaryExpression 和 LogicalExpression）
         conditions: List[ConditionType] = []
@@ -184,10 +205,19 @@ class Select(Statement[T]):
         # 查询
         table_name = self.model_class.__tablename__
         assert table_name is not None, f"Model {self.model_class.__name__} must have __tablename__ defined"
-        records = storage.query(table_name, conditions)
+
+        if len(self._order_by_fields) == 1:
+            # 单列排序：下推给 Storage.query（可利用 SortedIndex 优化）
+            field, desc = self._order_by_fields[0]
+            records = storage.query(
+                table_name, conditions,
+                order_by=field, order_desc=desc
+            )
+        else:
+            records = storage.query(table_name, conditions)
 
         # 多列排序（从后往前排序，确保优先级正确）
-        if self._order_by_fields:
+        if len(self._order_by_fields) > 1:
             # 反向遍历，先按低优先级排序，再按高优先级排序
             # 利用 Python 排序的稳定性，最终实现多列排序
             for field, desc in reversed(self._order_by_fields):
@@ -293,7 +323,7 @@ class Update(Statement[T]):
 
     def _execute(self, storage: 'Storage') -> int:
         """执行更新，返回受影响的行数"""
-        from .builder import Condition, BinaryExpression, LogicalExpression, ConditionType
+        from .builder import BinaryExpression, LogicalExpression, ConditionType
 
         table_name = self.model_class.__tablename__
         assert table_name is not None, f"Model {self.model_class.__name__} must have __tablename__ defined"
@@ -398,7 +428,7 @@ class Delete(Statement[T]):
 
     def _execute(self, storage: 'Storage') -> int:
         """执行删除，返回受影响的行数"""
-        from .builder import Condition, BinaryExpression, LogicalExpression, ConditionType
+        from .builder import BinaryExpression, LogicalExpression, ConditionType
 
         table_name = self.model_class.__tablename__
         assert table_name is not None, f"Model {self.model_class.__name__} must have __tablename__ defined"

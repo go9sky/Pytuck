@@ -9,14 +9,15 @@ import json
 import sqlite3
 from datetime import datetime, date, timedelta
 from pathlib import Path
-from typing import Any, Dict, List, Iterator, Tuple, Optional, Generator, Type, TYPE_CHECKING, Sequence
+from typing import Any, Dict, List, Iterator, Tuple, Optional, Generator, Type, Union, TYPE_CHECKING, Sequence
 from contextlib import contextmanager
 
 from ..common.options import BackendOptions, SyncOptions, SyncResult
-from ..common.types import Column_Types
+from ..common.typing import ColumnTypes
 from ..common.utils import validate_sql_identifier
 from .orm import Column, PSEUDO_PK_NAME
-from .index import HashIndex
+from .index import BaseIndex, HashIndex, SortedIndex
+from .event import event
 from ..query import Condition, CompositeCondition, ConditionType
 from ..common.exceptions import (
     TableNotFoundError,
@@ -101,7 +102,7 @@ class Table:
         self.primary_key = primary_key  # None 表示无主键
         self.comment = comment
         self.data: Dict[Any, Dict[str, Any]] = {}  # {pk: record}
-        self.indexes: Dict[str, HashIndex] = {}  # {column_name: HashIndex}
+        self.indexes: Dict[str, BaseIndex] = {}  # {column_name: BaseIndex}
         self.next_id = 1
 
         # 懒加载支持
@@ -267,6 +268,154 @@ class Table:
         # 删除记录
         del self.data[pk]
 
+    def bulk_insert(self, records: List[Dict[str, Any]]) -> List[Any]:
+        """
+        批量插入记录
+
+        优化点：批量分配主键、批量验证字段、批量更新索引。
+
+        Args:
+            records: 记录字典列表
+
+        Returns:
+            插入的主键列表
+
+        Raises:
+            DuplicateKeyError: 主键重复
+            ValidationError: 字段验证失败
+        """
+        if not records:
+            return []
+
+        pks: List[Any] = []
+
+        # 第一阶段：批量分配主键
+        has_user_pk = self.primary_key and self.primary_key in self.columns
+        if has_user_pk:
+            pk_column = self.columns[self.primary_key]  # type: ignore[index]
+            auto_count = 0
+            # 先统计需要自动分配主键的数量
+            for record in records:
+                pk = record.get(self.primary_key)  # type: ignore[arg-type]
+                if pk is None:
+                    if pk_column.col_type == int:
+                        auto_count += 1
+                    else:
+                        raise ValidationError(
+                            f"Primary key '{self.primary_key}' must be provided",
+                            table_name=self.name,
+                            column_name=self.primary_key
+                        )
+            # 一次性预留主键范围
+            start_id = self.next_id
+            self.next_id += auto_count
+            auto_idx = 0
+
+            for record in records:
+                pk = record.get(self.primary_key)  # type: ignore[arg-type]
+                pk = self._normalize_pk(pk)
+                if pk is None:
+                    pk = start_id + auto_idx
+                    auto_idx += 1
+                    record[self.primary_key] = pk  # type: ignore[index]
+                else:
+                    record[self.primary_key] = pk  # type: ignore[index]
+                    if pk in self.data:
+                        raise DuplicateKeyError(self.name, pk)
+                # 检查已分配的主键是否与前面的冲突
+                if pk in self.data:
+                    raise DuplicateKeyError(self.name, pk)
+                pks.append(pk)
+        else:
+            # 无用户主键：批量分配 rowid
+            start_id = self.next_id
+            self.next_id += len(records)
+            for i in range(len(records)):
+                pks.append(start_id + i)
+
+        # 检查批次内主键无重复
+        if len(set(pks)) != len(pks):
+            # 找出重复的主键
+            seen: Dict[Any, int] = {}
+            for pk in pks:
+                if pk in seen:
+                    raise DuplicateKeyError(self.name, pk)
+                seen[pk] = 1
+
+        # 第二阶段：批量验证字段并存储记录
+        for i, record in enumerate(records):
+            pk = pks[i]
+            validated_record: Dict[str, Any] = {}
+            for col_name, column in self.columns.items():
+                value = record.get(col_name)
+                validated_value = column.validate(value)
+                validated_record[col_name] = validated_value
+            self.data[pk] = validated_record
+
+        # 第三阶段：批量更新索引
+        for col_name, index in self.indexes.items():
+            for i, pk in enumerate(pks):
+                value = self.data[pk].get(col_name)
+                if value is not None:
+                    index.insert(value, pk)
+
+        # 更新 next_id（处理手动指定的大主键）
+        for pk in pks:
+            if isinstance(pk, int) and pk >= self.next_id:
+                self.next_id = pk + 1
+
+        return pks
+
+    def bulk_update(self, updates: List[Tuple[Any, Dict[str, Any]]]) -> int:
+        """
+        批量更新记录
+
+        Args:
+            updates: (pk, data) 元组列表
+
+        Returns:
+            更新的记录数
+
+        Raises:
+            RecordNotFoundError: 记录不存在
+            ValidationError: 字段验证失败
+        """
+        if not updates:
+            return 0
+
+        count = 0
+
+        for pk, record in updates:
+            pk = self._normalize_pk(pk)
+            if pk not in self.data:
+                raise RecordNotFoundError(self.name, pk)
+
+            old_record = self.data[pk]
+
+            # 验证和处理字段
+            validated_record = old_record.copy()
+            for col_name, value in record.items():
+                if col_name in self.columns:
+                    column = self.columns[col_name]
+                    validated_record[col_name] = column.validate(value)
+
+            # 更新索引（先删除旧值，再插入新值）
+            for col_name, index in self.indexes.items():
+                old_value = old_record.get(col_name)
+                new_value = validated_record.get(col_name)
+
+                if old_value != new_value:
+                    if old_value is not None:
+                        index.remove(old_value, pk)
+                    if new_value is not None:
+                        index.insert(new_value, pk)
+
+            # 存储记录
+            self.data[pk] = validated_record
+            count += 1
+
+        return count
+
     def get(self, pk: Any) -> Dict[str, Any]:
         """
         获取记录（支持懒加载）
@@ -319,7 +468,7 @@ class Table:
         if pk not in self._pk_offsets:
             raise RecordNotFoundError(self.name, pk)
 
-        offset = self._pk_offsets[pk]
+        offset: int = self._pk_offsets[pk]  # type: ignore
 
         with open(self._data_file, 'rb') as f:
             f.seek(offset)
@@ -342,6 +491,10 @@ class Table:
         """
         为列创建索引
 
+        根据 Column.index 的值决定创建哪种索引：
+        - True 或 'hash'：创建 HashIndex（哈希索引，等值查询 O(1)）
+        - 'sorted'：创建 SortedIndex（有序索引，支持范围查询和排序）
+
         Args:
             column_name: 列名
 
@@ -355,8 +508,17 @@ class Table:
             # 索引已存在
             return
 
+        # 根据 Column.index 决定索引类型
+        column = self.columns[column_name]
+        index_type = column.index
+        if index_type is True:
+            index_type = 'hash'
+
         # 创建索引
-        index = HashIndex(column_name)
+        if index_type == 'sorted':
+            index: BaseIndex = SortedIndex(column_name)
+        else:
+            index = HashIndex(column_name)
 
         # 为现有数据建立索引
         for pk, record in self.data.items():
@@ -461,13 +623,13 @@ class Table:
             raise ColumnNotFoundError(self.name, column_name)
         self.columns[column_name].comment = comment
 
-    def update_column_index(self, column_name: str, index: bool) -> None:
+    def update_column_index(self, column_name: str, index: Union[bool, str]) -> None:
         """
         更新列的索引设置
 
         Args:
             column_name: 字段名（Column.name），而非 Python 属性名
-            index: 是否创建索引
+            index: 索引设置。False=不建索引，True/'hash'=哈希索引，'sorted'=有序索引
 
         Raises:
             ColumnNotFoundError: 列不存在
@@ -479,13 +641,22 @@ class Table:
         old_index = column.index
         column.index = index
 
-        if index and not old_index:
+        # 规范化新旧值用于比较
+        old_normalized = 'hash' if old_index is True else old_index
+        new_normalized = 'hash' if index is True else index
+
+        if new_normalized and not old_normalized:
             # 需要创建索引
             self.build_index(column_name)
-        elif not index and old_index:
+        elif not new_normalized and old_normalized:
             # 需要删除索引
             if column_name in self.indexes:
                 del self.indexes[column_name]
+        elif new_normalized and old_normalized and new_normalized != old_normalized:
+            # 索引类型改变，删旧建新
+            if column_name in self.indexes:
+                del self.indexes[column_name]
+            self.build_index(column_name)
 
     def __repr__(self) -> str:
         return f"Table(name='{self.name}', records={len(self.data)}, indexes={len(self.indexes)})"
@@ -496,7 +667,7 @@ class Storage:
 
     def __init__(
         self,
-        file_path: Optional[str] = None,
+        file_path: Optional[Union[str, Path]] = None,
         in_memory: bool = False,
         engine: str = 'binary',
         auto_flush: bool = False,
@@ -506,13 +677,17 @@ class Storage:
         初始化存储引擎
 
         Args:
-            file_path: 数据文件路径（None表示纯内存）
+            file_path: 数据文件路径，支持字符串或 Path 对象（None表示纯内存）
             in_memory: 是否纯内存模式
             engine: 后端引擎名称（'binary', 'json', 'csv', 'sqlite', 'excel', 'xml'）
             auto_flush: 是否自动刷新到磁盘
             backend_options: 强类型的后端配置选项对象（JsonBackendOptions, CsvBackendOptions等）
         """
-        self.file_path = file_path
+        # 路径统一处理：边界转换为 Path 对象
+        if file_path is not None and str(file_path) != '':
+            self.file_path: Optional[Path] = Path(file_path).expanduser()
+        else:
+            self.file_path = None
         self.in_memory: bool = in_memory or (file_path is None)
         self.engine_name = engine
         self.auto_flush = auto_flush
@@ -538,14 +713,14 @@ class Storage:
 
         # 初始化后端
         self.backend: Optional[StorageBackend] = None
-        if not self.in_memory and file_path:
+        if not self.in_memory and self.file_path:
             # 如果没有提供选项，使用默认选项
             if backend_options is None:
                 from ..common.options import get_default_backend_options
                 backend_options = get_default_backend_options(engine)
 
             from ..backends import get_backend
-            self.backend = get_backend(engine, file_path, backend_options)
+            self.backend = get_backend(engine, self.file_path, backend_options)
 
             # 如果文件存在，自动加载
             if self.backend.exists():
@@ -1002,7 +1177,7 @@ class Storage:
         self._connector.commit()
 
     @staticmethod
-    def _get_sql_type(col_type: Column_Types) -> str:
+    def _get_sql_type(col_type: ColumnTypes) -> str:
         """获取 Python 类型对应的 SQLite 类型"""
         type_mapping = {
             int: 'INTEGER',
@@ -1195,6 +1370,83 @@ class Storage:
         elif self.auto_flush:
             self.flush()
 
+    def bulk_insert(self, table_name: str, records: List[Dict[str, Any]]) -> List[Any]:
+        """
+        批量插入记录
+
+        Args:
+            table_name: 表名
+            records: 数据字典列表
+
+        Returns:
+            主键列表
+        """
+        if not records:
+            return []
+
+        table = self.get_table(table_name)
+
+        # 原生 SQL 模式：逐条走原生插入
+        if self._native_sql_mode and self._connector:
+            pks: List[Any] = []
+            for data in records:
+                pk = self._insert_native_sql(table_name, table, data)
+                pks.append(pk)
+            return pks
+
+        # 内存模式：批量插入
+        pks = table.bulk_insert(records)
+        self._dirty = True
+
+        # WAL 批量写入
+        if self._use_wal:
+            for pk in pks:
+                record = table.data.get(pk)
+                if record:
+                    self._write_wal(1, table_name, pk, record, table.columns)  # 1 = INSERT
+        elif self.auto_flush:
+            self.flush()
+
+        return pks
+
+    def bulk_update(self, table_name: str, updates: List[Tuple[Any, Dict[str, Any]]]) -> int:
+        """
+        批量更新记录
+
+        Args:
+            table_name: 表名
+            updates: (pk, data) 元组列表
+
+        Returns:
+            更新的记录数
+        """
+        if not updates:
+            return 0
+
+        table = self.get_table(table_name)
+
+        # 原生 SQL 模式：逐条走原生更新
+        if self._native_sql_mode and self._connector:
+            for pk, data in updates:
+                self._update_native_sql(table_name, table, pk, data)
+            return len(updates)
+
+        # 内存模式：批量更新
+        count = table.bulk_update(updates)
+        self._dirty = True
+
+        # WAL 批量写入
+        if self._use_wal:
+            for pk, _ in updates:
+                pk = table._normalize_pk(pk)
+                record = table.data.get(pk)
+                if record:
+                    self._write_wal(2, table_name, pk, record, table.columns)  # 2 = UPDATE
+        elif self.auto_flush:
+            self.flush()
+
+        return count
+
     def select(self, table_name: str, pk: Any) -> Dict[str, Any]:
         """
         查询单条记录
@@ -1328,7 +1580,7 @@ class Storage:
 
         for condition in simple_conditions:
             if condition.operator == '=' and condition.field in table.indexes:
-                # 使用索引查询
+                # 使用索引查询（等值）
                 index = table.indexes[condition.field]
                 pks = index.lookup(condition.value)
 
@@ -1336,6 +1588,29 @@ class Storage:
                     candidate_pks = pks
                 else:
                     # 取交集，缩小候选集
+                    candidate_pks = candidate_pks.intersection(pks)
+            elif (condition.operator in ('>', '>=', '<', '<=')
+                  and condition.field in table.indexes
+                  and table.indexes[condition.field].supports_range_query()):
+                # 使用有序索引范围查询
+                sorted_idx = table.indexes[condition.field]
+                min_val, max_val = None, None
+                include_min, include_max = True, True
+
+                if condition.operator == '>':
+                    min_val, include_min = condition.value, False
+                elif condition.operator == '>=':
+                    min_val, include_min = condition.value, True
+                elif condition.operator == '<':
+                    max_val, include_max = condition.value, False
+                elif condition.operator == '<=':
+                    max_val, include_max = condition.value, True
+
+                pks = sorted_idx.range_query(min_val, max_val, include_min, include_max)
+
+                if candidate_pks is None:
+                    candidate_pks = pks
+                else:
                     candidate_pks = candidate_pks.intersection(pks)
             else:
                 # 无索引的条件保留后续过滤
@@ -1346,53 +1621,132 @@ class Storage:
             candidate_pks = set(table.data.keys())
             remaining_simple_conditions = simple_conditions
 
-        # 过滤记录
-        results = []
-        for pk in candidate_pks:
-            if pk in table.data:
+        # 检查是否可以使用索引排序
+        use_index_order = (
+            order_by
+            and order_by in table.indexes
+            and table.indexes[order_by].supports_range_query()
+        )
+
+        if use_index_order:
+            # 使用有序索引排序：按索引顺序遍历，同时过滤 + 分页，可提前停止
+            assert order_by is not None  # use_index_order 为 True 时 order_by 必定非 None
+            sorted_idx = table.indexes[order_by]
+            assert isinstance(sorted_idx, SortedIndex)
+            ordered_pks = sorted_idx.get_sorted_pks(reverse=order_desc)
+
+            # 索引中不包含 None 值的记录，需要额外处理
+            # 收集 None 值记录的 pk（不在索引中的候选记录）
+            indexed_pk_set = set(ordered_pks)
+            none_value_pks = [pk for pk in candidate_pks if pk not in indexed_pk_set]
+
+            # 过滤 None 值记录
+            none_results: List[Dict[str, Any]] = []
+            if none_value_pks:
+                for pk in none_value_pks:
+                    if pk not in table.data:
+                        continue
+                    record = table.data[pk]
+                    if not all(cond.evaluate(record) for cond in remaining_simple_conditions):
+                        continue
+                    if not all(cond.evaluate(record) for cond in composite_conditions):
+                        continue
+                    record_copy = record.copy()
+                    if not table.primary_key:
+                        record_copy[PSEUDO_PK_NAME] = pk
+                    none_results.append(record_copy)
+
+            results: List[Dict[str, Any]] = []
+            skipped = 0
+
+            def _append_with_paging(rec: Dict[str, Any]) -> bool:
+                """追加记录并处理分页，返回是否已达到 limit"""
+                nonlocal skipped
+                if offset > 0 and skipped < offset:
+                    skipped += 1
+                    return False
+                results.append(rec)
+                return limit is not None and len(results) >= limit
+
+            if order_desc:
+                # 降序：None 排在最前
+                for rec in none_results:
+                    if _append_with_paging(rec):
+                        return results
+            # 有值记录按索引排序
+            for pk in ordered_pks:
+                if pk not in candidate_pks:
+                    continue
+                if pk not in table.data:
+                    continue
                 record = table.data[pk]
-                # 评估简单条件
                 if not all(cond.evaluate(record) for cond in remaining_simple_conditions):
                     continue
-                # 评估复合条件（OR/AND/NOT）
                 if not all(cond.evaluate(record) for cond in composite_conditions):
                     continue
 
                 record_copy = record.copy()
-                # 无主键表：注入内部 rowid
                 if not table.primary_key:
                     record_copy[PSEUDO_PK_NAME] = pk
-                results.append(record_copy)
 
-        # 排序
-        if order_by and order_by in table.columns:
-            def sort_key(record: Dict[str, Any]) -> tuple:
-                """
-                排序键函数
+                if _append_with_paging(record_copy):
+                    return results
 
-                排序规则：
-                - None 值在升序时排在最后，降序时排在最前
-                - 使用元组 (优先级, 值) 实现：优先级 0 表示有值，1 表示 None
-                """
-                value = record.get(order_by)
-                # 处理 None 值：升序时 None 排在最后 (1, 0)，降序时排在最前 (0, 0)
-                if value is None:
-                    return (1, 0) if not order_desc else (0, 0)
-                return (0, value) if not order_desc else (1, value)
+            if not order_desc:
+                # 升序：None 排在最后
+                for rec in none_results:
+                    if _append_with_paging(rec):
+                        return results
 
-            try:
-                results.sort(key=sort_key, reverse=order_desc)
-            except TypeError:
-                # 如果比较失败（比如混合类型），按字符串排序
-                results.sort(key=lambda r: str(r.get(order_by, '')), reverse=order_desc)
+            return results
+        else:
+            # 常规路径：遍历 candidate_pks → 过滤 → 排序 → 分页
+            results = []
+            for pk in candidate_pks:
+                if pk in table.data:
+                    record = table.data[pk]
+                    # 评估简单条件
+                    if not all(cond.evaluate(record) for cond in remaining_simple_conditions):
+                        continue
+                    # 评估复合条件（OR/AND/NOT）
+                    if not all(cond.evaluate(record) for cond in composite_conditions):
+                        continue
 
-        # 分页
-        if offset > 0:
-            results = results[offset:]
-        if limit is not None and limit > 0:
-            results = results[:limit]
+                    record_copy = record.copy()
+                    # 无主键表：注入内部 rowid
+                    if not table.primary_key:
+                        record_copy[PSEUDO_PK_NAME] = pk
+                    results.append(record_copy)
 
-        return results
+            # 排序
+            if order_by and order_by in table.columns:
+                def sort_key(_record: Dict[str, Any]) -> tuple:
+                    """
+                    排序键函数
+
+                    排序规则：
+                    - None 值在升序时排在最后，降序时排在最前
+                    - 使用元组 (优先级, 值) 实现：优先级 0 表示有值，1 表示 None
+                    """
+                    value = _record.get(order_by)
+                    # 处理 None 值：升序时 None 排在最后 (1, 0)，降序时排在最前 (0, 0)
+                    if value is None:
+                        return (1, 0) if not order_desc else (0, 0)
+                    return (0, value) if not order_desc else (1, value)
+
+                try:
+                    results.sort(key=sort_key, reverse=order_desc)
+                except TypeError:
+                    # 如果比较失败（比如混合类型），按字符串排序
+                    results.sort(key=lambda r: str(r.get(order_by, '')), reverse=order_desc)
+
+            # 分页
+            if offset > 0:
+                results = results[offset:]
+            if limit is not None and limit > 0:
+                results = results[:limit]
+
+            return results
 
     def _query_native_sql(
         self,
@@ -1489,7 +1843,6 @@ class Storage:
                 params.append(child.value)
         else:
             # AND 或 OR
-            connector_str = ' AND ' if condition.operator == 'AND' else ' OR '
             for child in condition.conditions:
                 if isinstance(child, CompositeCondition):
                     child_sql, child_params = self._compile_composite_condition(child)
@@ -1779,6 +2132,7 @@ class Storage:
     def flush(self) -> None:
         """强制写入磁盘"""
         if self.backend and self._dirty:
+            event.dispatch_storage(self, 'before_flush')
             self.backend.save(self.tables)
             self._dirty = False
             # 重置 WAL 计数器（checkpoint 会清空 WAL）
@@ -1787,6 +2141,7 @@ class Storage:
             # 首次保存 binary 引擎后，启用 WAL 模式
             if self.engine_name == 'binary' and not self._use_wal:
                 self._init_wal_mode()
+            event.dispatch_storage(self, 'after_flush')
 
     def close(self) -> None:
         """关闭数据库"""

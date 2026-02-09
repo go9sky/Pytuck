@@ -66,6 +66,8 @@ from .core import (
 )
 from .core import Storage
 from .core import Session
+from .core import event
+from .core import prefetch
 from .query import Query, BinaryExpression
 from .query import select, insert, update, delete
 from .query import or_, and_, not_
@@ -112,6 +114,12 @@ __all__ = [
     'Session',            # 会话管理
     'Column',             # 列定义
     'Relationship',       # 关系定义
+
+    # 事件系统
+    'event',              # 事件管理器
+
+    # 关系预取
+    'prefetch',           # 批量预取关联数据
 
     # 类型定义（用于类型注解）
     'PureBaseModel',      # 纯模型基类类型

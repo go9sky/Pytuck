@@ -26,7 +26,7 @@
 - **SQLAlchemy 2.0 风格 API** - 现代化的查询构建器（`select()`, `insert()`, `update()`, `delete()`）
 - **泛型类型提示** - 完整的泛型支持，IDE智能提示精确到具体模型类型（`List[User]` 而非 `List[PureBaseModel]`）
 - **Pythonic 查询语法** - 使用原生 Python 运算符构建查询（`User.age >= 18`）
-- **索引优化** - 哈希索引加速查询
+- **索引优化** - 哈希索引和有序索引加速查询，范围查询和排序自动利用索引
 - **类型安全** - 自动类型验证和转换（宽松/严格模式），支持 10 种字段类型
 - **关联关系** - 支持一对多和多对一关联，延迟加载+自动缓存
 - **独立数据模型** - Session 关闭后仍可访问，像 Pydantic 一样使用
@@ -551,12 +551,23 @@ session.commit()
 ```python
 class Student(Base):
     __tablename__ = 'students'
-    name = Column(str, index=True)  # 创建索引
+    name = Column(str, index=True)           # 哈希索引（等值查询加速）
+    age = Column(int, index='sorted')         # 有序索引（范围查询+排序加速）
 
-# 索引查询（自动优化）
+# 等值查询（使用哈希索引）
 stmt = select(Student).filter_by(name='Bob')
 result = session.execute(stmt)
 bob = result.first()
+
+# 范围查询（自动使用有序索引）
+stmt = select(Student).where(Student.age >= 18, Student.age < 30)
+result = session.execute(stmt)
+adults = result.all()
+
+# 排序查询（自动使用有序索引，无需全量排序）
+stmt = select(Student).order_by('age').limit(10)
+result = session.execute(stmt)
+youngest = result.all()
 ```
 
 ### 查询操作符
@@ -871,7 +882,6 @@ Pytuck 是一个轻量级嵌入式数据库，设计目标是简单易用。以�
 |------|------|
 | **无 JOIN 支持** | 仅支持单表查询，不支持多表关联查询 |
 | **无聚合函数** | 不支持 COUNT, SUM, AVG, MIN, MAX 等 |
-| **无关系加载** | 不支持延迟加载和预加载关联对象 |
 | **全量保存** | 非二进制/SQLite 后端每次保存完整重写文件 |
 | **无嵌套事务** | 仅支持单层事务，不支持嵌套 |
 
@@ -985,28 +995,21 @@ session.rollback()  # 清除 pending，但 id=1 的记录仍存在
 
 > 📋 详细开发计划请参阅 [TODO.md](./TODO.md)
 
-- [ ] **Web UI 界面支持** - 为独立 Web UI 库提供 API 支持
-- [ ] **ORM 事件钩子系统** - 基于 SQLAlchemy 事件模式的完整事件系统
-- [ ] **JOIN 支持** - 多表关联查询
-- [ ] **聚合函数** - COUNT, SUM, AVG, MIN, MAX 等
-- [ ] **关系延迟加载** - 优化关联数据加载性能
-- [ ] **并发访问支持** - 多进程/线程安全访问
+- [x] **Web UI 数据浏览器** - 已发布为独立项目 [pytuck-view](https://github.com/pytuck/pytuck-view)（`pip install pytuck-view`）
+- [x] **ORM 事件钩子** - Model 级 + Storage 级事件回调
+- [x] **关系预取（prefetch）** - 批量加载关联数据，解决 N+1 问题
+- [x] **查询索引优化** - 自动利用索引加速范围查询和排序
+- [x] **批量操作优化** - `bulk_insert` / `bulk_update` API，高效批量插入和更新
 
 ### 计划增加的引擎
 
-- [ ] DuckDB - 分析型数据库引擎
-- [ ] TinyDB - 纯 Python 文档数据库
-- [ ] PyDbLite3 - 纯 Python 内存数据库
-- [ ] diskcache - 基于磁盘的缓存引擎
+- [ ] DuckDB - 嵌入式分析型数据库
+- [ ] LMDB - 高性能嵌入式键值数据库
 
 ### 计划中的优化
 
 - [ ] 非二进制后端增量保存（当前每次保存完整重写）
-- [ ] Binary 引擎 Compaction（空间回收）机制
-- [ ] 使用 `tempfile` 模块改进临时文件处理安全性
-- [ ] 大数据集的流式读写支持
-- [ ] SQLite 后端连接池
-- [ ] 关联关系和延迟加载增强
+- [ ] Binary 加密懒加载兼容（分块加密方案）
 
 ## 安装方式
 

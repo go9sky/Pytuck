@@ -31,7 +31,7 @@ def _validate_zip_password(password: Optional[str]) -> None:
             )
 
 
-@dataclass(slots=True)
+@dataclass
 class SqliteConnectorOptions:
     """SQLite 连接器配置选项"""
     check_same_thread: bool = True  # 检查同一线程
@@ -43,7 +43,7 @@ class SqliteConnectorOptions:
 ConnectorOptions = Union[SqliteConnectorOptions]
 
 
-@dataclass(slots=True)
+@dataclass
 class JsonBackendOptions:
     """JSON 后端配置选项"""
     indent: Optional[int] = None  # 缩进空格数
@@ -51,7 +51,7 @@ class JsonBackendOptions:
     impl: Optional[str] = None  # 指定JSON库名：'orjson', 'ujson', 'json' 等
 
 
-@dataclass(slots=True)
+@dataclass
 class CsvBackendOptions:
     """CSV 后端配置选项"""
     encoding: str = 'utf-8-sig'  # 字符编码（默认带 BOM，兼容 Excel）
@@ -66,27 +66,27 @@ class CsvBackendOptions:
         object.__setattr__(self, name, value)
 
 
-@dataclass(slots=True)
+@dataclass
 class SqliteBackendOptions(SqliteConnectorOptions):
     """SQLite 后端配置选项"""
     use_native_sql: bool = True  # 使用原生 SQL 模式，直接执行 SQL 而非全量加载/保存
 
 
-@dataclass(slots=True)
+@dataclass
 class ExcelBackendOptions:
     """Excel 后端配置选项"""
     read_only: bool = False  # 只读，只读情况下显著提升读取性能，但不可修改数据
     hide_metadata_sheets: bool = True  # 是否隐藏元数据工作表（_metadata 和 _pytuck_tables），默认隐藏
 
 
-@dataclass(slots=True)
+@dataclass
 class XmlBackendOptions:
     """XML 后端配置选项"""
     encoding: str = 'utf-8'  # 字符编码
     pretty_print: bool = True  # 是否格式化输出
 
 
-@dataclass(slots=True)
+@dataclass
 class BinaryBackendOptions:
     """Binary 后端配置选项"""
     lazy_load: bool = False  # 是否懒加载（只加载 schema 和索引，按需读取数据）
@@ -132,7 +132,7 @@ def get_default_connector_options(db_type: str) -> ConnectorOptions:
 # ========== Schema 同步选项 ==========
 
 
-@dataclass(slots=True)
+@dataclass
 class SyncOptions:
     """Schema 同步选项
 

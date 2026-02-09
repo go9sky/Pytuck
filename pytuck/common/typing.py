@@ -34,5 +34,5 @@ RelationshipT = TypeVar('RelationshipT')
 '''
 
 
-Column_Types = Type[Union[int, float, str, bool, bytes, datetime, date, timedelta, list, dict]]
+ColumnTypes = Type[Union[int, float, str, bool, bytes, datetime, date, timedelta, list, dict]]
 '''字段类型，python中的类型'''

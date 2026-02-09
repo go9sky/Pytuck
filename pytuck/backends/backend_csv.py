@@ -260,7 +260,8 @@ class CSVBackend(StorageBackend):
 
         return table
 
-    def _serialize_record(self, record: Dict[str, Any], columns: Dict[str, 'Column']) -> Dict[str, str]:
+    @staticmethod
+    def _serialize_record(record: Dict[str, Any], columns: Dict[str, 'Column']) -> Dict[str, str]:
         """序列化记录（处理特殊类型）"""
         result = {}
         for key, value in record.items():
@@ -280,7 +281,8 @@ class CSVBackend(StorageBackend):
                 result[key] = str(serialized) if serialized is not None else ''
         return result
 
-    def _deserialize_record(self, record_data: Dict[str, str], columns: Dict[str, 'Column']) -> Dict[str, Any]:
+    @staticmethod
+    def _deserialize_record(record_data: Dict[str, str], columns: Dict[str, 'Column']) -> Dict[str, Any]:
         """反序列化记录"""
         result: Dict[str, Any] = {}
         for key, value in record_data.items():

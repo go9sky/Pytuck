@@ -4,17 +4,18 @@ Session - 会话管理器
 提供类似 SQLAlchemy 的 Session 模式，统一管理数据库操作。
 """
 
-from typing import Any, Dict, List, Optional, Type, Tuple, TYPE_CHECKING, Union, Generator, overload
+from typing import Any, Dict, List, Optional, Type, Tuple, Union, Generator, overload
 from contextlib import contextmanager
 
-from ..common.types import T
-from ..common.exceptions import QueryError, TransactionError
+from ..common.typing import T
+from ..common.exceptions import QueryError, TransactionError, ValidationError
 from ..common.options import SyncOptions, SyncResult
-from ..query.builder import Query, BinaryExpression, LogicalExpression
+from ..query.builder import Query, BinaryExpression
 from ..query.result import Result, CursorResult
 from ..query.statements import Statement, Insert, Select, Update, Delete
 from .storage import Storage
 from .orm import PureBaseModel, Column, PSEUDO_PK_NAME
+from .event import event
 
 
 class Session:
@@ -121,6 +122,9 @@ class Session:
             table_name = instance.__tablename__
             assert table_name is not None, f"Model {instance.__class__.__name__} must have __tablename__ defined"
 
+            # 触发 before_insert 事件（可在回调中修改实例字段）
+            event.dispatch_model(instance.__class__, 'before_insert', instance)
+
             # 构建要插入的数据（使用 Column.name 作为存储键）
             data = {}
             for attr_name, column in instance.__columns__.items():
@@ -152,6 +156,9 @@ class Session:
             # 注册到标识映射（使用统一的方法，设置 session 引用）
             self._register_instance(instance)
 
+            # 触发 after_insert 事件（实例已有 pk，已刷新）
+            event.dispatch_model(instance.__class__, 'after_insert', instance)
+
         # 2. 处理待更新对象
         for instance in self._dirty_objects:
             table_name = instance.__tablename__
@@ -162,6 +169,9 @@ class Session:
                 pk = getattr(instance, pk_name)
             else:
                 pk = getattr(instance, '_pytuck_rowid', None)
+
+            # 触发 before_update 事件（可在回调中修改实例字段）
+            event.dispatch_model(instance.__class__, 'before_update', instance)
 
             # 构建要更新的数据（使用 Column.name 作为存储键）
             data = {}
@@ -183,6 +193,9 @@ class Session:
                     attr_name = instance._column_to_attr_name(db_col_name) or db_col_name
                     object.__setattr__(instance, attr_name, value)
 
+            # 触发 after_update 事件（实例已刷新）
+            event.dispatch_model(instance.__class__, 'after_update', instance)
+
         # 3. 处理待删除对象
         for instance in self._deleted_objects:
             table_name = instance.__tablename__
@@ -194,6 +207,9 @@ class Session:
             else:
                 pk = getattr(instance, '_pytuck_rowid', None)
 
+            # 触发 before_delete 事件
+            event.dispatch_model(instance.__class__, 'before_delete', instance)
+
             # 从数据库删除
             self.storage.delete(table_name, pk)
 
@@ -204,6 +220,9 @@ class Session:
                 key = (instance.__class__, (PSEUDO_PK_NAME, pk))
             if key in self._identity_map:
                 del self._identity_map[key]
+
+            # 触发 after_delete 事件（已从数据库和 identity map 移除）
+            event.dispatch_model(instance.__class__, 'after_delete', instance)
 
         # 清空待处理列表
         self._new_objects.clear()
@@ -228,6 +247,138 @@ class Session:
         self._dirty_objects.clear()
         self._deleted_objects.clear()
         self._identity_map.clear()
+
+    def bulk_insert(self, instances: List[PureBaseModel]) -> List[Any]:
+        """
+        批量插入模型实例（立即写入内存）
+
+        调用时直接写入 Storage 内存，commit() 仅负责 auto_flush 磁盘持久化。
+        触发 before_bulk_insert / after_bulk_insert 事件，不触发逐条事件。
+
+        与 add_all() 的区别：
+        - add_all() 将实例标记为待插入，commit() 时逐条写入
+        - bulk_insert() 立即批量写入 Storage，性能更优
+
+        Args:
+            instances: 模型实例列表（必须是同一模型类）
+
+        Returns:
+            插入的主键列表
+
+        Raises:
+            ValidationError: 包含不同模型类
+            DuplicateKeyError: 主键重复
+        """
+        if not instances:
+            return []
+
+        # 验证：所有实例必须是同一模型类
+        model_class = instances[0].__class__
+        for inst in instances[1:]:
+            if inst.__class__ is not model_class:
+                raise ValidationError(
+                    f"All instances must be the same model class. "
+                    f"Expected {model_class.__name__}, got {inst.__class__.__name__}"
+                )
+
+        table_name = model_class.__tablename__
+        assert table_name is not None, f"Model {model_class.__name__} must have __tablename__ defined"
+
+        # 触发 before_bulk_insert 事件
+        event.dispatch_model_bulk(model_class, 'before_bulk_insert', instances)
+
+        # 构建数据字典列表
+        records: List[Dict[str, Any]] = []
+        for instance in instances:
+            data: Dict[str, Any] = {}
+            for attr_name, column in instance.__columns__.items():
+                value = getattr(instance, attr_name, None)
+                if value is not None:
+                    db_col_name = column.name if column.name else attr_name
+                    data[db_col_name] = value
+            records.append(data)
+
+        # 批量插入到 Storage
+        pks = self.storage.bulk_insert(table_name, records)
+
+        # 设置主键到实例 + 注册到 identity map
+        pk_name = model_class.__primary_key__
+        for i, instance in enumerate(instances):
+            pk = pks[i]
+            if pk_name:
+                setattr(instance, pk_name, pk)
+            else:
+                setattr(instance, '_pytuck_rowid', pk)
+            self._register_instance(instance)
+
+        # 触发 after_bulk_insert 事件
+        event.dispatch_model_bulk(model_class, 'after_bulk_insert', instances)
+
+        return pks
+
+    def bulk_update(self, instances: List[PureBaseModel]) -> int:
+        """
+        批量更新模型实例（立即写入内存，更新全部字段）
+
+        调用时直接写入 Storage 内存，commit() 仅负责 auto_flush 磁盘持久化。
+        触发 before_bulk_update / after_bulk_update 事件，不触发逐条事件。
+
+        Args:
+            instances: 模型实例列表（必须是同一模型类，且已有主键）
+
+        Returns:
+            更新的记录数
+
+        Raises:
+            ValidationError: 包含不同模型类或缺少主键
+            RecordNotFoundError: 某条记录不存在
+        """
+        if not instances:
+            return 0
+
+        # 验证：所有实例必须是同一模型类
+        model_class = instances[0].__class__
+        for inst in instances[1:]:
+            if inst.__class__ is not model_class:
+                raise ValidationError(
+                    f"All instances must be the same model class. "
+                    f"Expected {model_class.__name__}, got {inst.__class__.__name__}"
+                )
+
+        table_name = model_class.__tablename__
+        assert table_name is not None, f"Model {model_class.__name__} must have __tablename__ defined"
+        pk_name = model_class.__primary_key__
+
+        # 触发 before_bulk_update 事件
+        event.dispatch_model_bulk(model_class, 'before_bulk_update', instances)
+
+        # 构建 (pk, data) 元组列表
+        updates: List[Tuple[Any, Dict[str, Any]]] = []
+        for instance in instances:
+            if pk_name:
+                pk = getattr(instance, pk_name, None)
+            else:
+                pk = getattr(instance, '_pytuck_rowid', None)
+
+            if pk is None:
+                raise ValidationError(
+                    "Cannot bulk update instance without primary key or rowid"
+                )
+
+            data: Dict[str, Any] = {}
+            for attr_name, column in instance.__columns__.items():
+                value = getattr(instance, attr_name, None)
+                db_col_name = column.name if column.name else attr_name
+                data[db_col_name] = value
+            updates.append((pk, data))
+
+        # 批量更新到 Storage
+        count = self.storage.bulk_update(table_name, updates)
+
+        # 触发 after_bulk_update 事件
+        event.dispatch_model_bulk(model_class, 'after_bulk_update', instances)
+
+        return count
 
     def get(self, model_class: Type[T], pk: Any) -> Optional[T]:
         """
@@ -305,7 +456,7 @@ class Session:
         except Exception:
             return None
 
-    def refresh(self, instance: T) -> None:
+    def refresh(self, instance: PureBaseModel) -> None:
         """
         从数据库刷新实例的所有属性
 
@@ -396,7 +547,9 @@ class Session:
         if isinstance(statement, Select):
             records = statement._execute(self.storage)
             # 传递 session 引用给 Result，用于自动注册实例
-            return Result(records, statement.model_class, 'select', session=self)
+            # 传递 options（如 prefetch 选项）给 Result
+            return Result(records, statement.model_class, 'select', session=self,
+                          options=getattr(statement, '_options', []))
 
         elif isinstance(statement, Insert):
             pk = statement._execute(self.storage)
@@ -433,9 +586,6 @@ class Session:
         from ..query.statements import Select, Insert, Update, Delete
         from ..query.compiler import QueryCompiler
         from ..query.result import Result, CursorResult
-        import json
-        from datetime import datetime, date, timedelta
-        from .types import TypeRegistry
 
         compiler = QueryCompiler()
 
@@ -445,7 +595,6 @@ class Session:
         if isinstance(statement, Select):
             # 编译并执行 SELECT
             if compiler.can_compile(statement):
-                compiled = compiler.compile(statement)
 
                 # 从编译后的 SQL 中提取 WHERE 部分
                 # 使用 connector 的 query_rows 方法
@@ -479,12 +628,14 @@ class Session:
 
                 # 反序列化记录
                 records = [self._deserialize_record(row, table.columns) for row in rows]
-                return Result(records, statement.model_class, 'select', session=self)
+                return Result(records, statement.model_class, 'select', session=self,
+                              options=getattr(statement, '_options', []))
 
             else:
                 # 回退到内存执行
                 records = statement._execute(self.storage)
-                return Result(records, statement.model_class, 'select', session=self)
+                return Result(records, statement.model_class, 'select', session=self,
+                              options=getattr(statement, '_options', []))
 
         elif isinstance(statement, Insert):
             # 编译并执行 INSERT
@@ -568,7 +719,6 @@ class Session:
 
         elif isinstance(statement, Delete):
             # 编译并执行 DELETE
-            table = self.storage.get_table(statement.model_class.__tablename__)
             pk_attr_name = statement.model_class.__primary_key__
 
             # 获取主键的 Column.name
@@ -605,7 +755,8 @@ class Session:
                 details={'statement_type': type(statement).__name__}
             )
 
-    def _deserialize_record(self, record: dict, columns: dict) -> dict:
+    @staticmethod
+    def _deserialize_record(record: dict, columns: dict) -> dict:
         """
         反序列化数据库记录
 
@@ -660,8 +811,8 @@ class Session:
                 self._identity_map[key] = instance
 
         # 设置实例的 session 引用，用于脏跟踪
-        setattr(instance, '_pytuck_session', self)
-        setattr(instance, '_pytuck_state', 'persistent')
+        instance._pytuck_session = self
+        instance._pytuck_state = 'persistent'
 
     def _get_from_identity_map(self, model_class: Type[T], pk: Any) -> Optional[T]:
         """
@@ -687,7 +838,7 @@ class Session:
         if instance not in self._dirty_objects and instance not in self._new_objects:
             self._dirty_objects.append(instance)
 
-    def merge(self, instance: T) -> T:
+    def merge(self, instance: PureBaseModel) -> PureBaseModel:
         """
         合并一个 detached 实例到会话中
 
@@ -764,7 +915,7 @@ class Session:
 
     def query(self, model_class: Type[T]) -> Query[T]:
         """
-        创建查询构建器（SQLAlchemy 1.4 风格，不推荐）
+        创建查询构建器（SQLAlchemy 1.4 风格，不推荐，但也不警告）
 
         ⚠️ 不推荐使用：请改用 session.execute(select(...)) 风格
 
@@ -774,7 +925,7 @@ class Session:
             result = session.execute(stmt)
             users = result.all()
 
-        旧写法（仍然支持）：
+        旧写法（将依旧持续支持）：
             users = session.query(User).filter(User.age >= 18).all()
 
         Args:
@@ -783,12 +934,6 @@ class Session:
         Returns:
             Query 对象
         """
-        import warnings
-        warnings.warn(
-            "session.query() is deprecated. Use session.execute(select(...)) instead.",
-            DeprecationWarning,
-            stacklevel=2
-        )
         return Query(model_class, self.storage)
 
     @contextmanager
@@ -838,7 +983,8 @@ class Session:
 
     # ==================== Schema 操作（面向模型） ====================
 
-    def _resolve_table_name(self, model_or_table: Union[Type[PureBaseModel], str]) -> str:
+    @staticmethod
+    def _resolve_table_name(model_or_table: Union[Type[PureBaseModel], str]) -> str:
         """
         解析表名
 
@@ -872,7 +1018,8 @@ class Session:
         Returns:
             SyncResult: 同步结果
 
-        Example:
+        Example::
+
             from pytuck import SyncOptions
 
             result = session.sync_schema(User)

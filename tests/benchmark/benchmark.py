@@ -13,7 +13,6 @@ Pytuck 性能基准测试
 """
 
 import gc
-import os
 import sys
 import time
 import argparse
@@ -22,7 +21,7 @@ import platform
 import tempfile
 import multiprocessing as mp
 from concurrent.futures import ProcessPoolExecutor
-from typing import Dict, List, Any, Optional, Tuple
+from typing import Dict, List, Any, Optional, Tuple, Union
 from datetime import datetime
 from pathlib import Path
 
@@ -178,16 +177,16 @@ def format_size(bytes_size: int) -> str:
         return f"{bytes_size / (1024 * 1024):.2f}MB"
 
 
-def get_file_size(path: str) -> int:
+def get_file_size(path: Union[str, Path]) -> int:
     """获取文件或目录大小"""
-    if os.path.isfile(path):
-        return os.path.getsize(path)
-    elif os.path.isdir(path):
+    p = Path(path)
+    if p.is_file():
+        return p.stat().st_size
+    elif p.is_dir():
         total = 0
-        for dirpath, dirnames, filenames in os.walk(path):
-            for f in filenames:
-                fp = os.path.join(dirpath, f)
-                total += os.path.getsize(fp)
+        for f in p.rglob('*'):
+            if f.is_file():
+                total += f.stat().st_size
         return total
     return 0
 
@@ -229,16 +228,19 @@ class EngineBenchmark:
             'xml': '.xml',
         }
         ext = extensions.get(engine_name, '.db')
-        self.file_path = os.path.join(temp_dir, f'benchmark_{engine_name}{ext}')
+        self.file_path: Path = Path(temp_dir) / f'benchmark_{engine_name}{ext}'
 
     def setup_database(self, record_count: int) -> Tuple['Storage', 'Session', type]:
         """创建数据库和模型"""
         # 清理已存在的文件
-        if os.path.exists(self.file_path):
-            if os.path.isdir(self.file_path):
-                shutil.rmtree(self.file_path)
+        if self.file_path.exists():
+            if self.file_path.is_dir():
+                shutil.rmtree(str(self.file_path))
             else:
-                os.remove(self.file_path)
+                try:
+                    self.file_path.unlink()
+                except FileNotFoundError:
+                    pass
 
         # 创建存储
         db = Storage(file_path=self.file_path, engine=self.engine_name)
@@ -623,10 +625,9 @@ def run_benchmarks(
     if keep_files:
         temp_dir = Path(__file__).parent / 'benchmark_output'
         temp_dir.mkdir(exist_ok=True)
-        temp_dir = str(temp_dir)
         print(f"测试文件将保存到: {temp_dir}")
     else:
-        temp_dir = str(mktemp_dir_project(prefix='pytuck_benchmark_'))
+        temp_dir = mktemp_dir_project(prefix='pytuck_benchmark_')
 
     try:
         print("=" * 60)
@@ -662,7 +663,7 @@ def run_benchmarks(
             actual_workers = workers if workers else min(len(available_engines), mp.cpu_count())
 
             tasks = [
-                (engine_name, temp_dir, record_count, extended, memtest)
+                (engine_name, str(temp_dir), record_count, extended, memtest)
                 for engine_name, display_name, deps in available_engines
             ]
 
@@ -692,7 +693,7 @@ def run_benchmarks(
     finally:
         # 清理临时文件（如果不保留）
         if not keep_files:
-            shutil.rmtree(temp_dir, ignore_errors=True)
+            shutil.rmtree(str(temp_dir), ignore_errors=True)
 
     return all_results
 
@@ -975,6 +976,13 @@ def parse_args():
         default=None,
         help='并行工作进程数（默认: CPU核心数）'
     )
+    parser.add_argument(
+        '--output-json',
+        type=str,
+        default=None,
+        metavar='FILE',
+        help='将结果输出为 JSON 文件'
+    )
     return parser.parse_args()
 
 
@@ -1018,6 +1026,21 @@ def main():
     print("\n" + "=" * 60)
     print("基准测试完成!")
     print("=" * 60)
+
+    # JSON 文件输出
+    if args.output_json:
+        import json
+        output_path = Path(args.output_json)
+        output_data = {
+            'timestamp': datetime.now().isoformat(),
+            'system': platform.system(),
+            'python_version': platform.python_version(),
+            'record_count': args.count,
+            'results': results,
+        }
+        with open(str(output_path), 'w', encoding='utf-8') as f:
+            json.dump(output_data, f, indent=2, ensure_ascii=False)
+        print(f"\n结果已保存到: {output_path}")
 
     return results
 

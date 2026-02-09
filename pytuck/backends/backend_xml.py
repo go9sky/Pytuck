@@ -62,7 +62,7 @@ class XMLBackend(StorageBackend):
                 self._save_table_to_xml(root, table_name, table)
 
             # 写入文件（原子性）
-            tree = etree.ElementTree(root)
+            tree: etree._ElementTree = etree.ElementTree(root)  # type: ignore
             tree.write(
                 str(temp_path),
                 pretty_print=self.options.pretty_print,
@@ -116,7 +116,8 @@ class XMLBackend(StorageBackend):
         if self.exists():
             self.file_path.unlink()
 
-    def _save_table_to_xml(self, root: Any, table_name: str, table: 'Table') -> None:
+    @staticmethod
+    def _save_table_to_xml(root: Any, table_name: str, table: 'Table') -> None:
         """保存单个表到XML"""
         from lxml import etree
 
@@ -178,7 +179,8 @@ class XMLBackend(StorageBackend):
                 else:
                     field_elem.text = str(value)
 
-    def _load_table_from_xml(self, table_elem: Any) -> 'Table':
+    @staticmethod
+    def _load_table_from_xml(table_elem: Any) -> 'Table':
         """从XML加载单个表"""
         from ..core.storage import Table
         from ..core.orm import Column

@@ -6,12 +6,14 @@ Pytuck 类型系统
 
 from abc import ABC, abstractmethod
 from enum import IntEnum
-from typing import Any, Type, Tuple
+from typing import Any, Callable, Tuple, Dict, Type
 import struct
 import json
+import base64
 from datetime import datetime, date, timedelta, timezone
 
 from ..common.exceptions import SerializationError
+from ..common.typing import ColumnTypes
 
 
 class TypeCode(IntEnum):
@@ -295,10 +297,131 @@ class DictCodec(TypeCodec):
         return value, 4 + length
 
 
+# ========== 文本序列化函数 ==========
+
+def _serialize_bytes(value: Any) -> str:
+    """序列化 bytes 为 base64 字符串"""
+    return base64.b64encode(value).decode('ascii')
+
+
+def _serialize_datetime(value: Any) -> str:
+    """序列化 datetime 为 ISO 格式字符串"""
+    return value.isoformat()
+
+
+def _serialize_date(value: Any) -> str:
+    """序列化 date 为 ISO 格式字符串"""
+    return value.isoformat()
+
+
+def _serialize_timedelta(value: Any) -> float:
+    """序列化 timedelta 为总秒数"""
+    return value.total_seconds()
+
+
+def _serialize_json(value: Any) -> str:
+    """序列化 list/dict 为 JSON 字符串"""
+    return json.dumps(value, ensure_ascii=False)
+
+
+# 文本序列化函数注册表
+_TEXT_SERIALIZERS: Dict[type, Callable[[Any], Any]] = {
+    bytes: _serialize_bytes,
+    datetime: _serialize_datetime,
+    date: _serialize_date,
+    timedelta: _serialize_timedelta,
+    list: _serialize_json,
+    dict: _serialize_json,
+}
+
+
+# ========== 文本反序列化函数 ==========
+
+def _deserialize_bytes(value: Any) -> bytes:
+    """反序列化 bytes"""
+    if isinstance(value, bytes):
+        return value
+    return base64.b64decode(value)
+
+
+def _deserialize_datetime(value: Any) -> datetime:
+    """反序列化 datetime"""
+    if isinstance(value, datetime):
+        return value
+    return datetime.fromisoformat(value)
+
+
+def _deserialize_date(value: Any) -> date:
+    """反序列化 date"""
+    if isinstance(value, date) and not isinstance(value, datetime):
+        return value
+    if isinstance(value, datetime):
+        return value.date()
+    return date.fromisoformat(value)
+
+
+def _deserialize_timedelta(value: Any) -> timedelta:
+    """反序列化 timedelta"""
+    if isinstance(value, timedelta):
+        return value
+    return timedelta(seconds=float(value))
+
+
+def _deserialize_list(value: Any) -> list:
+    """反序列化 list"""
+    if isinstance(value, list):
+        return value
+    return json.loads(value)
+
+
+def _deserialize_dict(value: Any) -> dict:
+    """反序列化 dict"""
+    if isinstance(value, dict):
+        return value
+    return json.loads(value)
+
+
+def _deserialize_bool(value: Any) -> bool:
+    """反序列化 bool"""
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.lower() in ('true', '1', 'yes')
+    return bool(value)
+
+
+def _deserialize_int(value: Any) -> int:
+    """反序列化 int"""
+    if isinstance(value, int) and not isinstance(value, bool):
+        return value
+    return int(value)
+
+
+def _deserialize_float(value: Any) -> float:
+    """反序列化 float"""
+    if isinstance(value, float):
+        return value
+    return float(value)
+
+
+# 文本反序列化函数注册表
+_TEXT_DESERIALIZERS: Dict[Type, Callable[[Any], Any]] = {
+    bytes: _deserialize_bytes,
+    datetime: _deserialize_datetime,
+    date: _deserialize_date,
+    timedelta: _deserialize_timedelta,
+    list: _deserialize_list,
+    dict: _deserialize_dict,
+    bool: _deserialize_bool,
+    int: _deserialize_int,
+    float: _deserialize_float,
+}
+
+
 class TypeRegistry:
     """类型注册表"""
 
-    _codecs = {
+    _codecs: Dict[ColumnTypes, Tuple[TypeCode, TypeCodec]] = {
         int: (TypeCode.INT, IntCodec()),
         str: (TypeCode.STR, StrCodec()),
         float: (TypeCode.FLOAT, FloatCodec()),
@@ -311,7 +434,7 @@ class TypeRegistry:
         dict: (TypeCode.DICT, DictCodec()),
     }
 
-    _type_code_to_type = {
+    _type_code_to_type: Dict[TypeCode, ColumnTypes] = {
         TypeCode.INT: int,
         TypeCode.STR: str,
         TypeCode.FLOAT: float,
@@ -325,14 +448,14 @@ class TypeRegistry:
     }
 
     @classmethod
-    def get_codec(cls, col_type: Type) -> Tuple[TypeCode, TypeCodec]:
+    def get_codec(cls, col_type: ColumnTypes) -> Tuple[TypeCode, TypeCodec]:
         """获取类型的编解码器"""
         if col_type not in cls._codecs:
             raise SerializationError(f"Unsupported type: {col_type}")
         return cls._codecs[col_type]
 
     @classmethod
-    def get_type_from_code(cls, type_code: TypeCode) -> Type:
+    def get_type_from_code(cls, type_code: TypeCode) -> ColumnTypes:
         """根据类型编码获取Python类型"""
         if type_code not in cls._type_code_to_type:
             raise SerializationError(f"Unknown type code: {type_code}")
@@ -345,7 +468,7 @@ class TypeRegistry:
         return cls.get_codec(py_type)
 
     @classmethod
-    def register(cls, py_type: Type, type_code: TypeCode, codec: TypeCodec) -> None:
+    def register(cls, py_type: ColumnTypes, type_code: TypeCode, codec: TypeCodec) -> None:
         """注册自定义类型"""
         cls._codecs[py_type] = (type_code, codec)
         cls._type_code_to_type[type_code] = py_type
@@ -353,7 +476,7 @@ class TypeRegistry:
     # ========== 文本格式序列化支持 ==========
 
     # 类型名称映射（用于文本格式存储）
-    _type_names = {
+    _type_names: Dict[ColumnTypes, str] = {
         int: 'int',
         str: 'str',
         float: 'float',
@@ -370,7 +493,7 @@ class TypeRegistry:
     _name_to_type = {v: k for k, v in _type_names.items()}
 
     @classmethod
-    def get_type_name(cls, col_type: Type) -> str:
+    def get_type_name(cls, col_type: ColumnTypes) -> str:
         """获取类型的字符串名称
 
         Args:
@@ -382,7 +505,7 @@ class TypeRegistry:
         return cls._type_names.get(col_type, 'str')
 
     @classmethod
-    def get_type_by_name(cls, name: str) -> Type:
+    def get_type_by_name(cls, name: str) -> ColumnTypes:
         """根据名称获取类型
 
         Args:
@@ -394,7 +517,7 @@ class TypeRegistry:
         return cls._name_to_type.get(name, str)
 
     @classmethod
-    def serialize_for_text(cls, value: Any, col_type: Type) -> Any:
+    def serialize_for_text(cls, value: Any, col_type: ColumnTypes) -> Any:
         """序列化值为文本格式存储
 
         将 Python 值转换为适合文本格式（JSON、CSV、Excel、XML）存储的形式。
@@ -406,29 +529,17 @@ class TypeRegistry:
         Returns:
             序列化后的值（可能是字符串、数字或 None）
         """
-        import base64
-
         if value is None:
             return None
 
-        if col_type == bytes:
-            return base64.b64encode(value).decode('ascii')
-        elif col_type == datetime:
-            return value.isoformat()
-        elif col_type == date:
-            return value.isoformat()
-        elif col_type == timedelta:
-            return value.total_seconds()
-        elif col_type == list:
-            return json.dumps(value, ensure_ascii=False)
-        elif col_type == dict:
-            return json.dumps(value, ensure_ascii=False)
-        else:
-            # int, str, float, bool 保持原样
-            return value
+        serializer = _TEXT_SERIALIZERS.get(col_type)
+        if serializer is not None:
+            return serializer(value)
+        # int, str, float, bool 保持原样
+        return value
 
     @classmethod
-    def deserialize_from_text(cls, value: Any, col_type: Type) -> Any:
+    def deserialize_from_text(cls, value: Any, col_type: ColumnTypes) -> Any:
         """从文本格式反序列化值
 
         将文本格式存储的值转换回 Python 类型。
@@ -440,60 +551,11 @@ class TypeRegistry:
         Returns:
             反序列化后的 Python 值
         """
-        import base64
-
         if value is None or value == '':
             return None
 
-        if col_type == bytes:
-            if isinstance(value, bytes):
-                return value
-            return base64.b64decode(value)
-
-        elif col_type == datetime:
-            if isinstance(value, datetime):
-                return value
-            return datetime.fromisoformat(value)
-
-        elif col_type == date:
-            if isinstance(value, date) and not isinstance(value, datetime):
-                return value
-            if isinstance(value, datetime):
-                return value.date()
-            return date.fromisoformat(value)
-
-        elif col_type == timedelta:
-            if isinstance(value, timedelta):
-                return value
-            return timedelta(seconds=float(value))
-
-        elif col_type == list:
-            if isinstance(value, list):
-                return value
-            return json.loads(value)
-
-        elif col_type == dict:
-            if isinstance(value, dict):
-                return value
-            return json.loads(value)
-
-        elif col_type == bool:
-            if isinstance(value, bool):
-                return value
-            if isinstance(value, str):
-                return value.lower() in ('true', '1', 'yes')
-            return bool(value)
-
-        elif col_type == int:
-            if isinstance(value, int) and not isinstance(value, bool):
-                return value
-            return int(value)
-
-        elif col_type == float:
-            if isinstance(value, float):
-                return value
-            return float(value)
-
-        else:
-            # str 或其他类型
-            return value
+        deserializer = _TEXT_DESERIALIZERS.get(col_type)
+        if deserializer is not None:
+            return deserializer(value)
+        # str 或其他类型保持原样
+        return value

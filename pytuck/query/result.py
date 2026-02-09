@@ -6,12 +6,11 @@ Result - 查询结果包装器
 
 from typing import Any, Dict, List, Optional, Type, Generic, TYPE_CHECKING
 
-from ..common.types import T
+from ..common.typing import T
 from ..common.exceptions import QueryError, UnsupportedOperationError
 from ..core.orm import PSEUDO_PK_NAME
 
 if TYPE_CHECKING:
-    from ..core.orm import PureBaseModel
     from ..core.session import Session
 
 
@@ -139,25 +138,30 @@ class Result(Generic[T]):
         _session: Session 实例，用于 identity map 管理
     """
 
-    def __init__(self, records: List[Dict[str, Any]], model_class: Type[T], operation: str = 'select', session: Optional['Session'] = None) -> None:
+    def __init__(self, records: List[Dict[str, Any]], model_class: Type[T], operation: str = 'select', session: Optional['Session'] = None, options: Optional[List[Any]] = None) -> None:
         """
         Args:
             records: 查询结果（字典列表）
             model_class: 模型类
             operation: 操作类型 ('select', 'insert', 'update', 'delete')
             session: Session 实例，用于 identity map 管理
+            options: 查询选项列表（如 PrefetchOption）
         """
         self._records = records
         self._model_class = model_class
         self._operation = operation
         self._session = session
         self._scalar_result = _ScalarResult(records, model_class, session)
+        self._options: List[Any] = options or []
 
     def all(self) -> List[T]:
         """返回所有结果为模型实例列表"""
         if self._operation != 'select':
             raise UnsupportedOperationError("all() not supported for non-select operations")
-        return self._scalar_result.all()
+        instances = self._scalar_result.all()
+        # 执行预取选项
+        self._apply_prefetch(instances)
+        return instances
 
     def first(self) -> Optional[T]:
         """返回第一个结果为模型实例"""
@@ -180,6 +184,20 @@ class Result(Generic[T]):
     def rowcount(self) -> int:
         """返回结果数量"""
         return len(self._records)
+
+    def _apply_prefetch(self, instances: List[T]) -> None:
+        """
+        对查询结果执行预取选项
+
+        Args:
+            instances: 模型实例列表
+        """
+        if not instances or not self._options:
+            return
+        from ..core.prefetch import _do_prefetch, PrefetchOption
+        for opt in self._options:
+            if isinstance(opt, PrefetchOption):
+                _do_prefetch(instances, *opt.rel_names)
 
 
 class CursorResult(Result[T]):

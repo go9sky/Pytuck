@@ -12,6 +12,7 @@ from typing import Any, Dict, List, Tuple, Optional, Type
 from .base import DatabaseConnector
 from ..common.options import SqliteConnectorOptions
 from ..common.exceptions import DatabaseConnectionError, TableNotFoundError
+from ..common.typing import ColumnTypes
 from ..core.types import TypeRegistry
 
 
@@ -36,7 +37,7 @@ class SQLiteConnector(DatabaseConnector):
     DB_TYPE = 'sqlite'
     REQUIRED_DEPENDENCIES: List[str] = []  # sqlite3 是内置模块
 
-    TYPE_TO_SQL: Dict[Type, str] = {
+    TYPE_TO_SQL: Dict[ColumnTypes, str] = {
         # 基础类型
         int: 'INTEGER',
         str: 'TEXT',
@@ -51,7 +52,7 @@ class SQLiteConnector(DatabaseConnector):
         dict: 'TEXT',        # JSON 字符串存储
     }
 
-    SQL_TO_TYPE: Dict[str, Type] = {
+    SQL_TO_TYPE: Dict[str, ColumnTypes] = {
         # 整数类型
         'INTEGER': int,
         'INT': int,
@@ -107,8 +108,9 @@ class SQLiteConnector(DatabaseConnector):
         if self.options.isolation_level is not None:
             connect_kwargs['isolation_level'] = self.options.isolation_level
 
-        self.conn = sqlite3.connect(self.db_path, **connect_kwargs)
-        self.conn.row_factory = sqlite3.Row
+        conn = sqlite3.connect(self.db_path, **connect_kwargs)
+        conn.row_factory = sqlite3.Row
+        self.conn = conn
 
     def close(self) -> None:
         """关闭连接"""
@@ -504,7 +506,8 @@ class SQLiteConnector(DatabaseConnector):
         if self.conn is not None:
             self.conn.commit()
 
-    def _serialize_value(self, value: Any) -> Any:
+    @staticmethod
+    def _serialize_value(value: Any) -> Any:
         """
         序列化值为 SQLite 兼容格式
 

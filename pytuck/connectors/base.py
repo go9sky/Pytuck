@@ -5,10 +5,11 @@ Pytuck 数据库连接器抽象基类
 """
 
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Tuple, Optional, Type
+from typing import Any, Dict, List, Tuple, Optional
 
 from ..common.options import ConnectorOptions
 from ..common.exceptions import UnsupportedOperationError
+from ..common.typing import ColumnTypes
 
 
 class DatabaseConnector(ABC):
@@ -41,10 +42,10 @@ class DatabaseConnector(ABC):
     REQUIRED_DEPENDENCIES: List[str] = []
 
     # Python 类型到 SQL 类型的映射
-    TYPE_TO_SQL: Dict[Type, str] = {}
+    TYPE_TO_SQL: Dict[ColumnTypes, str] = {}
 
     # SQL 类型到 Python 类型的映射
-    SQL_TO_TYPE: Dict[str, Type] = {}
+    SQL_TO_TYPE: Dict[str, ColumnTypes] = {}
 
     def __init__(self, db_path: str, options: ConnectorOptions):
         """

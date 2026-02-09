@@ -11,39 +11,130 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [0.6.3] - 2026-02-03
+## [0.7.0] - 2026-02-07
 
 ### Added
 
-- **CSV Backend ZIP Password Protection**
-  - Added `CsvBackendOptions.password` option to create encrypted ZIP files
-  - Uses ZipCrypto encryption (pure Python, no external dependencies)
-  - Generated encrypted ZIP is compatible with WinRAR, 7-Zip and other tools
+- **ORM Event Hooks**
+  - Model-level events: `before_insert`/`after_insert`, `before_update`/`after_update`, `before_delete`/`after_delete`
+  - Storage-level events: `before_flush`/`after_flush`
+  - Supports both decorator and functional registration
   - Example:
     ```python
-    from pytuck.common.options import CsvBackendOptions
+    from pytuck import event
 
-    # Create encrypted CSV storage
-    opts = CsvBackendOptions(password="my_password")
-    db = Storage(file_path="data.zip", engine="csv", backend_options=opts)
+    @event.listens_for(User, 'before_insert')
+    def set_timestamp(instance):
+        instance.created_at = datetime.now()
+
+    # Functional registration
+    event.listen(User, 'after_update', audit_changes)
+
+    # Storage-level events
+    event.listen(db, 'before_flush', lambda storage: print("flushing..."))
+
+    # Remove listener
+    event.remove(User, 'before_insert', set_timestamp)
     ```
-  - **Security Note**: ZipCrypto is a weak encryption, suitable for casual protection only. For high security, use Binary backend encryption (ChaCha20)
 
-- **Query Condition Column Name Mapping**
-  - Support using model field names in query conditions with automatic conversion to database column names
-  - When using `Column(type, name='db_column')`, query conditions are automatically mapped
+- **Relationship Prefetch API**
+  - Added `prefetch()` function for batch loading related data, solving the N+1 query problem
+  - Supports both standalone function call and query option styles
+  - Supports one-to-many and many-to-one relationships
+  - Example:
+    ```python
+    from pytuck import prefetch, select
 
-### Fixed
+    # Style 1: Standalone function
+    users = session.execute(select(User)).all()
+    prefetch(users, 'orders')              # Single query loads all users' orders
+    prefetch(users, 'orders', 'profile')   # Multiple relationship names
 
-- **Database Column Name Mapping Issue**
-  - Fixed column name mapping and matching in query conditions
+    # Style 2: Query option
+    stmt = select(User).options(prefetch('orders'))
+    users = session.execute(stmt).all()    # orders are batch-loaded
+    ```
 
-- **Primary Key-less Model get() Method**
-  - Fixed `session.get()` handling for primary key-less models
-  - Improved data mapping logic
+- **Select.options() Method**
+  - Added query option chaining support, currently used for prefetch
+
+- **Query Index Optimization**
+  - `Column` now supports specifying index type: `index='hash'` (hash index) or `index='sorted'` (sorted index)
+  - Range queries (`>`, `>=`, `<`, `<=`) automatically use SortedIndex for acceleration, avoiding full table scans
+  - `order_by` sorting automatically leverages SortedIndex ordering, with inline pagination (early stopping)
+  - `SortedIndex.range_query()` supports open-ended queries (`None` boundaries)
+  - Backward compatible: `index=True` still creates HashIndex
+  - Example:
+    ```python
+    class User(Base):
+        __tablename__ = 'users'
+        id = Column(int, primary_key=True)
+        name = Column(str, index=True)        # Hash index (equality query acceleration)
+        age = Column(int, index='sorted')      # Sorted index (range query + sorting acceleration)
+
+    # Range queries automatically use sorted index
+    stmt = select(User).where(User.age >= 18, User.age < 30)
+
+    # Sorting automatically uses sorted index (no full-data sorting needed)
+    stmt = select(User).order_by('age').limit(10)
+    ```
+
+- **Bulk Operations (bulk_insert / bulk_update)**
+  - `Session.bulk_insert(instances)` — Batch insert model instance list, immediately writes to memory
+  - `Session.bulk_update(instances)` — Batch update model instance list, immediately writes to memory
+  - `CRUDBaseModel.bulk_insert(instances)` / `CRUDBaseModel.bulk_update(instances)` — Active Record style
+  - Batch PK allocation (pre-reserve ID ranges), batch index updates, batch WAL writes
+  - New bulk events: `before_bulk_insert` / `after_bulk_insert` / `before_bulk_update` / `after_bulk_update`
+  - **Difference from `session.add_all()`**: `add_all()` executes one-by-one during `commit()` with per-record events; `bulk_insert()` executes immediately in batch, skipping per-record events and select-back, offering better performance
+  - Example:
+    ```python
+    # Session layer
+    users = [User(name='Alice', age=20), User(name='Bob', age=22)]
+    session.bulk_insert(users)   # Immediately writes to memory, auto-assigns PKs
+    session.commit()             # Persists to disk
+
+    # Active Record layer
+    User.bulk_insert([User(name='Carol'), User(name='Dave')])
+
+    # Bulk update
+    for u in users:
+        u.age += 1
+    session.bulk_update(users)
+    ```
+
+### Performance Benchmark (Query Index Optimization)
+
+> Test environment: 100,000 records, age field range 1-100, comparing No Index / HashIndex / SortedIndex
+
+**Storage.query (Low-level Engine)**
+
+| Scenario | No Index | SortedIndex | Speedup |
+|----------|----------|-------------|---------|
+| Range query `age BETWEEN 30 AND 50` (~21% data) | 10.00s | 3.16s | **3.2x** |
+| High selectivity `age > 95` (~5% data) | 7.95s | 541ms | **14.7x** |
+| Full `order_by('age')` | 7.21s | 8.01s | 0.9x |
+
+**select() API (High-level)**
+
+| Scenario | No Index | SortedIndex | Speedup |
+|----------|----------|-------------|---------|
+| Range query `age BETWEEN X AND Y` | 33.60s | 28.28s | **1.2x** |
+| High selectivity `age > 95` | 10.19s | 2.96s | **3.4x** |
+| Combo `range + order_by + limit` | 6.51s | 4.48s | **1.5x** |
+
+**Key Findings**:
+- Range queries are SortedIndex's primary strength — bisect locates boundaries to reduce scan volume
+- Higher selectivity (fewer matching records) yields greater speedup — up to **14.7x** at the engine level
+- Upper-layer API speedup is lower than engine-level due to fixed model instantiation overhead
+- Pure sorting shows no improvement since Python's C-level timsort is already highly optimized
+- Combined queries (range + sort + pagination) benefit from reduced candidate set before sorting
+
+> Run benchmark: `python tests/benchmark/benchmark_index.py -n 100000`
 
 ### Tests
 
-- Added CSV backend ZIP encryption tests (12 test cases)
-- Added configuration error, multi-thread safety, and advanced query tests
-- Added engine metadata specification and error recovery tests
+- Added ORM event hooks tests (35 test cases)
+- Added relationship prefetch tests (23 test cases)
+- Added query index optimization tests (42 test cases)
+- Added index optimization benchmark script (`tests/benchmark/benchmark_index.py`)
+- Added bulk operations tests (34 test cases)

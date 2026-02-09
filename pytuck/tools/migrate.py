@@ -4,20 +4,21 @@ Pytuck 数据迁移工具
 提供在不同存储引擎之间迁移数据的功能，以及从外部数据库导入数据的功能
 """
 
-from typing import Any, Dict, List, Optional
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Union
 
 from ..backends import get_backend
 from ..common.exceptions import MigrationError
 from ..core.storage import Table
 from ..core.orm import Column
 from ..common.options import BackendOptions, ConnectorOptions, get_default_backend_options, get_default_connector_options
-from .adapters import get_source_adapter, get_available_source_types
+from .adapters import get_source_adapter
 
 
 def migrate_engine(
-    source_path: str,
+    source_path: Union[str, Path],
     source_engine: str,
-    target_path: str,
+    target_path: Union[str, Path],
     target_engine: str,
     *,
     overwrite: bool = False,
@@ -180,8 +181,8 @@ def get_available_engines() -> Dict[str, bool]:
 
 
 def import_from_database(
-    source_path: str,
-    target_path: str,
+    source_path: Union[str, Path],
+    target_path: Union[str, Path],
     target_engine: str = 'binary',
     *,
     source_type: str = 'sqlite',
@@ -261,8 +262,6 @@ def import_from_database(
             schema_only=True
         )
     """
-    import os
-
     # 提供默认选项
     if source_options is None:
         source_options = get_default_connector_options(source_type)
@@ -272,7 +271,8 @@ def import_from_database(
     exclude_tables = exclude_tables or []
 
     # 检查源文件是否存在
-    if not os.path.exists(source_path):
+    source_p = Path(source_path).expanduser()
+    if not source_p.exists():
         raise FileNotFoundError(f"源数据库文件不存在: {source_path}")
 
     # 获取目标后端并检查是否已存在
@@ -289,7 +289,7 @@ def import_from_database(
 
     # 获取源数据库适配器
     try:
-        adapter = get_source_adapter(source_type, source_path, source_options)
+        adapter = get_source_adapter(source_type, str(source_path), source_options)
     except ValueError as e:
         raise MigrationError(str(e))
 

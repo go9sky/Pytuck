@@ -581,6 +581,8 @@ class TestEventManagerUnit:
             'before_insert', 'after_insert',
             'before_update', 'after_update',
             'before_delete', 'after_delete',
+            'before_bulk_insert', 'after_bulk_insert',
+            'before_bulk_update', 'after_bulk_update',
         }
 
     def test_storage_events_set(self) -> None:

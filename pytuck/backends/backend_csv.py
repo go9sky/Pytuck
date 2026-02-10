@@ -7,6 +7,7 @@ Pytuck CSV存储引擎
 import csv
 import json
 import io
+import threading
 import zipfile
 from pathlib import Path
 from typing import Any, Dict, Union, TYPE_CHECKING, Tuple, Optional
@@ -21,6 +22,9 @@ from ..common.options import CsvBackendOptions
 if TYPE_CHECKING:
     from ..core.storage import Table
     from ..core.orm import Column
+
+# 模块级锁，用于同步 csv.field_size_limit() 的全局修改（进程内线程安全）
+_CSV_FIELD_SIZE_LOCK = threading.Lock()
 
 
 class CSVBackend(StorageBackend):
@@ -226,6 +230,49 @@ class CSVBackend(StorageBackend):
         table.next_id = schema.get('next_id', 1)
 
         # 加载 CSV 数据
+        self._read_csv_into_table(zf, csv_file, table, pwd)
+
+        # 重建索引（删除构造函数创建的空索引）
+        for col_name, column in table.columns.items():
+            if column.index:
+                if col_name in table.indexes:
+                    del table.indexes[col_name]
+                table.build_index(col_name)
+
+        return table
+
+    def _read_csv_into_table(
+        self,
+        zf: zipfile.ZipFile,
+        csv_file: str,
+        table: 'Table',
+        pwd: Optional[bytes]
+    ) -> None:
+        """
+        从 ZIP 中读取 CSV 文件并填充到表中
+
+        若配置了 field_size_limit，则临时修改 csv.field_size_limit() 全局设置，
+        并通过锁保证进程内线程安全，读取完成后恢复原值。
+        """
+        limit = self.options.field_size_limit
+        if limit is not None:
+            with _CSV_FIELD_SIZE_LOCK:
+                prev_limit = csv.field_size_limit(limit)
+                try:
+                    self._do_read_csv(zf, csv_file, table, pwd)
+                finally:
+                    csv.field_size_limit(prev_limit)
+        else:
+            self._do_read_csv(zf, csv_file, table, pwd)
+
+    def _do_read_csv(
+        self,
+        zf: zipfile.ZipFile,
+        csv_file: str,
+        table: 'Table',
+        pwd: Optional[bytes]
+    ) -> None:
+        """实际执行 CSV 读取并填充表数据"""
         with zf.open(csv_file, pwd=pwd) as f:
             encoding = self.options.encoding
             text_stream = io.TextIOWrapper(f, encoding=encoding)
@@ -250,15 +297,6 @@ class CSVBackend(StorageBackend):
                     if pk >= table.next_id:
                         table.next_id = pk + 1
                 table.data[pk] = record
-
-        # 重建索引（删除构造函数创建的空索引）
-        for col_name, column in table.columns.items():
-            if column.index:
-                if col_name in table.indexes:
-                    del table.indexes[col_name]
-                table.build_index(col_name)
-
-        return table
 
     @staticmethod
     def _serialize_record(record: Dict[str, Any], columns: Dict[str, 'Column']) -> Dict[str, str]:

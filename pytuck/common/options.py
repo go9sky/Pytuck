@@ -58,11 +58,15 @@ class CsvBackendOptions:
     delimiter: str = ','  # 字段分隔符
     indent: Optional[int] = None  # json元数据缩进空格数（无缩进时为 None）
     password: Optional[str] = None  # ZIP 解压密码（仅允许 ASCII 字符）
+    field_size_limit: Optional[int] = None  # CSV 字段大小上限（bytes），None 表示使用 csv 模块默认限制（131072）
 
     def __setattr__(self, name: str, value: Any) -> None:
-        """拦截属性赋值，校验 password 字段"""
+        """拦截属性赋值，校验 password 和 field_size_limit 字段"""
         if name == 'password':
             _validate_zip_password(value)
+        if name == 'field_size_limit' and value is not None:
+            if not isinstance(value, int) or value <= 0:
+                raise ValidationError("field_size_limit must be a positive integer or None")
         object.__setattr__(self, name, value)
 
 
